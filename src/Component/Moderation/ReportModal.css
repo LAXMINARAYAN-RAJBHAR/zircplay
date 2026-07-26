@@ -1,0 +1,291 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+/* ── Overlay ── */
+.report_overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* ── Modal card ── */
+.report_modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 20px;
+  border: 2px solid #e0d4ff;
+  box-shadow: 0 24px 64px rgba(124, 58, 237, 0.2);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  font-family: 'Outfit', sans-serif;
+  scrollbar-width: none;
+}
+.report_modal::-webkit-scrollbar { display: none; }
+
+/* Top gradient bar */
+.report_modal_bar {
+  height: 5px;
+  background: linear-gradient(90deg, #f43f5e, #7c3aed, #f97316);
+  border-radius: 20px 20px 0 0;
+  flex-shrink: 0;
+}
+
+/* ── Header ── */
+.report_header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid #f0ebff;
+}
+
+.report_title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: #1e1b4b;
+  font-family: 'Nunito', sans-serif;
+}
+
+.report_subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #8b84c4;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.report_close {
+  background: rgba(124, 58, 237, 0.08);
+  border: none;
+  color: #7c3aed;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.report_close:hover { background: rgba(124, 58, 237, 0.18); }
+
+/* ── Reason list ── */
+.report_reasons {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report_reason_item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 2px solid #f0ebff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4c4589;
+  transition: all 0.15s;
+  position: relative;
+  background: #fdfcff;
+}
+
+.report_reason_item:hover {
+  border-color: #7c3aed;
+  background: #f7f0ff;
+  color: #1e1b4b;
+}
+
+.report_reason_item.selected {
+  border-color: #7c3aed;
+  background: linear-gradient(135deg, #f7f0ff, #fdf4ff);
+  color: #1e1b4b;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.12);
+}
+
+.report_reason_item input[type="radio"] { display: none; }
+
+.report_check {
+  margin-left: auto;
+  color: #7c3aed;
+  font-weight: 900;
+  font-size: 14px;
+}
+
+/* ── Details textarea ── */
+.report_details_wrap {
+  padding: 0 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.report_details_label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8b84c4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.report_details_input {
+  width: 100%;
+  background: #f7f0ff;
+  border: 2px solid #e0d4ff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-family: 'Outfit', sans-serif;
+  color: #1e1b4b;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+.report_details_input:focus { border-color: #7c3aed; background: #ffffff; }
+.report_details_input::placeholder { color: #8b84c4; }
+
+.report_char_count {
+  font-size: 11px;
+  color: #c4b5fd;
+  text-align: right;
+  font-weight: 600;
+}
+
+/* ── Error ── */
+.report_error {
+  margin: 0 16px 8px;
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  color: #f43f5e;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Actions ── */
+.report_actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px 20px;
+}
+
+.report_btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.report_btn--primary {
+  background: linear-gradient(135deg, #f43f5e, #7c3aed);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(244, 63, 94, 0.3);
+}
+.report_btn--primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(244, 63, 94, 0.4);
+}
+.report_btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.report_btn--secondary {
+  background: #f7f0ff;
+  color: #4c4589;
+  border: 2px solid #e0d4ff;
+}
+.report_btn--secondary:hover {
+  background: #ede9fe;
+  border-color: #7c3aed;
+  color: #7c3aed;
+}
+
+/* ── Success state ── */
+.report_success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px;
+  text-align: center;
+  gap: 12px;
+}
+
+.report_success_icon { font-size: 52px; }
+
+.report_success h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  color: #1e1b4b;
+  font-family: 'Nunito', sans-serif;
+}
+
+.report_success p {
+  margin: 0;
+  font-size: 14px;
+  color: #8b84c4;
+  line-height: 1.6;
+}
+
+.report_success .report_btn--primary {
+  width: 160px;
+  margin-top: 8px;
+}
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  .report_overlay { padding: 8px; }
+  .report_modal   { max-height: 95vh; border-radius: 16px; }
+  .report_reason_item { font-size: 12px; padding: 10px 12px; }
+  .report_btn     { font-size: 13px; padding: 11px; }
+}
+
+:root {
+  --zx-bg:        #fff5f5;
+  --zx-surface:   #ffffff;
+  --zx-surface2:  #fef2f2;
+  --zx-border:    #fbd5d5;
+  --zx-primary:   #dc2626;
+  --zx-primary2:  #ef4444;
+  --zx-accent1:   #b91c1c;
+  --zx-accent2:   #f97316;
+  --zx-accent3:   #06b6d4;
+  --zx-accent4:   #10b981;
+  --zx-accent5:   #eab308;
+  --zx-text:      #1a1414;
+  --zx-text2:     #7a3a3a;
+  --zx-text3:     #b08585;
+  --zx-shadow:    0 4px 24px rgba(220,38,38,0.10);
+  --zx-shadow2:   0 2px 12px rgba(220,38,38,0.08);
+  --zx-radius:    16px;
+  --zx-radius-sm: 10px;
+}

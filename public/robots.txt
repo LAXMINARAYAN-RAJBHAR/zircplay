@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://laxminarayan-rajbhar.github.io/zixplon/sitemap.xml

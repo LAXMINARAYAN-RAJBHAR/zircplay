@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>TV Debug</title>
+  <style>
+    body { background: #000; color: #fff; font-family: monospace; font-size: 18px; padding: 20px; word-break: break-all; }
+    h2 { color: #CC0000; margin-bottom: 16px; }
+    p { margin: 8px 0; line-height: 1.6; }
+    label { color: #aaa; }
+  </style>
+</head>
+<body>
+  <h2>ZIXPLON TV Debug</h2>
+  <p><label>User Agent:</label><br><span id="ua"></span></p>
+  <p><label>Screen:</label> <span id="screen"></span></p>
+  <p><label>Touch:</label> <span id="touch"></span></p>
+  <p><label>JS Features:</label><br><span id="features"></span></p>
+  <script>
+    document.getElementById('ua').textContent = navigator.userAgent;
+    document.getElementById('screen').textContent = window.screen.width + 'x' + window.screen.height;
+    document.getElementById('touch').textContent = ('ontouchstart' in window) ? 'YES (touch device)' : 'NO (non-touch)';
+
+    var features = [];
+    try { eval('const x = () => {}'); features.push('✅ Arrow functions'); } catch(e) { features.push('❌ Arrow functions'); }
+    try { eval('const x = async () => {}'); features.push('✅ Async/Await'); } catch(e) { features.push('❌ Async/Await'); }
+    try { eval('const {a} = {a:1}'); features.push('✅ Destructuring'); } catch(e) { features.push('❌ Destructuring'); }
+    try { eval('const x = a?.b'); features.push('✅ Optional chaining (?.)'); } catch(e) { features.push('❌ Optional chaining (?.) — CRITICAL'); }
+    try { eval('const x = a ?? b'); features.push('✅ Nullish coalescing (??)'); } catch(e) { features.push('❌ Nullish coalescing (??) — CRITICAL'); }
+    try { features.push(typeof Promise !== 'undefined' ? '✅ Promise' : '❌ Promise'); } catch(e) {}
+    try { features.push(typeof fetch !== 'undefined' ? '✅ Fetch API' : '❌ Fetch API'); } catch(e) {}
+
+    document.getElementById('features').innerHTML = features.join('<br>');
+  </script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+.feedback_container { text-align: center; }
+
+.feedback_container h1 {
+  font-family: 'Nunito', sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  margin-bottom: 8px;
+  color: var(--zx-text);
+}
+
+.star_rating { font-size: 2.2rem; margin-bottom: 18px; cursor: pointer; }
+.star        { color: var(--zx-border); transition: color 0.2s; }
+.star.active { color: var(--zx-accent2); filter: drop-shadow(0 0 4px rgba(249,115,22,0.5)); }
+
+.feedback_textarea {
+  width: 100%;
+  background: var(--zx-bg);
+  border: 2px solid var(--zx-border);
+  border-radius: 12px;
+  color: var(--zx-text);
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  resize: vertical;
+  margin-bottom: 18px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.feedback_textarea:focus { border-color: var(--zx-primary); }
+.feedback_textarea::placeholder { color: var(--zx-text3); }
+
+.feedback_btn {
+  background: linear-gradient(135deg, var(--zx-primary), var(--zx-primary2));
+  color: #ffffff;
+  border: none;
+  padding: 12px 32px;
+  border-radius: 20px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(124,58,237,0.3);
+}
+.feedback_btn:hover { box-shadow: 0 6px 22px rgba(124,58,237,0.42); opacity: 0.92; }
+
+:root {
+  --zx-bg:        #fff5f5;
+  --zx-surface:   #ffffff;
+  --zx-surface2:  #fef2f2;
+  --zx-border:    #fbd5d5;
+  --zx-primary:   #dc2626;
+  --zx-primary2:  #ef4444;
+  --zx-accent1:   #b91c1c;
+  --zx-accent2:   #f97316;
+  --zx-accent3:   #06b6d4;
+  --zx-accent4:   #10b981;
+  --zx-accent5:   #eab308;
+  --zx-text:      #1a1414;
+  --zx-text2:     #7a3a3a;
+  --zx-text3:     #b08585;
+  --zx-shadow:    0 4px 24px rgba(220,38,38,0.10);
+  --zx-shadow2:   0 2px 12px rgba(220,38,38,0.08);
+  --zx-radius:    16px;
+  --zx-radius-sm: 10px;
+}

@@ -1,0 +1,122 @@
+.login-modal-backdrop {
+  position: fixed;
+  /* FIX: explicit longhand instead of the `inset: 0` shorthand.
+     Some older/embedded TV WebViews (e.g. this BPL smart TV's Chromium)
+     silently drop unsupported shorthand properties instead of falling
+     back gracefully. When `inset` was dropped, this backdrop collapsed
+     to 0×0 at top:0/left:0, so the flex centering below had nothing to
+     center within — the modal rendered pinned top-left with no dim
+     behind it. top/left/right/bottom + width/height is identical in
+     every modern browser (no visual change on mobile/desktop) but is
+     understood everywhere, including old WebViews. */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 5, 20, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.login-modal {
+  background: #14101f;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 16px;
+  padding: 32px;
+  width: 90%;
+  max-width: 380px;
+  position: relative;
+  font-family: 'Space Grotesk', sans-serif;
+  color: #f1f0f5;
+}
+
+.login-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.login-modal h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.login-modal-subtitle {
+  color: #a894c9;
+  margin: 0 0 20px;
+  font-size: 14px;
+}
+
+.login-option-btn {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.08);
+  color: #f1f0f5;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.login-option-btn:hover {
+  background: rgba(168, 85, 247, 0.2);
+}
+
+.login-option-btn.skip {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #8a819c;
+  font-size: 13px;
+}
+
+.login-modal input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  background: #1c1628;
+  color: #fff;
+}
+
+.login-modal-error {
+  color: #ff6b6b;
+  font-size: 13px;
+  margin: -4px 0 12px;
+}
+:root {
+  --zx-bg:        #fff5f5;
+  --zx-surface:   #ffffff;
+  --zx-surface2:  #fef2f2;
+  --zx-border:    #fbd5d5;
+  --zx-primary:   #dc2626;
+  --zx-primary2:  #ef4444;
+  --zx-accent1:   #b91c1c;
+  --zx-accent2:   #f97316;
+  --zx-accent3:   #06b6d4;
+  --zx-accent4:   #10b981;
+  --zx-accent5:   #eab308;
+  --zx-text:      #1a1414;
+  --zx-text2:     #7a3a3a;
+  --zx-text3:     #b08585;
+  --zx-shadow:    0 4px 24px rgba(220,38,38,0.10);
+  --zx-shadow2:   0 2px 12px rgba(220,38,38,0.08);
+  --zx-radius:    16px;
+  --zx-radius-sm: 10px;
+}

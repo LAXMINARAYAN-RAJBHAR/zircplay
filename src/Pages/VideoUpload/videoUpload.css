@@ -1,0 +1,548 @@
+.videoUpload {
+  padding-top: 56px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: calc(100vh - 56px); /* ← change this */
+  font-family: 'Outfit', sans-serif;
+  background: var(--zx-bg);
+  color: var(--zx-text);
+  padding-bottom: 40px;
+  box-sizing: border-box;
+}
+
+.uploadBox {
+  width: 48%;
+  border-radius: 20px;
+  margin-top: 24px;
+  background: var(--zx-surface);
+  border: 2px solid var(--zx-border);
+  padding: 32px;
+  box-sizing: border-box;
+  position: relative;
+  box-shadow: 0 8px 40px rgba(124,58,237,0.09);
+}
+
+.uploadBox::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--zx-primary), var(--zx-accent2), var(--zx-primary2));
+  border-radius: 20px 20px 0 0;
+}
+
+.uploadVideoTitle {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  font-family: 'Nunito', sans-serif;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--zx-text);
+  gap: 8px;
+}
+
+.uploadForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 28px;
+  align-items: center;
+  width: 100%; /* FIX: ensure form fills the box */
+}
+
+.uploadFormInputs {
+  color: var(--zx-text) !important;
+  background: var(--zx-bg) !important;
+  border: 2px solid var(--zx-border) !important;
+  border-radius: 12px !important;
+  padding: 11px 14px;
+  width: 100%;
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.uploadFormInputs:focus {
+  border-color: var(--zx-primary) !important;
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.1) !important;
+  background: #ffffff !important;
+}
+
+.uploadFormInputs::placeholder { color: var(--zx-text3) !important; opacity: 1 !important; }
+
+.uploadBtns {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.uploadBtns-form {
+  padding: 10px 24px;
+  border: 2px solid var(--zx-primary);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--zx-primary);
+  text-decoration: none;
+  background: transparent;
+  transition: all 0.2s;
+}
+
+.uploadBtns-form:hover {
+  background: var(--zx-primary);
+  color: #ffffff;
+  box-shadow: 0 4px 18px rgba(124,58,237,0.3);
+}
+
+.upload_file_row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%; /* FIX: was 80%, caused misalignment on mobile */
+  flex-wrap: wrap;
+}
+
+.upload_file_label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Nunito', sans-serif;
+  color: var(--zx-text3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.upload_file_btn {
+  background: var(--zx-bg);
+  border: 2px solid var(--zx-border);
+  color: var(--zx-primary);
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.upload_file_btn:hover {
+  background: var(--zx-primary);
+  color: #ffffff;
+  border-color: var(--zx-primary);
+  box-shadow: 0 4px 14px rgba(124,58,237,0.3);
+}
+
+.upload_thumb_row { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+.upload_thumb_preview {
+  width: 80px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid var(--zx-border);
+}
+
+.upload_video_ready { font-family: 'Nunito', sans-serif; color: var(--zx-accent4); font-size: 12px; font-weight: 800; }
+.upload_error_msg { font-family: 'Nunito', sans-serif; color: var(--zx-accent1); font-size: 12px; font-weight: 800; margin: 4px 0; }
+
+.uploadBtns-disabled {
+  background: var(--zx-border) !important;
+  border-color: var(--zx-border) !important;
+  color: var(--zx-text3) !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+  box-shadow: none !important;
+}
+
+.upload_success_screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px 0;
+  gap: 10px;
+}
+
+.upload_success_screen h2 { font-family: 'Nunito', sans-serif; font-size: 18px; font-weight: 900; color: var(--zx-primary); }
+.upload_success_screen p { font-family: 'Outfit', sans-serif; color: var(--zx-text3); font-size: 14px; }
+
+.upload_success_preview {
+  width: 100%;
+  max-width: 480px;
+  border-radius: 12px;
+  margin: 10px 0;
+  border: 2px solid var(--zx-border);
+}
+
+.upload_success_meta { font-family: 'Nunito', sans-serif; color: var(--zx-text3); font-size: 12px; font-weight: 600; }
+
+.upload_mode_toggle {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 10px 0 6px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.upload_mode_btn {
+  padding: 8px 18px;
+  border-radius: 20px;
+  border: 2px solid var(--zx-border);
+  font-family: 'Nunito', sans-serif;
+  color: var(--zx-text3);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  white-space: nowrap;
+}
+
+.upload_mode_btn:hover { border-color: var(--zx-primary); color: var(--zx-primary); }
+.upload_mode_btn.active {
+  background: var(--zx-primary);
+  border-color: var(--zx-primary);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(124,58,237,0.3);
+}
+
+.upload_mode_hint {
+  text-align: center;
+  font-family: 'Nunito', sans-serif;
+  color: var(--zx-text3);
+  font-size: 12px;
+  margin: 0 0 10px;
+  padding: 0 16px;
+  font-weight: 600;
+}
+
+/* ══════════════════════════════════════
+   MOBILE — max 768px
+══════════════════════════════════════ */
+@media (max-width: 768px) {
+  .uploadBox {
+    width: calc(100% - 24px); /* FIX: full width with small side margin instead of 48% */
+    padding: 20px 16px;       /* FIX: reduced padding so inputs have room to breathe */
+    margin-top: 16px;
+  }
+
+  .uploadVideoTitle {
+    font-size: 16px;
+  }
+
+  .uploadForm {
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .uploadFormInputs {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  .upload_file_row {
+    width: 100%;
+    gap: 10px;
+  }
+
+  .uploadBtns {
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .uploadBtns-form {
+    font-size: 12px;
+    padding: 9px 18px;
+  }
+
+  .upload_mode_toggle {
+    gap: 6px;
+  }
+
+  .upload_mode_btn {
+    font-size: 11px;
+    padding: 7px 14px;
+  }
+}
+/* ══════════════════════════════════════════════════
+   REMIX CSS — add to the BOTTOM of reels.css
+══════════════════════════════════════════════════ */
+
+/* ── Remix action button (in right action bar) ── */
+.reel_remix_btn {
+  background: linear-gradient(135deg, rgba(124,58,237,0.35), rgba(168,85,247,0.35)) !important;
+  border-color: rgba(168,85,247,0.6) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.reel_remix_btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  opacity: 0;
+  transition: opacity 0.2s;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.reel_remix_btn:hover::before { opacity: 1; }
+
+.reel_remix_btn > * { position: relative; z-index: 1; }
+
+/* ── "Remixed from @username" badge — bottom of video ── */
+.reel_remix_origin_badge {
+  position: absolute;
+  bottom: 130px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(124,58,237,0.75);
+  border: 1.5px solid rgba(168,85,247,0.6);
+  color: #ffffff;
+  font-size: 11px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  z-index: 10;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.2s, transform 0.15s;
+  letter-spacing: 0.2px;
+}
+
+.reel_remix_origin_badge:hover {
+  background: rgba(124,58,237,0.95);
+  transform: scale(1.04);
+}
+
+/* ── Remix toast (purple variant) ── */
+.reel_remix_toast {
+  background: linear-gradient(135deg, #7c3aed, #a855f7) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 4px 20px rgba(124,58,237,0.4) !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   REMIX CSS — add to the BOTTOM of videoUpload.css
+══════════════════════════════════════════════════ */
+
+/* ── Remix banner at top of upload form ── */
+.upload_remix_banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(168,85,247,0.08));
+  border: 2px solid rgba(124,58,237,0.3);
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin: 14px 0 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Decorative left accent bar */
+.upload_remix_banner::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #7c3aed, #a855f7);
+  border-radius: 14px 0 0 14px;
+}
+
+.upload_remix_thumb {
+  width: 52px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid rgba(124,58,237,0.3);
+  flex-shrink: 0;
+}
+
+.upload_remix_banner_text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.upload_remix_label {
+  font-family: 'Nunito', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  color: #a855f7;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.upload_remix_title {
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--zx-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.upload_remix_by {
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  color: var(--zx-text3);
+  font-weight: 500;
+}
+
+/* ── Mobile adjustments ── */
+@media (max-width: 768px) {
+  .reel_remix_origin_badge {
+    font-size: 10px;
+    padding: 4px 10px;
+    max-width: 170px;
+    bottom: 120px;
+  }
+
+  .upload_remix_banner {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .upload_remix_thumb {
+    width: 42px;
+    height: 58px;
+  }
+
+  .upload_remix_title {
+    font-size: 12px;
+    max-width: 160px;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   FEATURE BANNER (Remix / Sound / Collab / Green / Cut)
+   Paste at the BOTTOM of videoUpload.css
+══════════════════════════════════════════════════ */
+
+.upload_feature_banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(124,58,237,0.06), rgba(168,85,247,0.06));
+  border: 2px solid color-mix(in srgb, var(--feature-color, #7c3aed) 30%, transparent);
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin: 14px 0 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Left accent bar in feature colour */
+.upload_feature_banner::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--feature-color, #7c3aed);
+  border-radius: 14px 0 0 14px;
+}
+
+.upload_feature_thumb {
+  width: 52px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid color-mix(in srgb, var(--feature-color, #7c3aed) 35%, transparent);
+  flex-shrink: 0;
+}
+
+.upload_feature_banner_text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.upload_feature_label {
+  font-family: 'Nunito', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  /* color is set inline from banner.color */
+}
+
+.upload_feature_title {
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--zx-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.upload_feature_by {
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  color: var(--zx-text3);
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .upload_feature_banner {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .upload_feature_thumb {
+    width: 42px;
+    height: 58px;
+  }
+  .upload_feature_title {
+    font-size: 12px;
+    max-width: 160px;
+  }
+}
+
+:root {
+  --zx-bg:        #fff5f5;
+  --zx-surface:   #ffffff;
+  --zx-surface2:  #fef2f2;
+  --zx-border:    #fbd5d5;
+  --zx-primary:   #dc2626;
+  --zx-primary2:  #ef4444;
+  --zx-accent1:   #b91c1c;
+  --zx-accent2:   #f97316;
+  --zx-accent3:   #06b6d4;
+  --zx-accent4:   #10b981;
+  --zx-accent5:   #eab308;
+  --zx-text:      #1a1414;
+  --zx-text2:     #7a3a3a;
+  --zx-text3:     #b08585;
+  --zx-shadow:    0 4px 24px rgba(220,38,38,0.10);
+  --zx-shadow2:   0 2px 12px rgba(220,38,38,0.08);
+  --zx-radius:    16px;
+  --zx-radius-sm: 10px;
+}

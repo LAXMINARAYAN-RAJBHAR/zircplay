@@ -1,0 +1,167 @@
+.liveTVPage {
+  padding: 80px 20px 20px 20px;  /* 👈 changed top padding from 20px to 80px */
+  min-height: 100vh;
+  background: #0f0f0f;
+  color: white;
+}
+
+.liveTVPage.sidebar-open { margin-left: 240px; }
+.liveTVPage.sidebar-closed { margin-left: 0; }
+
+/* Player */
+.liveTV_player {
+  width: 100%;
+  max-width: 900px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #111;
+  margin-bottom: 20px;
+  aspect-ratio: 16 / 7;
+  position: relative;
+}
+
+.liveTV_video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.liveTV_noStream {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.liveTV_noStreamThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.4;
+}
+
+.liveTV_noStreamOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 20px;
+  background: linear-gradient(transparent 30%, rgba(0,0,0,0.8) 100%);
+}
+
+.liveTV_liveBadge {
+  background: #e24b4a;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-bottom: 8px;
+  width: fit-content;
+}
+
+.liveTV_channelTitle {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.liveTV_channelDesc {
+  font-size: 14px;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 6px;
+}
+
+.liveTV_viewers {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+}
+
+/* Tabs */
+.liveTV_tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.liveTV_tab {
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  border: 1px solid #333;
+  cursor: pointer;
+  color: #aaa;
+  background: transparent;
+  transition: all 0.2s;
+}
+
+.liveTV_tab.active {
+  background: white;
+  color: black;
+  border-color: white;
+  font-weight: 600;
+}
+
+/* Section Title */
+.liveTV_sectionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+/* Channel Grid */
+.liveTV_grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.liveTV_card {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1.5px solid #222;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s;
+  background: #1a1a1a;
+}
+
+.liveTV_card:hover { transform: scale(1.02); border-color: #555; }
+.liveTV_card.active { border-color: #e24b4a; }
+
+.liveTV_cardThumb {
+  position: relative;
+  aspect-ratio: 16/9;
+}
+
+.liveTV_cardThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.liveTV_cardBadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  padding: 2px 6px;
+  margin: 0;
+}
+
+.liveTV_cardInfo {
+  padding: 8px 10px;
+}
+
+.liveTV_cardName {
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+}
+
+.liveTV_cardViewers {
+  font-size: 11px;
+  color: #888;
+  margin-top: 2px;
+}

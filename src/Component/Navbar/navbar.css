@@ -1,0 +1,435 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Titan+One&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+/* ══════════════════════════════════════
+   ZIXPLON THEME — dusk-maroon redesign
+   These --zx-* variables are shared with
+   homePage.css / BottomNav / MessagesPanel —
+   keep values in sync across files.
+══════════════════════════════════════ */
+:root {
+  --zx-bg:          #fdf1ef;
+  --zx-surface:     #ffffff;
+  --zx-surface2:    #fff3f0;
+  --zx-border:      #f3d6d2;
+  --zx-primary:     #9e1226;
+  --zx-primary2:    #c81e34;
+  --zx-accent1:     #6e0a18;
+  --zx-accent2:     #f97316;
+  --zx-accent3:     #06b6d4;
+  --zx-accent4:     #10b981;
+  --zx-accent5:     #eab308;
+  --zx-text:        #1e1315;
+  --zx-text2:       #6e4345;
+  --zx-text3:       #9c7a7c;
+  --zx-marigold-hi: #ffe9e2;
+  --zx-vermilion:   #e63946;
+  --zx-shadow:      0 4px 24px rgba(158,18,38,0.10);
+  --zx-shadow2:     0 2px 12px rgba(158,18,38,0.08);
+  --zx-radius:      16px;
+  --zx-radius-sm:   10px;
+}
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(158, 18, 38, 0.5); }
+  70%  { box-shadow: 0 0 0 18px rgba(158, 18, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(158, 18, 38, 0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: translateY(-50%) scale(0.6); }
+  to   { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+
+@keyframes logoBounce {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spinIcon {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes bellShake {
+  0%, 100% { transform: rotate(0deg); }
+  10%       { transform: rotate(15deg); }
+  20%       { transform: rotate(-12deg); }
+  30%       { transform: rotate(10deg); }
+  40%       { transform: rotate(-8deg); }
+  50%       { transform: rotate(0deg); }
+}
+
+@keyframes badgePop {
+  0%   { transform: scale(0); }
+  70%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* ── Base Navbar — dusk-maroon hero gradient, matches mockup's hero header ── */
+.navbar {
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  justify-content: space-between;
+  top: 0;
+  position: fixed;
+  background: radial-gradient(120% 220% at 15% 0%, var(--zx-primary2) 0%, var(--zx-primary) 45%, var(--zx-accent1) 100%);
+  left: 0;
+  right: 0;
+  border-bottom: none;
+  box-shadow: 0 2px 16px rgba(110, 10, 24, 0.25);
+  z-index: 9999;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+}
+
+.sidebar {
+  z-index: 15;
+}
+
+/* ── LEFT ── */
+.navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  max-width: 220px;
+}
+
+.navbarHamberger {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.navbarHamberger:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.navbarHamberger svg {
+  color: #ffffff;
+}
+
+.navbar-logo-link {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  text-decoration: none !important;
+}
+
+.mylogo {
+  width: 42px;
+  height: 42px;
+  transition: filter 0.3s ease, transform 0.2s ease;
+}
+
+.mylogo:hover {
+  filter: drop-shadow(0 0 8px rgba(255, 233, 226, 0.6)) drop-shadow(0 0 16px rgba(255, 233, 226, 0.35));
+  transform: scale(1.1);
+}
+
+.logoText {
+  display: inline-flex;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  font-family: 'Fraunces', serif;
+}
+
+.logoChar {
+  display: inline-block;
+  animation: logoBounce 0.6s ease forwards;
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+/* ── MIDDLE ── */
+.navbar-middle {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  max-width: 600px;
+  align-items: center;
+}
+
+.navbar_searchBox {
+  width: 100%;
+  display: flex;
+  position: relative;
+}
+
+.navbar_searchBoxInput {
+  width: 100%;
+  height: 40px;
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background-color: rgba(255,255,255,0.1);
+  color: #ffffff;
+  font-size: 15px;
+  padding-left: 16px;
+  box-sizing: border-box;
+  font-family: 'Inter', sans-serif;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.navbar_searchBoxInput:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.4);
+  background-color: rgba(255,255,255,0.16);
+}
+
+.navbar_searchBoxInput::placeholder {
+  font-size: 14px;
+  color: rgba(255,233,226,0.55);
+}
+
+.navbar_searchIconBox {
+  cursor: pointer;
+  width: 56px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-left: none;
+  background: rgba(255,255,255,0.1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-top-right-radius: 20px;
+  border-bottom-right-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.navbar_searchIconBox:hover {
+  background: rgba(255,255,255,0.2);
+  border-color: rgba(255,255,255,0.4);
+}
+
+.navbar_searchIconBox svg {
+  color: #ffffff;
+  font-size: 22px;
+}
+
+.navbar_mike {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.navbar_mike:hover {
+  background-color: rgba(255,255,255,0.2);
+  border-color: rgba(255,255,255,0.4);
+  box-shadow: 0 0 12px rgba(255,233,226,0.25);
+}
+
+.navbar_mike svg {
+  color: #ffffff;
+  font-size: 20px;
+}
+
+/* ── RIGHT ── */
+.navbar-right {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.navbar-right-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.5);
+  transition: border-color 0.2s;
+}
+
+.navbar-right-logo:hover {
+  border-color: #ffffff;
+  box-shadow: 0 0 10px rgba(255,233,226,0.4);
+}
+
+.navbar-modal {
+  position: absolute;
+  z-index: 99999;
+  top: 50px;
+  right: 0;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 2px solid var(--zx-border);
+  box-shadow: 0 8px 32px rgba(158, 18, 38, 0.16);
+  min-width: 150px;
+  overflow: hidden;
+}
+
+.navbar-modal-option {
+  background-color: #ffffff;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--zx-text2);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background 0.15s;
+}
+
+.navbar-modal-option:hover {
+  background-color: rgba(158, 18, 38, 0.07);
+  color: var(--zx-primary);
+}
+
+/* Bell / notification icon styling — white on the dusk gradient */
+.navbar-right svg {
+  color: #ffffff;
+  transition: color 0.2s, opacity 0.2s;
+}
+.navbar-right svg:hover {
+  opacity: 0.85;
+}
+
+/* ── Upload button — hidden on mobile ── */
+.navbar-upload-btn {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* ══════════════════════════════════════
+   MOBILE RESPONSIVE — max 768px
+══════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  .navbar {
+    padding: 0 8px;
+    gap: 6px;
+    height: 56px;
+  }
+
+  .navbarHamberger {
+    display: none !important;
+  }
+
+  .logoText {
+    display: none !important;
+  }
+
+  .navbar-country-badge {
+    display: none !important;
+  }
+
+  .navbar-left {
+    max-width: fit-content;
+    gap: 2px;
+  }
+
+  .navbar-middle {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    gap: 4px;
+  }
+
+  .navbar_searchBox {
+    width: 100%;
+  }
+
+  .navbar_searchBoxInput {
+    height: 36px;
+    font-size: 14px;
+    padding-left: 12px;
+  }
+
+  .navbar_searchBoxInput::placeholder {
+    font-size: 14px;
+  }
+
+  .navbar_searchIconBox {
+    width: 42px;
+  }
+
+  .navbar_mike {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+  }
+
+  .navbar-right {
+    gap: 6px;
+  }
+
+  .navbar-right-logo {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Hide upload button on mobile — bottom nav handles it */
+  .navbar-upload-btn {
+    display: none !important;
+  }
+
+  /* Hide local player on mobile */
+  .navbar-local-player {
+    display: none !important;
+  }
+}
+
+/* ══════════════════════════════════════
+   VERY SMALL — max 480px
+══════════════════════════════════════ */
+@media (max-width: 480px) {
+
+  .navbar {
+    padding: 0 6px;
+    gap: 4px;
+  }
+
+  .navbar_searchBoxInput {
+    height: 34px;
+    font-size: 13px;
+    padding-left: 10px;
+  }
+
+  .navbar_searchIconBox {
+    width: 36px;
+  }
+
+  .navbar-right {
+    gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar-notif-dropdown {
+    position: fixed !important;
+    top: 60px !important;
+    left: 4px !important;
+    right: 4px !important;
+    width: auto !important;
+  }
+}

@@ -1,0 +1,1215 @@
+/* ── Animations ── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+@keyframes zx-livepulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.4); }
+}
+@keyframes tab-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(158,18,38,0.25); }
+  50%       { box-shadow: 0 0 22px rgba(200,30,52,0.55); }
+}
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInFromLeft {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+@keyframes bounceIn {
+  0%   { transform: scale(0.85); opacity: 0; }
+  70%  { transform: scale(1.04); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes rainbow-border {
+  0%   { border-color: #9e1226; }
+  25%  { border-color: #f43f5e; }
+  50%  { border-color: #f97316; }
+  75%  { border-color: #06b6d4; }
+  100% { border-color: #9e1226; }
+}
+
+/* ── Root ── */
+.homePage {
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 100vh;
+  background: var(--zx-bg);
+  font-family: 'Outfit', sans-serif;
+  color: var(--zx-text);
+  width: 100%;
+  background-color: var(--zx-bg);
+}
+
+/* ── Options bar ──
+   NOTE: this is position:fixed, so it is positioned relative to the
+   VIEWPORT, not to any parent's margin-left. That means it must carry
+   its OWN left offset that mirrors the sidebar's current width — it does
+   NOT get this "for free" from the App.js content wrapper's margin-left,
+   because fixed elements ignore ancestor margins entirely. */
+.homePage_options {
+  position: fixed;
+  top: 56px;
+  left: 72px;   /* collapsed sidebar width (icon-only strip) */
+  right: 0;
+  z-index: 100;
+  overflow: hidden;
+  background: #ffffff;
+  padding: 0;
+  border-bottom: 2px solid var(--zx-border);
+  box-shadow: 0 2px 16px rgba(158,18,38,0.07);
+  transition: left 0.3s ease;
+}
+.homePage_options.sidebar-open { left: 275px; }
+
+/* ── CHANGED: fade-out edge so the category strip signals "there's more
+   here" instead of looking like it simply runs out of tabs. Sits on top
+   of the scrolling track, ignores pointer events so clicks still pass
+   through to whatever pill is underneath it. ── */
+.homePage_options::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 48px;
+  background: linear-gradient(to right, transparent, #ffffff 75%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.homePage_options_track {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 8px;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.homePage_options_track::-webkit-scrollbar { display: none; }
+
+/* ── Category chips ── */
+.homePage_option {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 16px;
+  background: transparent;
+  color: var(--zx-text2);
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-radius: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  border: none;
+  transition: color 0.15s, background 0.15s;
+}
+.homePage_option:hover { color: var(--zx-primary); }
+
+/* ── CHANGED: replaces the old `.homePage_option[style*="white"]` hack
+   (which matched against inline style *strings*, and no longer matched
+   anything once the pill rendering below moved off inline styles). A
+   selected pill is now a solid rounded chip — filled, not underlined —
+   so it reads clearly as "on" against the neutral row around it. ── */
+.homePage_option.active {
+  color: var(--zx-primary) !important;
+  background: rgba(158,18,38,0.1) !important;
+  border-radius: 20px !important;
+  font-weight: 800 !important;
+}
+
+/* ── Main content area ──
+   FIX: this used to ALSO apply margin-left: 275px / width calc when the
+   sidebar was open — but App.js's .zx-content-shift wrapper already
+   shifts this entire block over (275px expanded / 72px collapsed), since
+   .home_mainPage lives in normal document flow, not fixed positioning.
+   Applying a second margin-left here on top of that wrapper's margin was
+   causing the large gap (275px + 275px = 550px when expanded). This
+   element must NOT reposition itself for the sidebar anymore — it just
+   fills whatever space its parent already gives it. */
+.home_mainPage {
+  display: block;
+  box-sizing: border-box;
+  padding: 56px 12px 32px 12px;
+  margin-left: 0;
+  width: 100%;
+  background: var(--zx-bg);
+  background-color: var(--zx-bg) !important;
+}
+
+/* ══════════════════════════════════════
+   FEATURED HERO — single always-populated trending card, replacing an
+   empty "Live Now" placeholder as the page's top visual anchor. Hidden
+   on mobile, which uses MobileTrendingStrip for the same job.
+   NOTE: kept for backwards compatibility in case any other page still
+   references .homePage_heroCard — HomePage itself no longer renders it,
+   having replaced it with .zx-dramatic-trending below.
+══════════════════════════════════════ */
+.homePage_heroCard {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  background: var(--zx-surface);
+  border-radius: var(--zx-radius);
+  box-shadow: var(--zx-shadow2);
+  overflow: hidden;
+  margin-bottom: 24px;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.homePage_heroCard:hover {
+  border-color: var(--zx-primary);
+  box-shadow: 0 8px 32px rgba(158,18,38,0.18);
+}
+.homePage_heroThumbWrap {
+  position: relative;
+  flex: 0 0 44%;
+  max-width: 480px;
+  aspect-ratio: 16 / 7;
+  overflow: hidden;
+  background: #f2ded8;
+}
+.homePage_heroThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.homePage_heroBadge {
+  position: absolute;
+  top: 12px; left: 12px;
+  background: linear-gradient(135deg, var(--zx-accent1), var(--zx-primary));
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+.homePage_heroInfo {
+  padding: 12px 20px 12px 0;
+  min-width: 0;
+}
+.homePage_heroTitle {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--zx-text);
+  margin: 0 0 6px;
+  font-family: 'Outfit', sans-serif;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+}
+.homePage_heroMeta {
+  font-size: 13px;
+  color: var(--zx-text3);
+  margin: 0;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  /* mobile has its own trending strip — never show both */
+  .homePage_heroCard { display: none; }
+}
+
+/* ── Video grid ── */
+.youtube_VideoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 18px;
+  width: 100%;
+}
+
+/* ── Video card ── */
+.youtube_thumbnailBox {
+  cursor: pointer;
+  position: relative;
+  background: var(--zx-surface);
+  border: 2px solid transparent;
+  border-radius: var(--zx-radius);
+  overflow: hidden;
+  box-shadow: var(--zx-shadow2);
+  transition: box-shadow 0.2s, transform 0.18s, border-color 0.2s;
+}
+.youtube_thumbnailBox:hover {
+  box-shadow: 0 8px 32px rgba(158,18,38,0.18);
+  transform: translateY(-4px);
+  border-color: var(--zx-primary);
+}
+
+/* ── Thumbnail wrapper ── */
+.youtube_thumbnailWrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--zx-radius) var(--zx-radius) 0 0;
+  background: #f2ded8;
+}
+.youtube_thumbnailPic {
+  width: 100%; height: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 0;
+  display: block;
+  transition: transform 0.3s, filter 0.2s;
+}
+.youtube_thumbnailBox:hover .youtube_thumbnailPic { transform: scale(1.04); }
+.youtube_thumbnailWrapper::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(30,19,21,0.35) 0%, transparent 50%);
+  pointer-events: none; z-index: 1;
+  border-radius: inherit;
+}
+
+/* ── Duration badge ── */
+.youtube_timingThumbnail {
+  position: absolute;
+  bottom: 8px; right: 8px;
+  background: rgba(30,19,21,0.88);
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px; font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px; z-index: 2;
+  letter-spacing: 0.5px;
+}
+
+/* ── Play overlay ── */
+.youtube_playOverlay {
+  position: absolute; inset: 0;
+  background: rgba(158,18,38,0);
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s; z-index: 2;
+}
+.youtube_thumbnailBox:hover .youtube_playOverlay { background: rgba(158,18,38,0.18); }
+.youtube_playButton {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.92);
+  color: var(--zx-primary); font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  padding-left: 4px; opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 0.2s, transform 0.2s;
+  box-shadow: 0 4px 20px rgba(158,18,38,0.4);
+}
+.youtube_thumbnailBox:hover .youtube_playButton { opacity: 1; transform: scale(1); }
+
+/* ── Card body ── */
+.youtubeTitleBox {
+  display: flex; flex-direction: row;
+  align-items: flex-start; gap: 10px;
+  padding: 10px 12px 12px;
+  background: var(--zx-surface);
+}
+.youtubeBoxProfile { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.youtube_thumbnail_Profile {
+  width: 34px; height: 34px;
+  border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  border: 2px solid var(--zx-border);
+}
+.youtube_ChannelName {
+  font-size: 12px; margin-top: 0;
+  font-family: 'Nunito', sans-serif; font-weight: 800;
+  letter-spacing: 0;
+  color: var(--zx-primary2);
+  white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 100px;
+  transition: color 0.15s;
+}
+.youtube_ChannelName:hover { color: var(--zx-primary); }
+.youtubeVideoInfo { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.youtube_videoTitle {
+  font-size: 13px; font-weight: 700; color: var(--zx-text); margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; line-height: 1.4; font-family: 'Outfit', sans-serif;
+}
+.youtubeVideo_Views {
+  font-size: 11px; color: var(--zx-text3); margin: 0;
+  font-family: 'Nunito', sans-serif; font-weight: 600;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.youtubeVideo_Views button {
+  font-family: 'Nunito', sans-serif; font-size: 11px; font-weight: 700;
+  border: 1.5px solid var(--zx-border); color: var(--zx-text3); background: transparent;
+  padding: 3px 10px; cursor: pointer; border-radius: 20px;
+  transition: all 0.15s;
+}
+.youtubeVideo_Views button:hover {
+  border-color: var(--zx-primary); color: var(--zx-primary);
+  background: rgba(158,18,38,0.06);
+}
+
+/* ══════════════════════════════════════
+   SHORTS SECTION
+══════════════════════════════════════ */
+.homePage_shortsSection { margin-bottom: 28px; }
+.homePage_shortsHeader {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  padding: 0 0 12px 0; gap: 10px;
+}
+.homePage_shortsTitle {
+  font-size: 15px; font-weight: 900;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: 0.5px; color: var(--zx-text);
+  display: flex; align-items: center; gap: 10px;
+}
+.homePage_shortsTitle::before {
+  content: '';
+  display: inline-block;
+  width: 5px; height: 20px;
+  background: linear-gradient(180deg, var(--zx-accent1), var(--zx-primary));
+  border-radius: 3px; flex-shrink: 0;
+}
+.homePage_shortsViewAll {
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800;
+  color: var(--zx-primary); text-decoration: none;
+  transition: color 0.15s;
+}
+.homePage_shortsViewAll:hover { color: var(--zx-accent1); }
+
+/* ── Shorts row — 9 per row desktop ── */
+.homePage_shortsRow {
+  display: grid !important;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 10px; width: 100%;
+}
+.homePage_shortCard { width: 100%; min-width: 0; }
+
+/* ── Search results reels row ── */
+.search-results-panel .homePage_shortsRow {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+/* Short card hover */
+.homePage_shortCard:hover .homePage_shortThumbnail {
+  box-shadow: 0 6px 20px rgba(158,18,38,0.28);
+  transform: translateY(-3px);
+}
+.homePage_shortCard:hover .homePage_shortImg { transform: scale(1.06); }
+.homePage_shortThumbnail { transition: box-shadow 0.2s, transform 0.2s; }
+.homePage_shortImg { transition: transform 0.25s; }
+.homePage_shortCard:hover .homePage_shortPlay {
+  background: rgba(255,255,255,0.95);
+  color: var(--zx-primary);
+}
+
+/* Short thumbnail — fixed height → aspect-ratio 9:16 so shorts render as a
+   proper vertical rectangle instead of near-square, and scale correctly
+   at any card width. */
+.homePage_shortThumbnail {
+  position: relative; width: 100%; aspect-ratio: 9 / 16;
+  border-radius: var(--zx-radius-sm); overflow: hidden;
+  border: 2px solid var(--zx-border);
+  background: var(--zx-surface2);
+}
+.homePage_shortThumbnail::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(30,19,21,0.55) 0%, transparent 60%);
+  z-index: 1; pointer-events: none;
+}
+.homePage_shortImg {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.homePage_shortPlay {
+  position: absolute; top: 38%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; z-index: 3;
+  background: rgba(158,18,38,0.7);
+  transition: background 0.2s, color 0.2s;
+}
+.homePage_shortDuration {
+  position: absolute; bottom: 6px; right: 5px;
+  background: rgba(30,19,21,0.85); color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 10px; font-weight: 800;
+  padding: 2px 6px; border-radius: 5px; z-index: 3;
+}
+.homePage_shortTitle {
+  font-size: 11px; font-weight: 700; color: var(--zx-text);
+  line-height: 1.35; margin-top: 6px;
+  display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  font-family: 'Outfit', sans-serif;
+}
+.homePage_shortUser {
+  font-size: 10px; font-family: 'Nunito', sans-serif;
+  font-weight: 700; margin-top: 3px; color: var(--zx-primary2);
+  text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Skeleton loading ── */
+.youtube_thumbnailBox .skeleton-pulse,
+.youtube_thumbnailBox [style*="background: #272727"],
+.youtube_thumbnailBox [style*="background:#272727"] {
+  background: linear-gradient(90deg, #f2ded8 25%, #fdf1ef 50%, #f2ded8 75%) !important;
+  background-size: 400px 100% !important;
+  animation: shimmer 1.4s infinite !important;
+  border-radius: var(--zx-radius-sm) !important;
+}
+
+/* ══════════════════════════════════════
+   WATCH PAGE OVERRIDES
+══════════════════════════════════════ */
+.hp-watch-root {
+  position: fixed; top: 55px;
+  left: 0; right: 0; bottom: 0;
+  z-index: 999; background: var(--zx-bg);
+  font-family: 'Outfit', sans-serif;
+}
+:root { --navbar-height: 55px; }
+.hp-watch-mobile iframe,
+#hp-yt-player-container iframe,
+#hp-yt-player iframe {
+  display: block !important; visibility: visible !important;
+  opacity: 1 !important; width: 100% !important;
+  height: 100% !important; position: static !important;
+}
+
+/* ══════════════════════════════════════
+   MOBILE TABS — only on ≤768px
+══════════════════════════════════════ */
+.mobile-trending-strip { display: none; }
+.mobile-tab-bar        { display: none; }
+.mobile-tab-content    { display: none; }
+
+/* ══════════════════════════════════════
+   TABLET — max 768px
+══════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  .homePage_options { display: none !important; }
+
+  /* FIX: zero side padding on mobile — content controls its own inner spacing */
+  .home_mainPage {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 0 0 80px 0 !important;
+    background: var(--zx-bg) !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Hide desktop content on mobile.
+     ✅ CHANGED: added :not(.zx-dramatic-trending) so the new dramatic
+     carousel (which now renders on both mobile and desktop from one
+     component) stays visible on mobile too, instead of being caught by
+     this "hide everything except these mobile-only classes" rule. */
+  .home_mainPage > *:not(.mobile-trending-strip):not(.mobile-tab-bar):not(.mobile-tab-content):not(.search-results-panel):not(.zx-dramatic-trending) {
+    display: none !important;
+  }
+
+  /* ── Trending Strip (legacy — unused by HomePage now, kept for safety) ── */
+  .mobile-trending-strip {
+    display: block;
+    width: 100%;
+    background: #ffffff;
+    border-bottom: 2px solid var(--zx-border);
+    overflow: hidden;
+    position: relative;
+    padding: 10px 0 6px;
+    box-shadow: 0 2px 12px rgba(158,18,38,0.07);
+  }
+  .mobile-trending-label {
+    display: flex; align-items: center; gap: 6px; padding: 0 12px 8px;
+  }
+  .mobile-trending-label span:first-child {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px;
+    background: linear-gradient(135deg, #e53935, #f97316);
+    color: white; font-weight: 900; font-size: 14px;
+    font-family: Arial Black, sans-serif; border-radius: 5px;
+  }
+  .mobile-trending-label span:last-child {
+    font-family: 'Nunito', sans-serif; font-size: 11px; font-weight: 800;
+    letter-spacing: 1.5px; color: var(--zx-primary); text-transform: uppercase;
+  }
+  .mobile-trending-track-wrapper {
+    overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; padding: 0 12px 8px;
+  }
+  .mobile-trending-track-wrapper::-webkit-scrollbar { display: none; }
+  .mobile-trending-track { display: flex; gap: 10px; width: max-content; }
+
+  .mobile-trending-card {
+    flex: 0 0 auto;
+    width: 250px;
+    cursor: pointer; position: relative;
+    border: 2px solid var(--zx-border);
+    border-radius: var(--zx-radius-sm); overflow: hidden;
+    background: var(--zx-surface);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-shadow: var(--zx-shadow2);
+  }
+  .mobile-trending-card:active {
+    border-color: var(--zx-primary);
+    box-shadow: 0 4px 16px rgba(158,18,38,0.22);
+  }
+  .mobile-trending-card-thumb {
+    width: 100%;
+    height: 190px;
+    object-fit: cover; display: block;
+  }
+  .mobile-trending-card-info { padding: 7px 8px 8px; background: var(--zx-surface); }
+  .mobile-trending-card-title {
+    font-size: 12px; font-weight: 700; color: var(--zx-text); line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; font-family: 'Outfit', sans-serif; margin: 0 0 3px;
+  }
+  .mobile-trending-card-channel {
+    font-size: 11px; font-weight: 700; color: var(--zx-primary2);
+    font-family: 'Nunito', sans-serif;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mobile-trending-rank {
+    position: absolute; top: 6px; left: 6px;
+    background: linear-gradient(135deg, var(--zx-primary), var(--zx-accent1));
+    color: #fff; font-family: 'Nunito', sans-serif;
+    font-size: 11px; font-weight: 900;
+    padding: 3px 7px; border-radius: 5px; z-index: 4;
+  }
+
+  /* ── Mobile Tab Bar ── */
+  .mobile-tab-bar {
+    display: flex !important; width: 100%;
+    background: #ffffff; border-bottom: 2px solid var(--zx-border);
+    position: sticky; top: 56px; z-index: 99;
+    box-shadow: 0 2px 10px rgba(158,18,38,0.07);
+  }
+  .mobile-tab-btn {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 3px; padding: 9px 4px; background: transparent;
+    border: none; border-bottom: 3px solid transparent;
+    margin-bottom: -2px; cursor: pointer; transition: all 0.2s; position: relative;
+  }
+  .mobile-tab-btn.active {
+    border-bottom-color: var(--zx-primary);
+    background: rgba(158,18,38,0.05);
+    animation: tab-glow 2.5s infinite;
+  }
+  .mobile-tab-btn.active .mobile-tab-icon { filter: drop-shadow(0 0 6px rgba(158,18,38,0.6)); }
+  .mobile-tab-btn.active .mobile-tab-label { color: var(--zx-primary); }
+  .mobile-tab-icon { font-size: 20px; color: var(--zx-text3); transition: all 0.2s; line-height: 1; }
+  .mobile-tab-label {
+    font-family: 'Nunito', sans-serif; font-size: 9px; font-weight: 800;
+    letter-spacing: 0.5px; color: var(--zx-text3);
+    text-transform: uppercase; transition: color 0.2s; white-space: nowrap;
+  }
+
+  /* ── Mobile Tab Content ── */
+  .mobile-tab-content {
+    display: block !important;
+    padding: 12px 0 20px !important;
+    animation: slideInFromRight 0.22s ease;
+    background: var(--zx-bg);
+    touch-action: pan-y;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .mobile-tab-content .youtube_VideoGrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    padding: 0 8px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+
+  .mobile-tab-content .homePage_shortsRow {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    padding: 0 8px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+
+  .mobile-tab-content .youtube_thumbnailBox { border-radius: var(--zx-radius-sm) !important; border: 1.5px solid var(--zx-border) !important; }
+  .mobile-tab-content .homePage_shortThumbnail {
+    height: auto !important;
+    aspect-ratio: 9 / 16 !important;
+    border-radius: 8px !important;
+  }
+  .mobile-tab-content .youtubeTitleBox { padding: 6px 7px 8px !important; gap: 5px !important; flex-direction: column !important; background: #fff !important; }
+  .mobile-tab-content .youtubeBoxProfile { gap: 4px !important; }
+  .mobile-tab-content .youtube_thumbnail_Profile { width: 22px !important; height: 22px !important; }
+  .mobile-tab-content .youtubeVideoInfo { width: 100% !important; }
+  .mobile-tab-content .youtube_videoTitle { font-size: 11px !important; -webkit-line-clamp: 2 !important; color: var(--zx-text) !important; }
+  .mobile-tab-content .youtubeVideo_Views { font-size: 9px !important; flex-wrap: wrap !important; gap: 4px !important; color: var(--zx-text3) !important; }
+  .mobile-tab-content .youtube_ChannelName { font-size: 10px !important; margin-top: 0 !important; max-width: 75px !important; }
+  .mobile-tab-content .youtube_timingThumbnail { font-size: 9px !important; padding: 2px 5px !important; }
+
+  .mobile-tab-section-head {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  /* Live tab badge */
+  .mobile-live-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: linear-gradient(90deg, #e63946, #f97316);
+    color: white; font-family: 'Nunito', sans-serif;
+    font-size: 10px; font-weight: 800;
+    padding: 4px 12px; border-radius: 20px; letter-spacing: 0.5px;
+    margin: 0 8px 12px !important;
+    box-shadow: 0 3px 12px rgba(230,57,70,0.35);
+  }
+  .mobile-live-dot {
+    width: 7px; height: 7px; background: #fff; border-radius: 50%;
+    animation: zx-livepulse 1.2s infinite; flex-shrink: 0;
+  }
+  .mobile-tab-section-head {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px; margin-top: 16px;
+    font-family: 'Nunito', sans-serif; font-size: 11px; font-weight: 800;
+    letter-spacing: 0.5px; color: var(--zx-text2); text-transform: uppercase;
+  }
+  .mobile-tab-section-head::before {
+    content: ''; display: inline-block; width: 4px; height: 16px;
+    background: linear-gradient(180deg, var(--zx-primary), var(--zx-accent1));
+    border-radius: 2px; flex-shrink: 0;
+  }
+
+  .home-sideNavbar, .homeSideNavbarHide { display: none !important; }
+  .youtube_thumbnailWrapper { border-radius: var(--zx-radius) var(--zx-radius) 0 0 !important; }
+
+  /* Search results on mobile — also full bleed with inner padding */
+  .home_mainPage > .search-results-panel {
+    display: block !important;
+    padding: 12px 8px 30px !important;
+    background: var(--zx-bg) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+  .search-results-panel .homePage_shortsRow {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+    gap: 8px !important;
+    padding: 0 !important;
+  }
+  .search-results-panel .homePage_shortThumbnail { height: 180px !important; }
+}
+
+/* ══════════════════════════════════════
+   MOBILE PHONE — max 480px
+══════════════════════════════════════ */
+@media (max-width: 480px) {
+  .home_mainPage { padding: 0 0 80px 0 !important; }
+
+  .mobile-tab-content .youtube_VideoGrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    padding: 0 6px !important;
+  }
+  .mobile-tab-content .homePage_shortsRow {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+    padding: 0 6px !important;
+  }
+  .mobile-tab-content .homePage_shortThumbnail {
+    height: auto !important;
+    aspect-ratio: 9 / 16 !important;
+  }
+
+  .mobile-trending-card { width: 250px; }
+  .mobile-trending-card-thumb { height: 190px; }
+  .homePage_shortsTitle { font-size: 13px !important; }
+  .search-results-panel .homePage_shortThumbnail { height: 160px !important; }
+}
+
+/* ══════════════════════════════════════
+   VERY SMALL — max 360px
+══════════════════════════════════════ */
+@media (max-width: 360px) {
+  .home_mainPage { padding: 0 0 80px 0 !important; }
+
+  .mobile-tab-content .youtube_VideoGrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 4px !important;
+    padding: 0 4px !important;
+  }
+  .mobile-tab-content .homePage_shortsRow {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 4px !important;
+    padding: 0 4px !important;
+  }
+  .mobile-tab-content .homePage_shortThumbnail {
+    height: auto !important;
+    aspect-ratio: 9 / 16 !important;
+  }
+
+  .mobile-trending-card { width: 250px; }
+  .mobile-trending-card-thumb { height: 190px; }
+  .mobile-tab-label { font-size: 7px !important; }
+  .mobile-tab-icon  { font-size: 17px !important; }
+  .search-results-panel .homePage_shortThumbnail { height: 145px !important; }
+}
+
+/* ══════════════════════════════════════
+   SEARCH RESULTS PANEL STYLES
+══════════════════════════════════════ */
+.search-results-panel {
+  animation: slideInUp 0.25s ease;
+  padding: 16px 0;
+}
+.search-results-panel .homePage_shortsRow {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+/* ══════════════════════════════════════
+   SKELETON LOADING (light theme)
+══════════════════════════════════════ */
+@keyframes skeleton-wave {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+/* ══════════════════════════════════════
+   TV BROWSER ONLY — aspect-ratio fix
+══════════════════════════════════════ */
+@media (min-width: 769px) and (max-width: 1400px) {
+
+  .youtube_thumbnailWrapper {
+    aspect-ratio: unset !important;
+    height: 160px !important;
+    width: 100% !important;
+  }
+
+  .youtube_thumbnailPic {
+    aspect-ratio: unset !important;
+    height: 100% !important;
+    width: 100% !important;
+    object-fit: cover !important;
+  }
+}
+
+/* ══════════════════════════════════════
+   LEGACY DESKTOP TRENDING STRIP — no longer rendered by HomePage
+   (replaced by .zx-dramatic-trending), kept only so nothing errors if
+   referenced elsewhere.
+══════════════════════════════════════ */
+.desktop-trending-strip {
+  margin-bottom: 24px;
+}
+.desktop-trending-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.desktop-trending-label span:first-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #e53935, #f97316);
+  color: white;
+  font-weight: 900;
+  font-size: 14px;
+  font-family: Arial Black, sans-serif;
+  border-radius: 6px;
+}
+.desktop-trending-label span:last-child {
+  font-family: 'Nunito', sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--zx-text);
+}
+.desktop-trending-track-wrapper {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  user-select: none;
+}
+.desktop-trending-track-wrapper::-webkit-scrollbar { display: none; }
+.desktop-trending-track {
+  display: flex;
+  gap: 14px;
+  width: max-content;
+}
+.desktop-trending-card {
+  flex: 0 0 auto;
+  width: 400px;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid var(--zx-border);
+  border-radius: var(--zx-radius-sm);
+  overflow: hidden;
+  background: var(--zx-surface);
+  box-shadow: var(--zx-shadow2);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.18s;
+}
+.desktop-trending-card:hover {
+  border-color: var(--zx-primary);
+  box-shadow: 0 8px 26px rgba(158,18,38,0.2);
+  transform: translateY(-3px);
+}
+.desktop-trending-thumb {
+  width: 100%;
+  height: 250px;
+  object-fit: cover;
+  display: block;
+}
+.desktop-trending-info {
+  padding: 9px 11px 11px;
+  background: var(--zx-surface);
+}
+.desktop-trending-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--zx-text);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: 'Outfit', sans-serif;
+  margin: 0 0 4px;
+}
+.desktop-trending-channel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--zx-primary2);
+  font-family: 'Nunito', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desktop-trending-rank {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  background: linear-gradient(135deg, var(--zx-primary), var(--zx-accent1));
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 8px;
+  border-radius: 5px;
+  z-index: 4;
+}
+.desktop-trending-badge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 7px;
+  border-radius: 4px;
+  z-index: 4;
+}
+
+/* ══════════════════════════════════════
+   ✅ NEW: DRAMATIC TRENDING CAROUSEL — cinematic coverflow slideshow.
+   Single responsive component used on both mobile and desktop.
+══════════════════════════════════════ */
+.zx-dramatic-trending {
+  margin-bottom: 28px;
+  padding: 4px 0 0;
+}
+.zx-dramatic-trending-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 0 4px;
+}
+.zx-dramatic-z-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #e53935, #f97316);
+  color: white;
+  font-weight: 900;
+  font-size: 14px;
+  font-family: Arial Black, sans-serif;
+  border-radius: 6px;
+}
+.zx-dramatic-trending-label > span:nth-child(2) {
+  font-family: 'Nunito', sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--zx-text);
+}
+
+/* Pause indicator pill */
+.zx-trending-pause-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(158, 18, 38, 0.08);
+  color: var(--zx-primary);
+  font-size: 10px;
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: 0.3px;
+  animation: zx-pause-fade-in 0.15s ease;
+}
+@keyframes zx-pause-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Stage — the 3D perspective viewport */
+.zx-dramatic-stage {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  perspective: 1400px;
+  overflow: hidden;
+  outline: none;
+  background: radial-gradient(ellipse at center, rgba(158,18,38,0.05), transparent 70%);
+  border-radius: var(--zx-radius);
+}
+.zx-dramatic-stage:focus-visible {
+  box-shadow: 0 0 0 2px var(--zx-primary);
+}
+
+/* Cards — absolutely centered, moved via inline transform */
+.zx-dramatic-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 300px;
+  height: 300px;
+  border-radius: var(--zx-radius);
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 12px 40px rgba(30,19,21,0.28);
+  border: 2px solid var(--zx-border);
+  background: var(--zx-surface);
+  transition: transform 0.55s cubic-bezier(0.22, 0.9, 0.32, 1),
+              opacity 0.55s ease, filter 0.4s ease;
+  will-change: transform, opacity, filter;
+}
+.zx-dramatic-card.active {
+  border-color: var(--zx-primary);
+  box-shadow: 0 20px 60px rgba(158,18,38,0.38);
+}
+.zx-dramatic-card:focus-visible {
+  outline: 3px solid var(--zx-primary);
+  outline-offset: 3px;
+}
+
+.zx-dramatic-card-imgwrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.zx-dramatic-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.02);
+}
+/* Ken Burns — slow dramatic zoom, only on the active card, restarts each cycle via key remount */
+.zx-dramatic-card-img.kenburns {
+  animation: zx-kenburns 6s ease-in-out infinite alternate;
+}
+@keyframes zx-kenburns {
+  from { transform: scale(1.0) translate(0, 0); }
+  to   { transform: scale(1.14) translate(-1.5%, -1.5%); }
+}
+
+.zx-dramatic-card-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(15,10,11,0.88) 0%, rgba(15,10,11,0.15) 45%, transparent 70%);
+  pointer-events: none;
+}
+
+.zx-dramatic-card-rank {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  background: linear-gradient(135deg, var(--zx-primary), var(--zx-accent1));
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 9px;
+  border-radius: 5px;
+}
+.zx-dramatic-card-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 5px;
+}
+
+.zx-dramatic-card-info {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 3;
+  padding: 16px 18px 18px;
+}
+.zx-dramatic-card-title {
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0 0 6px;
+  animation: zx-dramatic-title-in 0.5s cubic-bezier(0.22,0.9,0.32,1);
+}
+.zx-dramatic-card-channel {
+  color: #f2c9c9;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  animation: zx-dramatic-title-in 0.6s 0.08s cubic-bezier(0.22,0.9,0.32,1) both;
+}
+@keyframes zx-dramatic-title-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Chevron nav */
+.zx-dramatic-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(15,10,11,0.4);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+  transition: background 0.2s, transform 0.2s;
+}
+.zx-dramatic-nav:hover { background: var(--zx-primary); transform: translateY(-50%) scale(1.08); }
+.zx-dramatic-nav.prev { left: 12px; }
+.zx-dramatic-nav.next { right: 12px; }
+
+/* Dots + progress */
+.zx-dramatic-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 0 4px;
+}
+.zx-dramatic-dots {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.zx-dramatic-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: var(--zx-border);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s, transform 0.2s, width 0.25s;
+}
+.zx-dramatic-dot.active {
+  background: var(--zx-primary);
+  width: 22px;
+  border-radius: 5px;
+}
+.zx-dramatic-progress-track {
+  flex: 1;
+  max-width: 160px;
+  height: 3px;
+  background: var(--zx-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.zx-dramatic-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--zx-primary), var(--zx-accent1));
+  animation-name: zx-progress-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes zx-progress-fill {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+/* Keyboard focus rings for the stage's individual cards (in case
+   focus-visible isn't picked up by the browser on the stage wrapper) */
+.zx-dramatic-stage:focus-visible,
+.zx-dramatic-card:focus-visible {
+  outline: 2px solid var(--zx-primary);
+  outline-offset: 2px;
+}
+
+/* Mobile sizing */
+@media (max-width: 768px) {
+  .zx-dramatic-stage { height: 260px; }
+  .zx-dramatic-card { width: 220px; height: 220px; }
+  .zx-dramatic-card-title { font-size: 13px; }
+  .zx-dramatic-nav { width: 34px; height: 34px; font-size: 18px; }
+}
+@media (max-width: 360px) {
+  .zx-dramatic-stage { height: 230px; }
+  .zx-dramatic-card { width: 190px; height: 190px; }
+}

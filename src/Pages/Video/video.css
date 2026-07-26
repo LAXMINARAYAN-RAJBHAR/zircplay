@@ -1,0 +1,862 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --zx-bg:        #fff5f5;
+  --zx-surface:   #ffffff;
+  --zx-surface2:  #fef2f2;
+  --zx-border:    #fbd5d5;
+  --zx-primary:   #dc2626;
+  --zx-primary2:  #ef4444;
+  --zx-accent1:   #b91c1c;
+  --zx-accent2:   #f97316;
+  --zx-accent3:   #06b6d4;
+  --zx-accent4:   #10b981;
+  --zx-accent5:   #eab308;
+  --zx-text:      #1a1414;
+  --zx-text2:     #7a3a3a;
+  --zx-text3:     #b08585;
+  --zx-shadow:    0 4px 24px rgba(220,38,38,0.10);
+  --zx-shadow2:   0 2px 12px rgba(220,38,38,0.08);
+  --zx-radius:    16px;
+  --zx-radius-sm: 10px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+@keyframes floatInRight {
+  from { opacity: 0; transform: translateX(16px) scale(0.9); }
+  to   { opacity: 1; transform: translateX(0)    scale(1);   }
+}
+
+@keyframes floatInTop {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);    }
+}
+
+/* ══════════════════════════════════════
+   PAGE WRAPPER
+══════════════════════════════════════ */
+.video {
+  background: var(--zx-bg);
+  padding-top: 56px;
+  margin-top: 0;
+  display: flex;
+  color: var(--zx-text);
+  padding-bottom: 24px;
+  justify-content: flex-start;   /* was: center */
+  font-family: 'Outfit', sans-serif;
+  min-height: calc(100vh - 56px);
+  transition: padding-left 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .video {
+    padding-left: 8px !important;
+  }
+}
+
+.videoPostSection {
+  width: 100%;
+  max-width: 875px;
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px;
+}
+
+/* ══════════════════════════════════════
+   VIDEO PLAYER WRAPPER
+══════════════════════════════════════ */
+.video_youtube { width: 100%; }
+
+.video_player_wrapper {
+  position: relative;
+  border: 2px solid var(--zx-border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0d0d1a;
+  box-shadow: 0 8px 40px rgba(124,58,237,0.20);
+  scroll-margin-top: 64px;
+}
+
+.video_youtube_video {
+  width: 100%;
+  height: 480px;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+/* ══════════════════════════════════════
+   FLOATING CONTROLS BAR  — centred top pill
+   Prev  |  Autoplay toggle  |  Next
+══════════════════════════════════════ */
+.video_controls_bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+
+  /* glassmorphism */
+  background: rgba(12, 8, 35, 0.68);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 999px;
+  box-shadow:
+    0 6px 28px rgba(0,0,0,0.45),
+    0 0 0 1px rgba(124,58,237,0.22),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+
+  transition: opacity 0.3s, visibility 0.3s;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+/* visible / hidden states driven by JS */
+.video_controls_bar.visible {
+  opacity: 1;
+  visibility: visible;
+  animation: floatInTop 0.25s ease both;
+}
+.video_controls_bar.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* ── Prev / Next pill buttons inside the bar ── */
+.video_nav_btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.22);
+  padding: 5px 16px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  user-select: none;
+}
+
+.video_nav_btn:hover {
+  background: rgba(124,58,237,0.55);
+  border-color: rgba(168,85,247,0.70);
+  box-shadow: 0 0 18px rgba(124,58,237,0.55);
+  transform: scale(1.06);
+}
+.video_nav_btn:active { transform: scale(0.95); }
+
+/* ── Autoplay toggle ── */
+.video_autoplay_toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 4px;
+  user-select: none;
+}
+
+.toggle_switch {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+.toggle_switch.on {
+  background: var(--zx-primary2);
+  box-shadow: 0 0 10px rgba(168,85,247,0.60);
+}
+.toggle_switch.off { background: rgba(255,255,255,0.22); }
+
+.toggle_knob {
+  position: absolute;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: left 0.3s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.30);
+}
+.toggle_switch.on  .toggle_knob { left: 19px; }
+.toggle_switch.off .toggle_knob { left: 3px;  }
+
+/* ══════════════════════════════════════
+   FLOATING LIKE / DISLIKE / SHARE
+   Right-side vertical stack (glassmorphism)
+══════════════════════════════════════ */
+.video_frame_actions {
+  position: absolute;
+  right: 14px;
+  bottom: 72px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  /* hidden by default on desktop — shown on hover */
+  opacity: 0;
+  transition: opacity 0.25s;
+  pointer-events: none;
+}
+
+/* Desktop hover reveal */
+.video_player_wrapper:hover .video_frame_actions {
+  opacity: 1;
+  pointer-events: auto;
+  animation: floatInRight 0.25s ease both;
+}
+
+/* Mobile: always visible class added via JSX */
+.video_frame_actions.mobile-visible {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  animation: floatInRight 0.3s ease both;
+}
+
+/* ── Individual floating button ── */
+.video_frame_btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 54px;
+  height: 54px;
+
+  background: rgba(12, 8, 35, 0.68);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.20);
+  border-radius: 18px;
+  cursor: pointer;
+  font-size: 10px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+
+  box-shadow:
+    0 6px 20px rgba(0,0,0,0.40),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+
+  transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  position: relative;
+  overflow: visible;
+  user-select: none;
+}
+
+.video_frame_btn:hover {
+  background: rgba(124,58,237,0.62);
+  border-color: rgba(168,85,247,0.72);
+  box-shadow: 0 8px 26px rgba(124,58,237,0.55);
+  transform: scale(1.09) translateY(-2px);
+}
+.video_frame_btn:active { transform: scale(0.93); }
+
+/* active / liked */
+.video_frame_btn.active,
+.video_frame_btn.video_liked {
+  background: rgba(124,58,237,0.72);
+  border-color: rgba(168,85,247,0.90);
+  box-shadow:
+    0 0 22px rgba(124,58,237,0.65),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+.video_frame_btn span {
+  font-size: 10px;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+/* ── Like animation ── */
+.video_like_btn { position: relative; overflow: visible; }
+
+.video_like_inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.video_liked .video_like_inner {
+  opacity: 0;
+  transform: scale(0.3);
+  pointer-events: none;
+  animation: videoInnerReturn 1.5s ease forwards;
+}
+
+@keyframes videoInnerReturn {
+  0%   { opacity: 0; transform: scale(0.3); }
+  60%  { opacity: 0; transform: scale(0.3); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.video_like_emoji {
+  position: absolute;
+  font-size: 24px;
+  opacity: 0;
+  transform: scale(0.3) rotate(-20deg);
+  pointer-events: none;
+}
+.video_liked .video_like_emoji { animation: videoEmojiPop 1.5s ease forwards; }
+
+@keyframes videoEmojiPop {
+  0%   { opacity: 0; transform: scale(0.3) rotate(-20deg); }
+  30%  { opacity: 1; transform: scale(1.4) rotate(0deg); }
+  60%  { opacity: 1; transform: scale(1)   rotate(0deg); }
+  100% { opacity: 0; transform: scale(0.8) rotate(0deg); }
+}
+
+/* ══════════════════════════════════════
+   VIDEO INFO SECTION
+══════════════════════════════════════ */
+.video_youtubeAbout {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+}
+
+.video_uTubeTitle {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--zx-text);
+  font-family: 'Nunito', sans-serif;
+  line-height: 1.35;
+}
+
+/* ── Channel row ── */
+.youtube_video_ProfileBlock {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.youtube_video_ProfileBlock_left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.youtube_video_ProfileBlock_left_img {
+  width: 42px; height: 42px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.youtube_video_ProfileBlock_left_image {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--zx-primary);
+  box-shadow: 0 0 10px rgba(124,58,237,0.25);
+}
+
+.youtubeVideo_subsView { display: flex; flex-direction: column; gap: 2px; }
+
+.youtubePostProfileName {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--zx-text);
+  font-family: 'Nunito', sans-serif;
+}
+
+.youtubePostProfileSubs {
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  color: var(--zx-text3);
+  font-weight: 600;
+}
+
+.subscribeBtnYoutube {
+  background: var(--zx-primary);
+  color: #fff;
+  border: none;
+  padding: 0 22px;
+  border-radius: 20px;
+  height: 36px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(124,58,237,0.28);
+}
+.subscribeBtnYoutube:hover {
+  opacity: 0.9;
+  box-shadow: 0 6px 20px rgba(124,58,237,0.4);
+}
+
+/* ── Description box ── */
+.youtube_video_About {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  background: var(--zx-surface2);
+  border: 2px solid var(--zx-border);
+  width: 100%;
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  color: var(--zx-text2);
+  gap: 8px;
+  margin-top: 14px;
+  box-sizing: border-box;
+  position: relative;
+}
+.youtube_video_About::before {
+  content: '';
+  position: absolute;
+  top: 12px; left: 0;
+  width: 4px; height: calc(100% - 24px);
+  background: linear-gradient(180deg, var(--zx-primary), var(--zx-primary2));
+  border-radius: 0 2px 2px 0;
+}
+
+/* ── Next video preview ── */
+.next_video_preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--zx-surface);
+  border: 2px solid var(--zx-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-top: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.next_video_preview:hover {
+  border-color: var(--zx-primary);
+  box-shadow: 0 4px 16px rgba(124,58,237,0.10);
+}
+
+.next_video_label {
+  font-family: 'Nunito', sans-serif;
+  color: var(--zx-text3);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.next_video_thumb {
+  width: 120px; height: 68px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+  border: 2px solid var(--zx-border);
+}
+
+.next_video_info { display: flex; flex-direction: column; gap: 4px; }
+
+.next_video_title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--zx-text);
+  font-family: 'Outfit', sans-serif;
+}
+.next_video_channel {
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  color: var(--zx-primary2);
+  font-weight: 700;
+}
+.next_video_duration {
+  font-family: 'Nunito', sans-serif;
+  font-size: 10px;
+  color: var(--zx-text3);
+  font-weight: 600;
+}
+
+/* ══════════════════════════════════════
+   COMMENT SECTION
+══════════════════════════════════════ */
+.youtubeCommentSection {
+  display: flex;
+  flex-direction: column;
+  margin-top: 24px;
+}
+
+.youtubeCommentSectionTitle {
+  font-size: 17px;
+  font-weight: 900;
+  font-family: 'Nunito', sans-serif;
+  color: var(--zx-text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.youtubeCommentSectionTitle::before {
+  content: '';
+  display: inline-block;
+  width: 5px; height: 20px;
+  background: linear-gradient(180deg, var(--zx-primary), var(--zx-accent1));
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.youtubeSelfComment {
+  display: flex;
+  margin-top: 14px;
+  gap: 10px;
+}
+
+.video_youtubeSelfCommentProfile {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--zx-primary);
+  flex-shrink: 0;
+}
+
+.addAComment { display: flex; flex-direction: column; width: 100%; }
+
+.addACommentInput {
+  width: 100%;
+  background: transparent;
+  color: var(--zx-text);
+  height: 38px;
+  border: none;
+  border-bottom: 2px solid var(--zx-border);
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  transition: border-color 0.2s;
+}
+.addACommentInput:focus {
+  outline: none;
+  border-bottom-color: var(--zx-primary);
+}
+.addACommentInput::placeholder { font-size: 14px; color: var(--zx-text3); }
+
+.cancelSubmitComment {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cancelcomment {
+  padding: 8px 18px;
+  border: 2px solid var(--zx-border);
+  color: var(--zx-text3);
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 20px;
+  background: transparent;
+  transition: all 0.15s;
+}
+.cancelcomment:hover {
+  border-color: var(--zx-primary);
+  color: var(--zx-primary);
+  background: var(--zx-surface2);
+}
+
+.youtubeothersComments {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.others_commentSection { display: flex; flex-direction: column; }
+
+.others_commentSectionHeader {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.channelName_comment {
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--zx-primary2);
+}
+
+.commentTimingOthers {
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  color: var(--zx-text3);
+  font-weight: 600;
+}
+
+.otherCommentSectionComment {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--zx-text2);
+  font-family: 'Outfit', sans-serif;
+  padding-left: 12px;
+  border-left: 3px solid var(--zx-border);
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════
+   SUGGESTIONS SIDEBAR
+══════════════════════════════════════ */
+.videoSuggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 4px;
+  overflow-y: scroll;
+  scrollbar-width: none;
+  min-width: 220px;
+  max-width: 300px;
+  flex-shrink: 0;
+}
+.videoSuggestions::-webkit-scrollbar { display: none; }
+
+.videoSuggestionsBlock {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  margin: 0;
+  align-items: flex-start;
+  cursor: pointer;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+.videoSuggestionsBlock:hover {
+  background: var(--zx-surface);
+  border-color: var(--zx-border);
+  box-shadow: 0 2px 12px rgba(124,58,237,0.07);
+}
+
+.video_suggestion_thumbnail {
+  flex-shrink: 0;
+  width: 120px; height: 68px;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.video_suggestion_thumbnail_img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 8px;
+  border: 2px solid var(--zx-border);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.videoSuggestionsBlock:hover .video_suggestion_thumbnail_img {
+  border-color: var(--zx-primary);
+  transform: scale(1.03);
+}
+
+.video_suggestions_About {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  padding-top: 2px;
+}
+
+.video_suggestions_About_title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--zx-text);
+  font-family: 'Outfit', sans-serif;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.video_suggestions_About_Profile {
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  color: var(--zx-primary2);
+  font-weight: 700;
+}
+
+/* ══════════════════════════════════════
+   MOBILE  ≤ 768px
+══════════════════════════════════════ */
+@media (max-width: 768px) {
+  .video {
+    flex-direction: column;
+    padding: 8px;
+    padding-top: 56px;
+    margin-top: 0;
+    background: var(--zx-bg);
+  }
+
+  .videoPostSection { width: 100%; order: 1; padding: 0 8px; }
+
+  .videoSuggestions {
+    width: 100%;
+    order: 2;
+    max-height: none;
+    overflow-y: visible;
+    padding: 8px;
+  }
+
+  .video_youtube_video { height: 220px; border-radius: 0; }
+  .video_player_wrapper { border-radius: 0; }
+
+  .youtube_video_About {
+    width: 100% !important;
+    box-sizing: border-box;
+    border-radius: 10px !important;
+  }
+
+  .addAComment       { width: 100% !important; }
+  .video_uTubeTitle  { font-size: 16px; }
+
+  .subscribeBtnYoutube { font-size: 11px; padding: 0 14px; height: 32px; }
+  .youtubeCommentSectionTitle { font-size: 15px; }
+  .next_video_preview { border-radius: 10px; }
+  .videoSuggestionsBlock { border-radius: 10px; }
+
+  /* ── Controls bar: compact floating pill ── */
+  .video_controls_bar {
+    top: 8px;
+    gap: 6px;
+    padding: 4px 8px;
+  }
+
+  .video_nav_btn {
+    padding: 4px 12px;
+    font-size: 10px;
+    gap: 3px;
+  }
+
+  .video_autoplay_toggle { font-size: 9px; gap: 5px; }
+
+  .toggle_switch { width: 28px; height: 16px; border-radius: 8px; }
+  .toggle_knob   { width: 11px; height: 11px; top: 2px; }
+  .toggle_switch.on  .toggle_knob { left: 14px; }
+  .toggle_switch.off .toggle_knob { left: 2px;  }
+
+  /* ── Frame actions: always visible via .mobile-visible, now smaller ── */
+  .video_frame_actions {
+    right: 6px;
+    bottom: 44px;
+    gap: 5px;
+  }
+
+  .video_frame_btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    font-size: 8px;
+    gap: 1px;
+  }
+
+  .video_frame_btn span {
+    font-size: 8px;
+  }
+
+  .video_frame_btn .MuiSvgIcon-root {
+    font-size: 14px !important;
+    width: 14px !important;
+    height: 14px !important;
+  }
+}
+
+/* ══════════════════════════════════════
+   MOBILE  ≤ 480px
+══════════════════════════════════════ */
+@media (max-width: 480px) {
+  .video_uTubeTitle                { font-size: 14px; }
+  .next_video_thumb                { width: 100px; height: 58px; }
+  .youtube_video_ProfileBlock_left { gap: 8px; }
+  .youtubePostProfileName          { font-size: 13px; }
+
+  .video_controls_bar { top: 6px; gap: 5px; padding: 3px 7px; }
+  .video_nav_btn      { padding: 3px 9px; font-size: 9px; }
+  .video_autoplay_toggle { font-size: 8px; gap: 4px; }
+
+  .toggle_switch { width: 24px; height: 14px; border-radius: 7px; }
+  .toggle_knob   { width: 10px; height: 10px; top: 2px; }
+  .toggle_switch.on  .toggle_knob { left: 12px; }
+  .toggle_switch.off .toggle_knob { left: 2px;  }
+
+  .video_frame_actions { right: 5px; bottom: 40px; gap: 4px; }
+
+  .video_frame_btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    font-size: 7px;
+  }
+
+  .video_frame_btn span {
+    font-size: 7px;
+  }
+
+  .video_frame_btn .MuiSvgIcon-root {
+    font-size: 12px !important;
+    width: 12px !important;
+    height: 12px !important;
+  }
+}
+
+.video_frame_more_wrap {
+  position: relative;
+}
+
+.video_more_dropdown {
+  position: absolute;
+  top: 110%;
+  right: 0;
+  background: #1e1b4b;
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  border-radius: 10px;
+  min-width: 140px;
+  overflow: hidden;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.video_more_dropdown_item {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.video_more_dropdown_item:hover {
+  background: rgba(124, 58, 237, 0.25);
+}
+
+.expandable-text-toggle {
+  color: var(--zx-primary, #7c3aed);
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 4px;
+  white-space: nowrap;
+  user-select: none;
+}
+.expandable-text-toggle:hover {
+  text-decoration: underline;
+}

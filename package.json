@@ -1,0 +1,60 @@
+{
+  "name": "zixplon",
+  "version": "0.1.0",
+  "private": true,
+  "homepage": "/",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.9",
+    "@mui/material": "^7.3.9",
+    "@supabase/supabase-js": "^2.110.5",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^13.5.0",
+    "axios": "^1.16.0",
+    "core-js": "^3.49.0",
+    "livekit-client": "^2.20.0",
+    "livekit-server-sdk": "^2.16.0",
+    "react": "^19.2.4",
+    "react-app-polyfill": "^3.0.0",
+    "react-dom": "^19.2.4",
+    "react-player": "^3.4.0",
+    "react-router-dom": "^7.14.1",
+    "react-scripts": "5.0.1",
+    "regenerator-runtime": "^0.14.1",
+    "web-push": "^3.6.7",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build",
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      "chrome >= 66",
+      "firefox >= 60",
+      "safari >= 11",
+      "android >= 5",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
+  }
+}
