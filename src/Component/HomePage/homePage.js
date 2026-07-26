@@ -144,48 +144,6 @@ const useIsMobile = () => {
   return mobile;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// useHoverPreview — after a short delay, swap the thumbnail image for a
-// muted, looping <video> of the actual clip. Mirrors the YouTube/Instagram
-// "hover to preview" behaviour. Callers pass `canPreview` (e.g. false on
-// mobile, or when there's no real video URL) to disable it entirely.
-// ─────────────────────────────────────────────────────────────────────────────
-const HOVER_PREVIEW_DELAY = 450; // ms — avoids firing on quick mouse passes
-
-const useHoverPreview = (canPreview) => {
-  const [isPreviewing, setIsPreviewing] = useState(false);
-  const timeoutRef = useRef(null);
-  const videoRef = useRef(null);
-
-  const cancelTimer = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  };
-
-  const onMouseEnter = () => {
-    if (!canPreview) return;
-    cancelTimer();
-    timeoutRef.current = setTimeout(() => setIsPreviewing(true), HOVER_PREVIEW_DELAY);
-  };
-
-  const onMouseLeave = () => {
-    cancelTimer();
-    setIsPreviewing(false);
-    if (videoRef.current) {
-      try {
-        videoRef.current.pause();
-        videoRef.current.currentTime = 0;
-      } catch (_) {}
-    }
-  };
-
-  useEffect(() => () => cancelTimer(), []);
-
-  return { isPreviewing, videoRef, onMouseEnter, onMouseLeave };
-};
-
 const MOBILE_TABS = [
   { id: "shorts", label: "Shorts", icon: "📱" },
   { id: "videos", label: "Videos", icon: "🎬" },
@@ -230,11 +188,6 @@ const ShortCard = ({
 }) => {
   const cardRef = useRef(null);
   const firedRef = useRef(false);
-
-  // ── Hover-preview setup ──
-  const isMobile = useIsMobile();
-  const canPreview = !isMobile && !!short.src;
-  const { isPreviewing, videoRef, onMouseEnter, onMouseLeave } = useHoverPreview(canPreview);
 
   const [showNew, setShowNew] = useState(() => {
     if (!short.dbId) return false;
@@ -313,30 +266,13 @@ const ShortCard = ({
         }
         navigate("/reels/" + short.id, { state: { clickedReel: short } });
       }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
     >
       <div className="homePage_shortThumbnail">
         <img
           src={short.thumbnail}
           alt={short.title || short.user}
           className="homePage_shortImg"
-          style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
         />
-        {canPreview && isPreviewing && (
-          <video
-            ref={videoRef}
-            src={short.src}
-            className="homePage_shortImg"
-            muted
-            autoPlay
-            loop
-            playsInline
-            preload="metadata"
-            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
-            onCanPlay={(e) => e.target.play().catch(() => {})}
-          />
-        )}
         <div className="homePage_shortPlay">▶</div>
         <div className="homePage_shortDuration">{short.duration}</div>
         {showNew && (
@@ -470,18 +406,8 @@ const VideoCard = ({
     isUploaded && !isWatched("video", video.id, watchedContentIds);
   const isSaved = watchLaterIds.has(String(video.id));
 
-  // ── Hover-preview setup ──
-  const isMobile = useIsMobile();
-  const canPreview = isUploaded && !isMobile && !!video.src;
-  const { isPreviewing, videoRef, onMouseEnter, onMouseLeave } = useHoverPreview(canPreview);
-
   return (
-    <div
-      className="youtube_thumbnailBox"
-      style={{ position: "relative" }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
+    <div className="youtube_thumbnailBox" style={{ position: "relative" }}>
       {/* Three-dots menu with full dropdown — only for uploaded videos */}
       {isUploaded && (
         <SaveMenuButton
@@ -505,22 +431,7 @@ const VideoCard = ({
           src={video.thumbnail}
           alt={video.title}
           className="youtube_thumbnailPic"
-          style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
         />
-        {canPreview && isPreviewing && (
-          <video
-            ref={videoRef}
-            src={video.src}
-            className="youtube_thumbnailPic"
-            muted
-            autoPlay
-            loop
-            playsInline
-            preload="metadata"
-            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
-            onCanPlay={(e) => e.target.play().catch(() => {})}
-          />
-        )}
         <div className="youtube_timingThumbnail">{video.duration}</div>
         {showNew && (
           <div
