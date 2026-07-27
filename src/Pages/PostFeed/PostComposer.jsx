@@ -3,8 +3,8 @@ import { supabase } from "../../config/supabase";
 import axios from "axios";
 import EmojiPicker from "./EmojiPicker";
 
-const CLOUDINARY_CLOUD = "dwoqk0yue";
-const CLOUDINARY_PRESET = "youtube-clone";
+const CLOUDINARY_CLOUD = "uaa756bj";
+const CLOUDINARY_PRESET = "zixplon-data";
 
 const MAX_IMAGES = 6;
 const MAX_VIDEO_MB = 100; // adjust to your Cloudinary plan's limit

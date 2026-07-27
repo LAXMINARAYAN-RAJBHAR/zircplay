@@ -33,10 +33,10 @@ const SignUp = () => {
     if (!files || files.length === 0) return;
     const data = new FormData();
     data.append("file", files[0]);
-    data.append("upload_preset", "youtube-clone");
+    data.append("upload_preset", "zixplon-data");
     try {
       const response = await axios.post(
-        "https://api.cloudinary.com/v1_1/dwoqk0yue/image/upload",
+        "https://api.cloudinary.com/v1_1/uaa756bj/image/upload",
         data,
       );
       const imageUrl = response.data.secure_url;

@@ -926,9 +926,9 @@ const Profile = ({ sideNavbar }) => {
     setEditContentLoading(true);
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("upload_preset", "youtube-clone");
+    formData.append("upload_preset", "zixplon-data");
     try {
-      const res  = await fetch("https://api.cloudinary.com/v1_1/dwoqk0yue/image/upload", { method: "POST", body: formData });
+      const res  = await fetch("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", { method: "POST", body: formData });
       const data = await res.json();
       setEditContentThumbnail(data.secure_url);
     } catch {
@@ -992,9 +992,9 @@ const Profile = ({ sideNavbar }) => {
           <input type="file" id="bannerInput" accept="image/*" style={{ display:"none" }}
             onChange={async (e) => {
               const file = e.target.files[0]; if (!file) return;
-              const formData = new FormData(); formData.append("file", file); formData.append("upload_preset", "youtube-clone");
+              const formData = new FormData(); formData.append("file", file); formData.append("upload_preset", "zixplon-data");
               try {
-                const res  = await fetch("https://api.cloudinary.com/v1_1/dwoqk0yue/image/upload", { method:"POST", body:formData });
+                const res  = await fetch("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", { method:"POST", body:formData });
                 const data = await res.json(); const url = data.secure_url;
                 await supabase.auth.updateUser({ data: { bannerPic: url } });
                 await supabase.from("profiles").upsert({ id: user.id || localStorage.getItem("userId"), username: user.username || localStorage.getItem("username"), banner_pic: url, profile_pic: localStorage.getItem("profilePic") || user.profilePic, about: localStorage.getItem("about") || user.about }, { onConflict: "id" });
@@ -1216,8 +1216,8 @@ const Profile = ({ sideNavbar }) => {
                 onChange={async (e) => {
                   const file = e.target.files[0]; if (!file) return;
                   setEditLoading(true);
-                  const formData = new FormData(); formData.append("file", file); formData.append("upload_preset", "youtube-clone");
-                  try { const res = await fetch("https://api.cloudinary.com/v1_1/dwoqk0yue/image/upload", { method:"POST", body:formData }); const data = await res.json(); setEditPic(data.secure_url); }
+                  const formData = new FormData(); formData.append("file", file); formData.append("upload_preset", "zixplon-data");
+                  try { const res = await fetch("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", { method:"POST", body:formData }); const data = await res.json(); setEditPic(data.secure_url); }
                   catch { alert("Upload failed. Try again."); }
                   setEditLoading(false);
                 }}

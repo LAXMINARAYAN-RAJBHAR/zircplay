@@ -29,8 +29,8 @@ const RecordModal = ({ onClose, currentUser }) => {
   const liveRoomNameRef = useRef(null);
   const viewerPollRef = useRef(null);
 
-  const CLOUDINARY_CLOUD_NAME = "dwoqk0yue";
-  const CLOUDINARY_UPLOAD_PRESET = "youtube-clone";
+  const CLOUDINARY_CLOUD_NAME = "uaa756bj";
+  const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
 
   const categories = [
     "All",

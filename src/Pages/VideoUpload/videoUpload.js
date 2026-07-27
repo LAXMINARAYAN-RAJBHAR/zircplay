@@ -202,8 +202,8 @@ const VideoUpload = () => {
   const uploadThumbnailToCloudinary = async (blob) => {
     const data = new FormData();
     data.append("file", blob, "thumbnail.jpg");
-    data.append("upload_preset", "youtube-clone");
-    const res = await axios.post("https://api.cloudinary.com/v1_1/dwoqk0yue/image/upload", data);
+    data.append("upload_preset", "zixplon-data");
+    const res = await axios.post("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", data);
     return res.data.secure_url;
   };
 
@@ -213,8 +213,8 @@ const VideoUpload = () => {
   };
 
   const uploadToCloudinary = async (file) => {
-    const CLOUD_NAME    = "dwoqk0yue";
-    const UPLOAD_PRESET = "youtube-clone";
+    const CLOUD_NAME    = "uaa756bj";
+    const UPLOAD_PRESET = "zixplon-data";
     const CHUNK_SIZE    = 20 * 1024 * 1024;
     const totalChunks   = Math.ceil(file.size / CHUNK_SIZE);
 
@@ -301,9 +301,9 @@ const VideoUpload = () => {
     if (!files || files.length === 0) { setThumbLoader(false); return; }
     const data = new FormData();
     data.append("file", files[0]);
-    data.append("upload_preset", "youtube-clone");
+    data.append("upload_preset", "zixplon-data");
     try {
-      const res = await axios.post("https://api.cloudinary.com/v1_1/dwoqk0yue/image/upload", data);
+      const res = await axios.post("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", data);
       setInputField((prev) => ({ ...prev, thumbnail: res.data.secure_url }));
       setImageUploaded(true); setThumbSource("manual"); setThumbLoader(false);
     } catch (err) { setThumbLoader(false); setError("Thumbnail upload failed. Please try again."); }

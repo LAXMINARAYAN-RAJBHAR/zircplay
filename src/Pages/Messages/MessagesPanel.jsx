@@ -105,8 +105,8 @@ const formatDuration = (totalSeconds) => {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 };
 
-const CLOUDINARY_CLOUD_NAME = "dwoqk0yue";
-const CLOUDINARY_UPLOAD_PRESET = "youtube-clone";
+const CLOUDINARY_CLOUD_NAME = "uaa756bj";
+const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
 
 // Hard cap on recording length so a stray open mic can't produce a
 // huge upload. Auto-stops and hands off to the preview stage.
