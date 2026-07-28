@@ -27,6 +27,123 @@ const timeAgo = (dateStr) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// useIsMobile — same pattern used on HomePage's video/reel/trending cards,
+// duplicated here at module scope since PostCard lives in its own file.
+// Gates hover-preview to non-touch, wider viewports.
+// ─────────────────────────────────────────────────────────────────────────────
+const useIsMobile = () => {
+  const [mobile, setMobile] = useState(() => window.innerWidth <= 768);
+  useEffect(() => {
+    const fn = () => setMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return mobile;
+};
+
+/* ─────────────────────────────────────────
+   POST VIDEO — hover-to-preview for uploaded post videos.
+   Unlike Video/Reel/Trending cards, a post video has no separate
+   thumbnail image — only `video_url` — so the video's own first frame
+   IS the thumbnail. Behavior:
+     • Paused on frame 0 by default, with a play button overlay.
+     • Desktop hover (after a short delay, same feel as the other
+       preview hooks): plays a MUTED, looping preview right there —
+       nothing to click, just like hovering a video/reel/trending card.
+     • Click ("activate"): stops the muted preview and switches to the
+       real player — sound on, native controls, playing from the start.
+       Once activated it stays a normal player (hovering away no longer
+       resets or mutes it — that would be a jarring surprise mid-watch).
+───────────────────────────────────────── */
+const HOVER_PREVIEW_DELAY = 450; // ms
+
+const PostVideo = ({ src }) => {
+  const isMobile = useIsMobile();
+  const [activated, setActivated] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const videoRef = useRef(null);
+  const timeoutRef = useRef(null);
+
+  const canPreview = !isMobile && !activated;
+
+  const cancelTimer = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
+  const onMouseEnter = () => {
+    if (!canPreview) return;
+    cancelTimer();
+    timeoutRef.current = setTimeout(() => {
+      setIsPreviewing(true);
+      if (videoRef.current) {
+        videoRef.current.muted = true;
+        videoRef.current.play().catch(() => {});
+      }
+    }, HOVER_PREVIEW_DELAY);
+  };
+
+  const onMouseLeave = () => {
+    cancelTimer();
+    if (activated) return; // never interrupt real, sound-on playback
+    setIsPreviewing(false);
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
+      } catch (_) {}
+    }
+  };
+
+  const handleActivate = () => {
+    if (activated) return;
+    cancelTimer();
+    setActivated(true);
+    setIsPreviewing(false);
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+    }
+  };
+
+  useEffect(() => () => cancelTimer(), []);
+
+  return (
+    <div
+      className="pf-card-video-wrap"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onClick={!activated ? handleActivate : undefined}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        controls={activated}
+        muted={!activated}
+        loop={!activated}
+        playsInline
+        preload="metadata"
+        className="pf-card-video"
+        controlsList="nodownload noplaybackrate nofullscreen"
+        disablePictureInPicture
+        onContextMenu={(e) => e.preventDefault()}
+      />
+      {!activated && (
+        <div className="pf-card-video-overlay">
+          <div className="pf-card-video-playbtn">▶</div>
+          {isPreviewing && (
+            <span className="pf-card-video-previewtag">Preview</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ─────────────────────────────────────────
    LIGHTBOX — click-to-zoom + touch swipe
 ───────────────────────────────────────── */
@@ -750,17 +867,7 @@ const PostCard = ({
                 style={{ cursor: "zoom-in" }}
               />
             ) : (
-              post.video_url && (
-                <video
-                  src={post.video_url}
-                  controls
-                  playsInline
-                  className="pf-card-video"
-                  controlsList="nodownload noplaybackrate nofullscreen"
-                  disablePictureInPicture
-                  onContextMenu={(e) => e.preventDefault()}
-                />
-              )
+              post.video_url && <PostVideo src={post.video_url} />
             )}
 
             {post.link && (

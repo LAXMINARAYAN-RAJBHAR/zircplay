@@ -1214,3 +1214,57 @@
 .expandable-text-toggle:hover {
   text-decoration: underline;
 }
+
+/* ── Post video preview (hover-to-preview, click-to-activate) ── */
+.pf-card-video-wrap {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  border: 2px solid var(--zx-border);
+  background: #000;
+  cursor: pointer;
+}
+
+.pf-card-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0);
+  transition: background 0.2s;
+  pointer-events: none;
+}
+
+.pf-card-video-wrap:hover .pf-card-video-overlay {
+  background: rgba(0,0,0,0.12);
+}
+
+.pf-card-video-playbtn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.92);
+  color: var(--zx-primary);
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 4px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+}
+
+.pf-card-video-previewtag {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 3px 9px;
+  border-radius: 12px;
+}
