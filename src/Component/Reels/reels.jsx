@@ -44,7 +44,7 @@ const fetchCount = async (contentId, contentType, reactionType) => {
   return Math.max(0, count ?? 0);
 };
 
-let globalMuted = true;
+let globalMuted = false;
 const muteListeners = new Set();
 const setGlobalMuted = (val) => {
   globalMuted = val;
