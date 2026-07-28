@@ -4,7 +4,7 @@ import { supabase } from "../../config/supabase";
 import { Link } from "react-router-dom";
 
 // ── Change this to your actual username ──────────────────────────────────────
-const ADMIN_USERNAMES = ["laxminarayan_rajbhar"];
+const ADMIN_USERNAMES = ["laxminarayan.rajbhar@gmail.com"];
 
 const STATUS_COLORS = {
   pending:   { bg: "#fff7ed", color: "#f97316", border: "#fed7aa" },
