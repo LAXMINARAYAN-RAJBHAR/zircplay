@@ -26,8 +26,9 @@ const REASON_LABELS = {
 };
 
 const AdminPanel = () => {
-  const currentUser = (localStorage.getItem("username") || "").trim();
-  const isAdmin     = ADMIN_USERNAMES.includes(currentUser.toLowerCase());
+  const currentUser      = localStorage.getItem("username") || "";
+  const currentUserEmail = (localStorage.getItem("email") || "").trim();
+  const isAdmin           = ADMIN_USERNAMES.includes(currentUserEmail.toLowerCase());
 
   const [reports,       setReports]       = useState([]);
   const [bannedWords,   setBannedWords]   = useState([]);
@@ -132,9 +133,9 @@ const AdminPanel = () => {
         <div className="admin_blocked_icon">🔒</div>
         <h2>Access Denied</h2>
         <p>You don't have permission to view this page.</p>
-        {/* ── TEMPORARY DEBUG — remove once the mismatch is found ── */}
+        {/* ── TEMPORARY DEBUG — remove once confirmed working ── */}
         <p style={{ fontSize: "12px", color: "#999", wordBreak: "break-all", maxWidth: "320px" }}>
-          Debug: localStorage "username" = "{localStorage.getItem("username")}"<br />
+          Debug: localStorage "email" = "{localStorage.getItem("email")}"<br />
           Expected: "laxminarayan.rajbhar@gmail.com"
         </p>
         <Link to="/" className="admin_back_btn">← Go Home</Link>
