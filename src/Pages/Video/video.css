@@ -52,11 +52,10 @@
   transition: padding-left 0.3s ease;
 }
 
-@media (max-width: 768px) {
-  .video {
-    padding-left: 8px !important;
-  }
-}
+/* REMOVED: the old standalone mobile `.video { padding-left: 8px !important; }`
+   rule that lived here — it was stacking on top of the padding already set
+   inside the big @media (max-width: 768px) block below, which is what
+   produced the extra pink side margins on mobile. */
 
 .videoPostSection {
   width: 100%;
@@ -702,20 +701,26 @@
 @media (max-width: 768px) {
   .video {
     flex-direction: column;
-    padding: 8px;
+    padding: 0;              /* CHANGED: was 8px — this + the two rules
+                                 below were combining to create the pink
+                                 side margins around the player/content */
     padding-top: 56px;
     margin-top: 0;
     background: var(--zx-bg);
   }
 
-  .videoPostSection { width: 100%; order: 1; padding: 0 8px; }
+  .videoPostSection { width: 100%; order: 1; padding: 0; }  /* CHANGED: was "0 8px" */
 
   .videoSuggestions {
     width: 100%;
     order: 2;
     max-height: none;
     overflow-y: visible;
-    padding: 8px;
+    padding: 8px 12px;   /* CHANGED: was flat "8px" — kept a little side
+                             breathing room here only, since this section
+                             holds text-heavy suggestion cards that look
+                             cramped edge-to-edge. The player and title/
+                             description above now run full-bleed. */
   }
 
   .video_youtube_video { height: 220px; border-radius: 0; }
