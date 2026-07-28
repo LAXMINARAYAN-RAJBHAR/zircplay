@@ -1243,6 +1243,112 @@ const MOVIE_TAG_LIST = [
   "Pakistani Movies",
 ];
 
+// TYPE_BADGE lives at module scope (not inside DramaticTrendingCarousel
+// anymore) so the hoisted <TrendingCard> component below can read it too.
+const TYPE_BADGE = {
+  video: { label: "🎬", bg: "#7c3aed" },
+  reel: { label: "📱", bg: "#f97316" },
+  movie: { label: "🎥", bg: "#f43f5e" },
+  live: { label: "🔴", bg: "#ef4444" },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TrendingCard — a single slide of the Trending Now coverflow, hoisted to
+// module scope so each card owns its own hover-preview state via
+// useHoverPreview (mirrors ShortCard/VideoCard). Preview only ever
+// activates on the ACTIVE (centered) slide — hovering a side slide just
+// nudges it into focus the way it already did, it doesn't preview.
+// ─────────────────────────────────────────────────────────────────────────────
+const TrendingCard = ({
+  item,
+  index,
+  isActive,
+  offset,
+  cardOffset,
+  cycleKey,
+  isMobile,
+  onActivate,
+  onJump,
+}) => {
+  const canPreview = isActive && !isMobile && !!item.src;
+  const { isPreviewing, videoRef, onMouseEnter, onMouseLeave } =
+    useHoverPreview(canPreview);
+
+  const abs = Math.abs(offset);
+  const translateX = offset * cardOffset;
+  const scale = isActive ? 1 : Math.max(0.62, 1 - abs * 0.16);
+  const rotateY = offset * -16;
+  const zIndex = 10 - abs;
+  const opacity = 1 - abs * 0.24;
+  const blurPx = isActive ? 0 : Math.min(abs * 1.4, 4);
+  const badge = TYPE_BADGE[item._type] || TYPE_BADGE.video;
+
+  return (
+    <div
+      className={"zx-dramatic-card" + (isActive ? " active" : "")}
+      style={{
+        transform: `translate(-50%, -50%) translateX(${translateX}px) scale(${scale}) rotateY(${rotateY}deg)`,
+        zIndex,
+        opacity,
+        filter: blurPx ? `blur(${blurPx}px)` : "none",
+      }}
+      onClick={() => (isActive ? onActivate(item) : onJump())}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      tabIndex={isActive ? 0 : -1}
+      role="button"
+      aria-label={`${item.title}, ${item.channel || item.user}`}
+      aria-current={isActive || undefined}
+    >
+      <span
+        className="zx-dramatic-card-badge"
+        style={{ background: badge.bg }}
+      >
+        {badge.label}
+      </span>
+      <span className="zx-dramatic-card-rank">#{index + 1}</span>
+      <div className="zx-dramatic-card-imgwrap">
+        <img
+          key={isActive ? `active-img-${cycleKey}` : "img"}
+          src={item.thumbnail}
+          alt={item.title}
+          className={
+            "zx-dramatic-card-img" +
+            (isActive && !isPreviewing ? " kenburns" : "")
+          }
+          style={{
+            opacity: canPreview && isPreviewing ? 0 : 1,
+            transition: "opacity 0.25s",
+          }}
+        />
+        {canPreview && isPreviewing && (
+          <video
+            ref={videoRef}
+            src={item.src}
+            className="zx-dramatic-card-img"
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="metadata"
+            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
+            onCanPlay={(e) => e.target.play().catch(() => {})}
+          />
+        )}
+        <div className="zx-dramatic-card-gradient" />
+      </div>
+      {isActive && (
+        <div className="zx-dramatic-card-info" key={`info-${cycleKey}`}>
+          <div className="zx-dramatic-card-title">{item.title}</div>
+          <div className="zx-dramatic-card-channel">
+            {item.channel || item.user}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DramaticTrendingCarousel = ({
   dbVideos,
   dbReels = [],
@@ -1315,13 +1421,6 @@ const DramaticTrendingCarousel = ({
 
   if (total === 0) return null;
 
-  const TYPE_BADGE = {
-    video: { label: "🎬", bg: "#7c3aed" },
-    reel: { label: "📱", bg: "#f97316" },
-    movie: { label: "🎥", bg: "#f43f5e" },
-    live: { label: "🔴", bg: "#ef4444" },
-  };
-
   const handleSelect = (item) => {
     if (item._type === "reel") onReelClick && onReelClick(item, items);
     else onVideoClick && onVideoClick(item, items);
@@ -1379,67 +1478,24 @@ const DramaticTrendingCarousel = ({
           if (abs > 3) return null; // don't render far-off cards, keeps it light
 
           const isActive = offset === 0;
-          const translateX = offset * cardOffset;
-          const scale = isActive ? 1 : Math.max(0.62, 1 - abs * 0.16);
-          const rotateY = offset * -16;
-          const zIndex = 10 - abs;
-          const opacity = 1 - abs * 0.24;
-          const blurPx = isActive ? 0 : Math.min(abs * 1.4, 4);
-          const badge = TYPE_BADGE[item._type] || TYPE_BADGE.video;
 
           return (
-            <div
+            <TrendingCard
               key={`dramatic_${item._type}_${item.id}_${i}`}
-              className={"zx-dramatic-card" + (isActive ? " active" : "")}
-              style={{
-                transform: `translate(-50%, -50%) translateX(${translateX}px) scale(${scale}) rotateY(${rotateY}deg)`,
-                zIndex,
-                opacity,
-                filter: blurPx ? `blur(${blurPx}px)` : "none",
+              item={item}
+              index={i}
+              isActive={isActive}
+              offset={offset}
+              cardOffset={cardOffset}
+              cycleKey={cycleKey}
+              isMobile={isMobile}
+              onActivate={handleSelect}
+              onJump={() => {
+                pause();
+                goTo(i);
+                resume(2500);
               }}
-              onClick={() => {
-                if (isActive) handleSelect(item);
-                else {
-                  pause();
-                  goTo(i);
-                  resume(2500);
-                }
-              }}
-              tabIndex={isActive ? 0 : -1}
-              role="button"
-              aria-label={`${item.title}, ${item.channel || item.user}`}
-              aria-current={isActive || undefined}
-            >
-              <span
-                className="zx-dramatic-card-badge"
-                style={{ background: badge.bg }}
-              >
-                {badge.label}
-              </span>
-              <span className="zx-dramatic-card-rank">#{i + 1}</span>
-              <div className="zx-dramatic-card-imgwrap">
-                <img
-                  key={isActive ? `active-img-${cycleKey}` : "img"}
-                  src={item.thumbnail}
-                  alt={item.title}
-                  className={
-                    "zx-dramatic-card-img" + (isActive ? " kenburns" : "")
-                  }
-                />
-                <div className="zx-dramatic-card-gradient" />
-              </div>
-              {isActive && (
-                <div
-                  className="zx-dramatic-card-info"
-                  key={`info-${cycleKey}`}
-                >
-                  <div className="zx-dramatic-card-title">{item.title}</div>
-                  <div className="zx-dramatic-card-channel">
-                    {item.channel || item.user}
-                  </div>
-                </div>
-              )}
-            </div>
+            />
           );
         })}
 
