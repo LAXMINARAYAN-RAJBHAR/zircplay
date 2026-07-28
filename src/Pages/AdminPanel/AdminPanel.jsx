@@ -3,7 +3,7 @@ import "./AdminPanel.css";
 import { supabase } from "../../config/supabase";
 import { Link } from "react-router-dom";
 
-// ── Change this to your actual username ──────────────────────────────────────
+// ── Change this to your actual username (can be an email address) ────────────
 const ADMIN_USERNAMES = ["laxminarayan.rajbhar@gmail.com"];
 
 const STATUS_COLORS = {
@@ -26,7 +26,7 @@ const REASON_LABELS = {
 };
 
 const AdminPanel = () => {
-  const currentUser = localStorage.getItem("username") || "";
+  const currentUser = (localStorage.getItem("username") || "").trim();
   const isAdmin     = ADMIN_USERNAMES.includes(currentUser.toLowerCase());
 
   const [reports,       setReports]       = useState([]);
@@ -132,6 +132,11 @@ const AdminPanel = () => {
         <div className="admin_blocked_icon">🔒</div>
         <h2>Access Denied</h2>
         <p>You don't have permission to view this page.</p>
+        {/* ── TEMPORARY DEBUG — remove once the mismatch is found ── */}
+        <p style={{ fontSize: "12px", color: "#999", wordBreak: "break-all", maxWidth: "320px" }}>
+          Debug: localStorage "username" = "{localStorage.getItem("username")}"<br />
+          Expected: "laxminarayan.rajbhar@gmail.com"
+        </p>
         <Link to="/" className="admin_back_btn">← Go Home</Link>
       </div>
     );
