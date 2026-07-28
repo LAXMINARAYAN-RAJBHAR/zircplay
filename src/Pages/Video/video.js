@@ -136,6 +136,14 @@ const Video = ({ sideNavbar }) => {
   const [mobileOverlayVisible, setMobileOverlayVisible] = useState(true);
   const mobileOverlayTimer = useRef(null);
 
+  // ── Double-tap-to-like ──
+  const [showHeartBurst, setShowHeartBurst] = useState(false);
+  const [heartBurstPos, setHeartBurstPos] = useState({ x: 0, y: 0 });
+  const [heartBurstKey, setHeartBurstKey] = useState(0);
+  const lastClickRef = useRef({ time: 0, x: 0, y: 0 });
+  const singleClickTimer = useRef(null);
+  const heartBurstTimer = useRef(null);
+
   useEffect(() => {
     const check = () => setIsMobile(isMobileDevice());
     check();
@@ -161,6 +169,13 @@ const Video = ({ sideNavbar }) => {
     if (isMobile) resetMobileOverlayTimer();
     return () => clearTimeout(mobileOverlayTimer.current);
   }, [isMobile]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(singleClickTimer.current);
+      clearTimeout(heartBurstTimer.current);
+    };
+  }, []);
 
   const loggedInUser = localStorage.getItem("username") || "Guest";
   const controlsTimer = useRef(null);
@@ -428,6 +443,65 @@ const Video = ({ sideNavbar }) => {
       ]);
     }
     setMessage("");
+  };
+
+  // ── Double-tap-to-like: fires a heart burst at the tap point and
+  //    likes the video (never unlikes — matches IG/YT behavior). A
+  //    single tap/click falls back to toggling play/pause, after a
+  //    short delay so we can tell it apart from the first half of a
+  //    double-tap.
+  const triggerDoubleTapLike = async (x, y) => {
+    setHeartBurstKey((k) => k + 1);
+    setHeartBurstPos({ x, y });
+    setShowHeartBurst(true);
+    clearTimeout(heartBurstTimer.current);
+    heartBurstTimer.current = setTimeout(() => setShowHeartBurst(false), 700);
+
+    if (liked) return;
+
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      alert("Please login to like");
+      return;
+    }
+    const { error } = await supabase.from("likes").insert({
+      user_id: userId,
+      content_id: String(id),
+      content_type: "video",
+    });
+    if (!error) {
+      setLiked(true);
+      setLikeCount((c) => c + 1);
+      if (disliked) setDisliked(false);
+    }
+  };
+
+  const handleOverlayClick = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const now = Date.now();
+    const { time: lastTime, x: lastX, y: lastY } = lastClickRef.current;
+
+    const isDoubleTap =
+      now - lastTime < 300 &&
+      Math.abs(x - lastX) < 80 &&
+      Math.abs(y - lastY) < 80;
+
+    if (isDoubleTap) {
+      clearTimeout(singleClickTimer.current);
+      lastClickRef.current = { time: 0, x: 0, y: 0 };
+      triggerDoubleTapLike(x, y);
+    } else {
+      lastClickRef.current = { time: now, x, y };
+      clearTimeout(singleClickTimer.current);
+      singleClickTimer.current = setTimeout(() => {
+        const vid = videoRef.current;
+        if (vid) {
+          vid.paused ? vid.play().catch(() => {}) : vid.pause();
+        }
+      }, 260);
+    }
   };
 
   useEffect(() => {
@@ -715,6 +789,22 @@ const Video = ({ sideNavbar }) => {
             />
             Your browser does not support the video tag.
           </video>
+
+          {/* Double-tap-to-like overlay — sits above the video, below the
+              controls bar & floating action buttons. A single tap/click
+              toggles play/pause; a double tap/click likes the video and
+              pops a heart animation at the tap point. */}
+          <div className="video_tap_overlay" onClick={handleOverlayClick} />
+
+          {showHeartBurst && (
+            <div
+              key={heartBurstKey}
+              className="video_heart_burst"
+              style={{ left: heartBurstPos.x, top: heartBurstPos.y }}
+            >
+              ❤️
+            </div>
+          )}
 
           <div
             className={`video_frame_actions${isMobile ? " mobile-visible" : ""}`}
