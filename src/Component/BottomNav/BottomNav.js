@@ -11,8 +11,13 @@ const BottomNav = ({ currentUser }) => {
   const location = useLocation();
   const isActive = (path) => location.pathname === path;
 
-  const activeColor = "#9e1226";
-  const inactiveColor = "#9c7a7c";
+  // ── Matched to the Navbar's dusk-maroon gradient (see navbar.css
+  // .navbar background) — active items are solid white, inactive items
+  // use the same translucent marigold tint the Navbar uses for its
+  // placeholder/secondary text, so the two bars read as one connected
+  // piece of chrome instead of two different themes. ──
+  const activeColor = "#ffffff";
+  const inactiveColor = "rgba(255, 233, 226, 0.65)";
 
   return (
     <>
@@ -29,9 +34,9 @@ const BottomNav = ({ currentUser }) => {
             left: 0;
             right: 0;
             height: 60px;
-            background: #ffffff;
-            border-top: 2px solid #f3d6d2;
-            box-shadow: 0 -4px 20px rgba(158, 18, 38, 0.10);
+            background: radial-gradient(120% 220% at 15% 0%, #c81e34 0%, #9e1226 45%, #6e0a18 100%);
+            border-top: none;
+            box-shadow: 0 -2px 16px rgba(110, 10, 24, 0.25);
             z-index: 9999;
             align-items: center;
             justify-content: space-around;
@@ -63,7 +68,7 @@ const BottomNav = ({ currentUser }) => {
             transform: translateX(-50%);
             width: 28px;
             height: 3px;
-            background: linear-gradient(90deg, #9e1226, #c81e34);
+            background: #ffffff;
             border-radius: 0 0 3px 3px;
           }
 
@@ -86,7 +91,7 @@ const BottomNav = ({ currentUser }) => {
           }
 
           .bottom-nav-item.active-item .bottom-nav-icon-wrap {
-            background: rgba(158, 18, 38, 0.12);
+            background: rgba(255, 255, 255, 0.16);
           }
 
           .homePage,
