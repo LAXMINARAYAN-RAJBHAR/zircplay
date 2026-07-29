@@ -19,6 +19,10 @@
   --zx-shadow2:   0 2px 12px rgba(220,38,38,0.08);
   --zx-radius:    16px;
   --zx-radius-sm: 10px;
+  /* Set in JS from window.innerHeight — a reliable stand-in for 1% of
+     the real mobile viewport height, since 100vh/100dvh can lag behind
+     the browser chrome resizing. Falls back to 1vh if JS hasn't run yet. */
+  --mp-vh: 1vh;
 }
 
 .mp-overlay {
@@ -475,24 +479,31 @@
     padding: 0;
     background: rgba(0,0,0,0.25);
     pointer-events: auto;
+    /* Belt-and-braces: even though the panel itself now handles full
+       coverage, keep the overlay pinned to the JS-measured height too. */
+    height: calc(var(--mp-vh, 1vh) * 100);
   }
   .mp-panel:not(.mp-panel-login) {
-    /* Switched away from width:100vw/height:100dvh — on this device/
-       browser combo those units were calculating slightly off, leaving
-       a gap on the right edge (through which the page behind, or OS
-       chrome, showed) and clipping the send button. inset:0 mirrors
-       exactly what .mp-overlay already uses above, which DOES cover the
-       full screen correctly — so the panel now pins itself to the real
-       viewport edges the same proven way, instead of computing a size. */
+    /* --mp-vh is set in JS from window.innerHeight on load/resize, so
+       this tracks the real visible screen even as mobile browser chrome
+       (address bar, nav bar) shows/hides — 100vh/100dvh alone can lag
+       or misreport that. Combined with the React Portal in the JS file
+       (which renders this panel as a direct child of <body>, immune to
+       any ancestor's transform/filter breaking `position: fixed`), this
+       is what actually pins the panel to the real screen edges. */
     position: fixed !important;
-    inset: 0 !important;
-    width: auto;
-    height: auto;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw;
+    height: calc(var(--mp-vh, 1vh) * 100);
     max-height: none;
     margin: 0;
     border-radius: 0;
     box-sizing: border-box;
     overflow: hidden;
+    z-index: 99999;
   }
   .mp-panel-login {
     width: 90vw;
@@ -507,6 +518,18 @@
   .mp-chat-hidden-mobile { display: none; }
   .mp-back-btn { display: block; }
   .mp-drag-handle { cursor: default; }
+
+  /* Keep the send/attach/mic buttons clear of the Android gesture bar
+     and any device notch, without shrinking the touch targets. */
+  .mp-chat-input-row {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .mp-inbox-header {
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
+  .mp-chat-header {
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  }
 }
 
 .mp-icon-btn {
