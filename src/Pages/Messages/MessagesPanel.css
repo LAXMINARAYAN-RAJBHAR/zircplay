@@ -471,19 +471,7 @@
 .mp-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 @media (max-width: 768px) {
-  .mp-overlay {
-    padding: 0;
-    background: rgba(0,0,0,0.25);
-    pointer-events: auto;
-  }
   .mp-panel:not(.mp-panel-login) {
-    /* Switched away from width:100vw/height:100dvh — on this device/
-       browser combo those units were calculating slightly off, leaving
-       a gap on the right edge (through which the page behind, or OS
-       chrome, showed) and clipping the send button. inset:0 mirrors
-       exactly what .mp-overlay already uses above, which DOES cover the
-       full screen correctly — so the panel now pins itself to the real
-       viewport edges the same proven way, instead of computing a size. */
     position: fixed !important;
     inset: 0 !important;
     width: auto;
