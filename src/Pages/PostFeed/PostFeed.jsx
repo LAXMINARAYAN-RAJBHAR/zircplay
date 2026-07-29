@@ -5,6 +5,7 @@ import "./PostFeed.css";
 import PostComposer from "./PostComposer";
 import PostCard from "./PostCard";
 import SideNavbar from "../../Component/SideNavbar/sideNavbar";
+import AdUnit from "../../components/Ads/AdUnit";
 
 const PostFeed = ({ sideNavbar }) => {
   const location = useLocation();
@@ -423,19 +424,25 @@ const PostFeed = ({ sideNavbar }) => {
           </div>
         )}
 
-        {posts.map((post) => (
-          <div id={`post-${post.id}`} key={post.id}>
-            <PostCard
-              post={post}
-              currentUser={currentUser}
-              onReaction={handleReaction}
-              onComment={handleComment}
-              onToggleComments={handleToggleComments}
-              onShare={handleShare}
-              onDelete={handleDeletePost}
-              onEdit={handleEditPost}
-            />
-          </div>
+        {posts.map((post, index) => (
+          <React.Fragment key={post.id}>
+            <div id={`post-${post.id}`}>
+              <PostCard
+                post={post}
+                currentUser={currentUser}
+                onReaction={handleReaction}
+                onComment={handleComment}
+                onToggleComments={handleToggleComments}
+                onShare={handleShare}
+                onDelete={handleDeletePost}
+                onEdit={handleEditPost}
+              />
+            </div>
+            {/* Google AdSense — one native-style unit every 5 posts */}
+            {(index + 1) % 5 === 0 && (
+              <AdUnit slot="7412839650" format="fluid" layout="in-feed" />
+            )}
+          </React.Fragment>
         ))}
 
         {hasMore && (

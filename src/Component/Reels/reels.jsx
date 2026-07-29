@@ -19,6 +19,7 @@ import ReportModal from "../Moderation/ReportModal";
 import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ExpandableText from "../ExpandableText/ExpandableText";
+import AdUnit from "../../components/Ads/AdUnit";
 
 // ── Only uploaded reels (from Supabase) are used anywhere in this file now.
 //    The hardcoded demo `reelsData` array has been removed — reels shown in
@@ -158,6 +159,22 @@ const MoreDropdown = ({ onRemix, onSound, onCollab, onGreenScreen, onCut, onRepo
     </div>
   );
 };
+
+// ─────────────────────────────────────────────────────────
+// ReelAdSlide — a full-height interstitial ad slide that mimics the
+// dimensions/snap-scroll behavior of a real ReelItem, so it sits
+// naturally in the vertical feed without breaking the snap rhythm.
+// ─────────────────────────────────────────────────────────
+const ReelAdSlide = () => (
+  <div className="reel_item" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0a" }}>
+    <div style={{ width: "100%", maxWidth: "420px", padding: "0 16px" }}>
+      <div style={{ color: "#8b84c4", fontSize: "12px", fontWeight: "700", textAlign: "center", marginBottom: "10px", letterSpacing: "0.5px" }}>
+        SPONSORED
+      </div>
+      <AdUnit slot="9284710365" style={{ display: "block", minHeight: "250px" }} />
+    </div>
+  </div>
+);
 
 const ReelItem = ({ reel, allReels }) => {
   const navigate = useNavigate();
@@ -1016,8 +1033,14 @@ const Reels = () => {
     </button>
 
     <div className="reels_container">
-      {allReels.map((reel) => (
-        <ReelItem key={reel.id} reel={reel} allReels={allReels} />
+      {allReels.map((reel, index) => (
+        <React.Fragment key={reel.id}>
+          <ReelItem reel={reel} allReels={allReels} />
+          {/* Google AdSense — full-height interstitial slide every 5 reels */}
+          {(index + 1) % 5 === 0 && index !== allReels.length - 1 && (
+            <ReelAdSlide key={`ad-${index}`} />
+          )}
+        </React.Fragment>
       ))}
     </div>
   </>

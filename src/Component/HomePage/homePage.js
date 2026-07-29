@@ -12,10 +12,8 @@ import CheckIcon from "@mui/icons-material/Check";
 import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
 import { createPortal } from "react-dom";
-// LiveBrowser shows currently-live LiveKit streams (reads the
-// "live_streams" Supabase table). Adjust the path below if your
-// LiveBrowser component lives in a different folder.
 import LiveBrowser from "../Live/LiveViewer";
+import AdUnit from "../../components/Ads/AdUnit";
 
 const API_KEYS = [
   process.env.REACT_APP_YOUTUBE_KEY_1,
@@ -387,15 +385,6 @@ const ShortCard = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ShortsRow — hoisted to module scope (was previously redefined on every
-// HomePage render as `const ShortsRow = (...) => (...)` inside the
-// component body, which meant React treated it as a brand-new component
-// type on every re-render and remounted the whole shorts row — including
-// every <ShortCard>'s IntersectionObserver — any time HomePage re-rendered
-// for an unrelated reason (e.g. viewCounts ticking up). All the data it
-// needs now comes in as props instead of being closed over.
-// ─────────────────────────────────────────────────────────────────────────────
 const ShortsRow = ({
   data,
   title,
@@ -447,13 +436,6 @@ const ShortsRow = ({
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VideoCard — hoisted to module scope for the same reason as ShortsRow
-// above: it was previously defined inside HomePage's function body, so
-// every uploaded-video grid remounted (losing hover/scroll state, and
-// re-triggering image loads) whenever HomePage re-rendered for any
-// reason. All previously-closed-over values now arrive as props.
-// ─────────────────────────────────────────────────────────────────────────────
 const VideoCard = ({
   video,
   isUploaded = false,
@@ -592,10 +574,6 @@ const VideoCard = ({
                 </button>
               </>
             )}
-            {/* Note: previously showed a hardcoded "👍 3 Likes" for
-               non-uploaded (YouTube) cards regardless of the actual
-               video — removed since it was fabricated data, not a
-               real like count we have access to. */}
           </p>
           {isUploaded && video.created_at && (
             <p
@@ -616,10 +594,6 @@ const VideoCard = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// YouTubeVideoCard — hoisted to module scope; takes onSelect instead of
-// closing over openWatchPage.
-// ─────────────────────────────────────────────────────────────────────────────
 const YouTubeVideoCard = ({ item, onSelect }) => (
   <div
     className="youtube_thumbnailBox"
@@ -684,11 +658,6 @@ const YouTubeVideoCard = ({ item, onSelect }) => (
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SkeletonCard / SectionLabel — hoisted; neither closed over any HomePage
-// state to begin with, so this is a pure "stop recreating the function
-// every render" cleanup.
-// ─────────────────────────────────────────────────────────────────────────────
 const SkeletonCard = () => (
   <div
     className="youtube_thumbnailBox"
@@ -784,13 +753,6 @@ const SectionLabel = ({ color, bg, text, count }) => (
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SearchResultsPanel — hoisted to module scope. Previously redefined
-// inside HomePage on every render (and closed over searchQuery,
-// searchedReels, etc. directly); now takes them as props. This also
-// means it now shares the hoisted VideoCard/YouTubeVideoCard/ShortCard
-// components rather than duplicating markup.
-// ─────────────────────────────────────────────────────────────────────────────
 const SearchResultsPanel = ({
   searchQuery,
   searchedReels,
@@ -907,19 +869,6 @@ const SearchResultsPanel = ({
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DropdownPortal — renders dropdown via portal so it's never clipped by
-// overflow:hidden on parent cards. Positions itself relative to the trigger.
-// Accepts `menuRef` and attaches it to the portaled DOM node, so the
-// outside-click handler in SaveMenuButton can correctly detect clicks
-// that land *inside* the portaled menu (which lives in document.body, not
-// inside wrapperRef in the real DOM tree).
-// FIX: previously only recalculated position once (on mount / when
-// wrapperRef changed), so scrolling the page or resizing the window while
-// the menu was open left it glued to stale coordinates. Now recalculates
-// on scroll (capture phase, so it catches scrolling on any ancestor, not
-// just window) and on resize while open.
-// ─────────────────────────────────────────────────────────────────────────────
 const DropdownPortal = ({ wrapperRef, menuRef, children }) => {
   const [style, setStyle] = React.useState({});
 
@@ -933,14 +882,11 @@ const DropdownPortal = ({ wrapperRef, menuRef, children }) => {
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
-      // Prefer opening to the LEFT of the button (so text is never clipped)
       let left = rect.right - menuWidth;
-      if (left < 8) left = 8; // clamp left edge
+      if (left < 8) left = 8;
       if (left + menuWidth > viewportWidth - 8)
-        // clamp right edge
         left = viewportWidth - menuWidth - 8;
 
-      // Open below; if not enough space flip above
       let top = rect.bottom + 6;
       const estimatedHeight = 220;
       if (top + estimatedHeight > viewportHeight - 8)
@@ -972,9 +918,6 @@ const DropdownPortal = ({ wrapperRef, menuRef, children }) => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SaveMenuButton — three-dots dropdown with direct navigation
-// ─────────────────────────────────────────────────────────────────────────────
 const SaveMenuButton = ({
   videoId,
   isSaved,
@@ -985,12 +928,9 @@ const SaveMenuButton = ({
 }) => {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
-  const menuRef = useRef(null); // ref to the portaled menu's DOM node
+  const menuRef = useRef(null);
   const navigate = useNavigate();
 
-  // Close on outside click / touch — checks BOTH the trigger wrapper AND
-  // the portaled menu content, since the portal renders into document.body
-  // and is therefore not a DOM descendant of wrapperRef.
   useEffect(() => {
     if (!open) return;
     const close = (e) => {
@@ -1012,7 +952,6 @@ const SaveMenuButton = ({
     };
   }, [open]);
 
-  // Lock body scroll while open on mobile
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -1073,7 +1012,6 @@ const SaveMenuButton = ({
       onClick: (e) => {
         e.preventDefault();
         e.stopPropagation();
-        // Use og URL so WhatsApp shows thumbnail preview
         const url = `https://zixplon-tawny.vercel.app/api/og?type=video&id=${videoId}`;
 
         if (navigator.share) {
@@ -1117,7 +1055,6 @@ const SaveMenuButton = ({
         style={{ position: "absolute", top: "8px", right: "8px", zIndex: 11 }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Trigger button */}
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -1140,7 +1077,6 @@ const SaveMenuButton = ({
           <MoreVertIcon style={{ fontSize: 17 }} />
         </button>
 
-        {/* Dropdown menu — uses fixed positioning so it never gets clipped */}
         {open && (
           <DropdownPortal wrapperRef={wrapperRef} menuRef={menuRef}>
             <div
@@ -1159,9 +1095,6 @@ const SaveMenuButton = ({
                 <button
                   key={item.id}
                   onMouseDown={(e) => {
-                    // Stop the document-level mousedown listener from
-                    // ever treating this click as "outside" in the first
-                    // place — belt-and-braces alongside the menuRef check.
                     e.stopPropagation();
                   }}
                   onClick={item.onClick}
@@ -1226,13 +1159,6 @@ const SaveMenuButton = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DRAMATIC TRENDING CAROUSEL — cinematic coverflow slideshow.
-// 3D coverflow cards, Ken Burns zoom on the active slide, animated title
-// reveal, progress bar, dot navigation, chevron buttons, keyboard support
-// (arrow keys + Enter/Space), and pause-on-interact with a short resume
-// grace period.
-// ─────────────────────────────────────────────────────────────────────────────
 const DRAMATIC_AUTOPLAY_MS = 4200;
 
 const MOVIE_TAG_LIST = [
@@ -1243,8 +1169,6 @@ const MOVIE_TAG_LIST = [
   "Pakistani Movies",
 ];
 
-// TYPE_BADGE lives at module scope (not inside DramaticTrendingCarousel
-// anymore) so the hoisted <TrendingCard> component below can read it too.
 const TYPE_BADGE = {
   video: { label: "🎬", bg: "#7c3aed" },
   reel: { label: "📱", bg: "#f97316" },
@@ -1252,13 +1176,6 @@ const TYPE_BADGE = {
   live: { label: "🔴", bg: "#ef4444" },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TrendingCard — a single slide of the Trending Now coverflow, hoisted to
-// module scope so each card owns its own hover-preview state via
-// useHoverPreview (mirrors ShortCard/VideoCard). Preview only ever
-// activates on the ACTIVE (centered) slide — hovering a side slide just
-// nudges it into focus the way it already did, it doesn't preview.
-// ─────────────────────────────────────────────────────────────────────────────
 const TrendingCard = ({
   item,
   index,
@@ -1358,7 +1275,7 @@ const DramaticTrendingCarousel = ({
   const isMobile = useIsMobile();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [cycleKey, setCycleKey] = useState(0); // remounts progress bar + text reveal each slide
+  const [cycleKey, setCycleKey] = useState(0);
   const resumeTimeoutRef = useRef(null);
   const autoplayTimeoutRef = useRef(null);
 
@@ -1403,7 +1320,6 @@ const DramaticTrendingCarousel = ({
     else doResume();
   };
 
-  // Autoplay loop — advances one slide every DRAMATIC_AUTOPLAY_MS unless paused
   useEffect(() => {
     if (total === 0 || isPaused) return;
     autoplayTimeoutRef.current = setTimeout(() => {
@@ -1475,7 +1391,7 @@ const DramaticTrendingCarousel = ({
           if (offset > total / 2) offset -= total;
           if (offset < -total / 2) offset += total;
           const abs = Math.abs(offset);
-          if (abs > 3) return null; // don't render far-off cards, keeps it light
+          if (abs > 3) return null;
 
           const isActive = offset === 0;
 
@@ -1552,15 +1468,6 @@ const DramaticTrendingCarousel = ({
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WP_THEME + VideoPlayer, AutoplayToggle, WatchNavBar, MetaSection,
-// CommentSection, RelatedSidebar — stable, top-level components (data
-// passed in as props) so React keeps the same component identity across
-// WatchPage re-renders. The <iframe> is only unmounted/remounted when
-// `videoId` itself actually changes (via its `key={videoId}`), which is
-// the only time we actually want that to happen.
-// ─────────────────────────────────────────────────────────────────────────────
 
 const WP_THEME = {
   bg: "#f0f4ff",
@@ -2689,8 +2596,6 @@ const HomePage = ({ sideNavbar }) => {
   const [selectedOption, setSelectedOption] = useState("All");
   const [mobileTab, setMobileTab] = useState("shorts");
 
-  // Ref for the desktop LiveBrowser section, so the dedicated "Live" pill
-  // in the category strip can smooth-scroll straight to it.
   const liveBrowserRef = useRef(null);
 
   const TAB_IDS = MOBILE_TABS.map((t) => t.id);
@@ -2818,10 +2723,6 @@ const HomePage = ({ sideNavbar }) => {
     } catch (_) {}
   };
 
-  // "Live" removed from this filterable options array — it now has its own
-  // dedicated pill (rendered separately below) that scrolls to / switches
-  // to the real LiveKit LiveBrowser section instead of filtering uploaded
-  // videos tagged "Live".
   const options = [
     "All",
     "DD News",
@@ -3017,8 +2918,6 @@ const HomePage = ({ sideNavbar }) => {
     return () => supabase.removeChannel(reelsSub);
   }, [loadWatchedIds]);
 
-  // Only uploaded content (from Supabase) is shown — no hardcoded/static
-  // demo videos or reels are merged in anymore.
   const allVideos = dbVideos;
   const allReels = dbReels;
 
@@ -3046,12 +2945,6 @@ const HomePage = ({ sideNavbar }) => {
     };
   }, []);
 
-  // FIX: previously, any non-403 error (a network blip, a 500, a timeout)
-  // caused an immediate `break` — giving up on the whole search even
-  // though there were still unused keys left to try. Now only a genuine
-  // client error (4xx that isn't a quota/rate-limit code) stops the loop;
-  // quota errors (403/429) and network-level failures (no `err.response`
-  // at all) both advance to the next key and retry.
   const fetchYouTubeByTopic = async (topic) => {
     if (["All", "Recently Uploaded", "Watched"].includes(topic)) {
       setYtVideos([]);
@@ -3086,7 +2979,7 @@ const HomePage = ({ sideNavbar }) => {
           currentKeyIndex = (keyIndex + 1) % API_KEYS.length;
           continue;
         }
-        break; // genuine client error (e.g. bad request) — no point retrying
+        break;
       }
     }
     setYtLoading(false);
@@ -3245,9 +3138,6 @@ const HomePage = ({ sideNavbar }) => {
     }
   };
 
-  // Shared prop bags so VideoCard / ShortsRow / ShortCard / SearchResultsPanel
-  // (all module-level components now) get identical, up-to-date props at
-  // every call site without repeating the same seven-prop list six times.
   const videoCardProps = {
     viewCounts,
     watchLaterIds,
@@ -3369,10 +3259,6 @@ const HomePage = ({ sideNavbar }) => {
           </div>
         );
       case "live":
-        // This tab renders the real LiveKit LiveBrowser (reads is_live
-        // rows from the Supabase "live_streams" table) instead of an old
-        // "videos tagged Live" filter that had nothing to do with actual
-        // live streaming.
         return (
           <div className="mobile-tab-content" {...swipeHandlers}>
             <LiveBrowser currentUser={loggedInUsername} />
@@ -3423,10 +3309,6 @@ const HomePage = ({ sideNavbar }) => {
           }}
           style={{ cursor: "grab", userSelect: "none" }}
         >
-          {/* Dedicated Live pill — separate from the filterable options
-              list. Scrolls to the desktop LiveBrowser section, or
-              switches to the mobile Live tab, instead of filtering videos
-              tagged "Live". */}
           <div
             className="homePage_option"
             onClick={() => {
@@ -3454,11 +3336,6 @@ const HomePage = ({ sideNavbar }) => {
             🔴 Live
           </div>
 
-          {/* Category pills use a plain "active" className instead of a
-              large inline style block recomputed every render — the CSS
-              rule .homePage_option.active carries the same accent so the
-              highlighted pill still reads clearly, but the DOM stays
-              lighter. */}
           {options.map((item) => (
             <div
               key={item}
@@ -3519,15 +3396,6 @@ const HomePage = ({ sideNavbar }) => {
           />
         )}
 
-        {/* Desktop-visible Live section — shows real LiveKit streams from
-            the "live_streams" table. Sits above the mobile tab bar /
-            category grid, hidden automatically on mobile since it's
-            inside the desktop-only render path (mobile CSS hides
-            everything except .mobile-trending-strip / .mobile-tab-bar /
-            .mobile-tab-content / .search-results-panel — so on mobile this
-            block simply won't render; the "live" mobile tab above handles
-            phones instead). The ref lets the dedicated Live pill above
-            smooth-scroll straight here on desktop. */}
         {!searchActive && !isMobile && (
           <div ref={liveBrowserRef} style={{ marginBottom: "28px" }}>
             <LiveBrowser currentUser={loggedInUsername} />
@@ -3613,6 +3481,12 @@ const HomePage = ({ sideNavbar }) => {
                             />
                           ))}
                       </div>
+                      {/* Google AdSense — one banner unit between every
+                          video grid row (skipped on the very first row so
+                          the page doesn't open with an ad above the fold) */}
+                      {rowIndex > 0 && (
+                        <AdUnit slot="3820561974" />
+                      )}
                     </React.Fragment>,
                   );
                 }

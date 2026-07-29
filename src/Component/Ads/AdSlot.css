@@ -1,0 +1,32 @@
+.ad-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 1px; /* avoid layout collapse pre-fill; AdSense fills the <ins> itself */
+  overflow: hidden;
+}
+
+.ad-slot-banner {
+  margin: 16px 0;
+}
+
+.ad-slot-sidebar {
+  margin: 12px 0;
+  max-width: 300px;
+}
+
+.ad-slot-in-feed,
+.ad-slot-in-article {
+  margin: 8px 0;
+  border-radius: var(--zx-radius-sm, 10px);
+  overflow: hidden;
+}
+
+.ad-slot-anchor {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9990; /* below the MessagesPanel's 99999, above normal page content */
+}

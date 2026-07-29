@@ -1,6 +1,7 @@
 import React from "react";
 import "./sideNavbar.css";
 import { Link, useLocation } from "react-router-dom";
+import AdSlot from "../../components/Ads/AdSlot";
 
 // ─── Zixplon Custom Icons ───────────────────────────────────────────────────
 const ic = {
@@ -338,6 +339,15 @@ const SideNavbar = ({ sideNavbar }) => {
               <div className="home_sideNavbarTopOptionTitle">NDTV India</div>
             </div>
           </Link>
+        </div>
+      )}
+
+      {/* ── Google AdSense — sidebar display ──
+          Only shown in the expanded sidebar; the icon-only collapsed
+          state has no room for it and would just clip the ad. */}
+      {expanded && (
+        <div className="home_sideNavbarMiddle">
+          <AdSlot slot="7511704211" variant="sidebar" />
         </div>
       )}
     </div>
