@@ -440,21 +440,16 @@
   border-top: 2px solid var(--zx-border);
   background: var(--zx-surface);
   position: relative;
-  box-sizing: border-box;
-  width: 100%;
-  overflow: hidden;
 }
 
 .mp-chat-input {
   flex: 1;
-  min-width: 0;
   border: 2px solid var(--zx-border);
   border-radius: 20px;
   padding: 8px 14px;
   font-size: 13px;
   outline: none;
   background: var(--zx-bg);
-  box-sizing: border-box;
 }
 .mp-chat-input:focus { border-color: var(--zx-primary); }
 
@@ -477,22 +472,13 @@
     pointer-events: auto;
   }
   .mp-panel:not(.mp-panel-login) {
-    /* Switched away from width:100vw/height:100dvh — on this device/
-       browser combo those units were calculating slightly off, leaving
-       a gap on the right edge (through which the page behind, or OS
-       chrome, showed) and clipping the send button. inset:0 mirrors
-       exactly what .mp-overlay already uses above, which DOES cover the
-       full screen correctly — so the panel now pins itself to the real
-       viewport edges the same proven way, instead of computing a size. */
-    position: fixed !important;
-    inset: 0 !important;
-    width: auto;
-    height: auto;
-    max-height: none;
-    margin: 0;
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
     border-radius: 0;
-    box-sizing: border-box;
-    overflow: hidden;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
   }
   .mp-panel-login {
     width: 90vw;
