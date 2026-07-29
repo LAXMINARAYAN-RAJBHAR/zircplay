@@ -19,7 +19,7 @@ import ReportModal from "../Moderation/ReportModal";
 import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ExpandableText from "../ExpandableText/ExpandableText";
-import AdUnit from "../../components/Ads/AdUnit";
+import AdUnit from "../../Component/Ads/AdUnit";
 
 // ── Only uploaded reels (from Supabase) are used anywhere in this file now.
 //    The hardcoded demo `reelsData` array has been removed — reels shown in

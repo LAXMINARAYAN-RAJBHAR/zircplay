@@ -5,7 +5,7 @@ import "./PostFeed.css";
 import PostComposer from "./PostComposer";
 import PostCard from "./PostCard";
 import SideNavbar from "../../Component/SideNavbar/sideNavbar";
-import AdUnit from "../../components/Ads/AdUnit";
+import AdUnit from "../../Component/Ads/AdUnit";
 
 const PostFeed = ({ sideNavbar }) => {
   const location = useLocation();

@@ -1,7 +1,7 @@
 import React from "react";
 import "./sideNavbar.css";
 import { Link, useLocation } from "react-router-dom";
-import AdSlot from "../../components/Ads/AdSlot";
+import AdSlot from "../../Component/Ads/AdSlot";
 
 // ─── Zixplon Custom Icons ───────────────────────────────────────────────────
 const ic = {

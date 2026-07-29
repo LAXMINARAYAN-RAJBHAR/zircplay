@@ -13,7 +13,7 @@ import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
 import { createPortal } from "react-dom";
 import LiveBrowser from "../Live/LiveViewer";
-import AdUnit from "../../components/Ads/AdUnit";
+import AdUnit from "../../Component/Ads/AdUnit";
 
 const API_KEYS = [
   process.env.REACT_APP_YOUTUBE_KEY_1,

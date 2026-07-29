@@ -12,7 +12,7 @@ import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ReportModal from "../../Component/Moderation/ReportModal";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
-import AdSlot from "../../components/Ads/AdSlot";
+import AdSlot from "../../Component/Ads/AdSlot";
 
 const timeAgo = (dateStr) => {
   if (!dateStr) return "";
