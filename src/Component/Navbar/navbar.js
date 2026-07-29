@@ -12,6 +12,9 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import Login from "../Login/login";
 import { supabase } from "../../config/supabase";
 
+// ── Same admin check as AdminPanel.jsx — keep these two in sync ──────────────
+const ADMIN_EMAILS = ["laxminarayan.rajbhar@gmail.com"];
+
 // ─── Country Code Hook ─────────────────────────────────────────────────────────
 const useCountry = () => {
   const [countryCode, setCountryCode] = useState("IN");
@@ -339,6 +342,16 @@ const Navbar = ({
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  // ── Admin check: only true when the logged-in account's stored email
+  //    matches ADMIN_EMAILS. Drives whether the "Admin Panel" link shows
+  //    up in the profile dropdown below — same rule AdminPanel.jsx uses,
+  //    so this link only ever appears for someone who can actually get in. ──
+  const isAdmin =
+    !!currentUser &&
+    ADMIN_EMAILS.includes(
+      (localStorage.getItem("email") || "").trim().toLowerCase(),
+    );
+
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showInstall, setShowInstall] = useState(false);
 
@@ -566,6 +579,11 @@ const Navbar = ({
   const handleprofile = () => {
     if (currentUser) navigate(`/user/${currentUser}`);
     else setLogin(true);
+    setNavbarModal(false);
+  };
+
+  const handleGoToAdmin = () => {
+    navigate("/admin");
     setNavbarModal(false);
   };
 
@@ -1284,6 +1302,21 @@ const Navbar = ({
                 </div>
               )}
               <div className="navbar-modal-option" onClick={handleprofile}>Profile</div>
+
+              {/* ── Admin Panel — only rendered for the admin account, on both
+                  desktop and mobile, since this dropdown markup and its CSS
+                  are shared across breakpoints (no separate mobile version
+                  of .navbar-modal exists in navbar.css). ── */}
+              {isAdmin && (
+                <div
+                  className="navbar-modal-option"
+                  onClick={handleGoToAdmin}
+                  style={{ color: "#9e1226", fontWeight: 800 }}
+                >
+                  🛡️ Admin Panel
+                </div>
+              )}
+
               {currentUser ? (
                 <div className="navbar-modal-option" onClick={handleLogout} style={{ color: "#e63946" }}>
                   Logout
