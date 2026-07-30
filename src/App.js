@@ -44,6 +44,8 @@ import AdminPanel       from "./Pages/AdminPanel/AdminPanel";
 import LiveBrowser      from "./Component/Live/LiveViewer";
 import MessagesPanel    from "./Pages/Messages/MessagesPanel";
 import { PresenceProvider } from "./context/PresenceContext";
+import useRequireUsernameSetup from "./hooks/useRequireUsernameSetup";
+import UsernameSetupModal from "./Component/Auth/UsernameSetupModal";
 
 // ── Google Identity Services (One Tap) config ──────────────────────────────
 // TODO: replace with the SAME OAuth Client ID configured under
@@ -218,6 +220,11 @@ function App() {
   // ── Messages floating panel state ──
   const [showMessagesPanel, setShowMessagesPanel] = useState(false);
   const [messagesActiveUser, setMessagesActiveUser] = useState(null);
+
+  // ── Username setup prompt: fires when a logged-in user still has an
+  // auto-generated fallback username (e.g. "user_41859fe2") ──
+  const { needsSetup: needsUsernameSetup, markComplete: markUsernameSetupComplete } =
+    useRequireUsernameSetup(currentUser);
 
   // ── Supabase warmup ──
   useEffect(() => {
@@ -584,6 +591,19 @@ function App() {
             needed); if it can't be shown, this modal is the fallback */}
         {shouldShowLoginModal && (
           <LoginOptionsModal onDismiss={handleDismissLoginModal} />
+        )}
+
+        {/* Username setup prompt — shown when a logged-in user still has
+            an auto-generated fallback username (e.g. "user_41859fe2").
+            Takes priority over the Messages panel so a user can't hide
+            behind chat while leaving their username unset. */}
+        {currentUser && needsUsernameSetup && (
+          <UsernameSetupModal
+            onComplete={() => {
+              markUsernameSetupComplete();
+              window.location.reload();
+            }}
+          />
         )}
 
         {/* Floating Messages panel — opened via the "openMessages" custom

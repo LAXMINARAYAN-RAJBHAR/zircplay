@@ -1,0 +1,79 @@
+.username-setup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 27, 75, 0.45);
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.username-setup-panel {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 28px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+  font-family: 'Outfit', sans-serif;
+  text-align: center;
+}
+
+.username-setup-panel h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  font-size: 18px;
+  margin: 0 0 8px;
+  color: #1a1414;
+}
+
+.username-setup-panel p {
+  font-size: 13px;
+  color: #7a3a3a;
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+
+.username-setup-panel input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 2px solid #fbd5d5;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  outline: none;
+  margin-bottom: 8px;
+  font-family: 'Outfit', sans-serif;
+}
+
+.username-setup-panel input:focus {
+  border-color: #dc2626;
+}
+
+.username-setup-error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  text-align: left;
+}
+
+.username-setup-panel button {
+  width: 100%;
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.username-setup-panel button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
