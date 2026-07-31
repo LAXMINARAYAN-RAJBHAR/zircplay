@@ -534,18 +534,17 @@ function App() {
   window.history.pushState({ zixplonExit: true }, "", "/");
 
     const handlePopState = (e) => {
-      // ── FIX: MessagesPanel manages its own back-stack (chat -> panel ->
-      // home) by pushing history entries tagged with `mpDepth` and
-      // listening for popstate itself. Since the panel is an overlay on
-      // top of Home rather than a route change, location.pathname stays
-      // "/" the whole time — so this exit-toast handler was still active
-      // and firing on the SAME back press, racing MessagesPanel's own
-      // handler and desyncing its history depth. If this popstate belongs
-      // to MessagesPanel's stack, back off completely and let it handle
-      // closing the chat / panel on its own. ──
-      if (e.state && Object.prototype.hasOwnProperty.call(e.state, "mpDepth")) {
-        return;
-      }
+  // MessagesPanel owns the back-stack whenever it's open. This needs to
+  // check showMessagesPanelRef (not just e.state.mpDepth) because the
+  // *closing* pop (depth 1 -> 0) lands on App's own "/" history entry,
+  // which has no mpDepth on it at all — only the ref tells us the panel
+  // was still open when this pop happened.
+  if (
+    showMessagesPanelRef.current ||
+    (e.state && Object.prototype.hasOwnProperty.call(e.state, "mpDepth"))
+  ) {
+    return;
+  }
 
       if (backPressedOnce.current) {
         clearTimeout(exitToastTimer.current);
