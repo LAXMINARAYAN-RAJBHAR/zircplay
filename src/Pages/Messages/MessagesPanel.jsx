@@ -366,9 +366,12 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
   const isMobile = () => window.innerWidth <= 768;
 
-  // ── Mobile back-button: pressing back while a chat is open should
-  // close the WHOLE Messages panel (both the chat window and the inbox
-  // behind it) in a single press — not just step back to the inbox. ──
+  // ── Mobile back-button: pressing back should step out ONE level at a
+  // time — first press closes an open chat/group/broadcast (back to the
+  // inbox), a second press then closes the whole Messages panel. We
+  // mirror this with two history entries: one pushed when the panel
+  // itself opens, and one pushed when a detail view opens on top of it. ──
+  const panelHistoryPushedRef = useRef(false);
   const chatHistoryPushedRef = useRef(false);
   const isMountedRef = useRef(true);
 
@@ -379,8 +382,21 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, []);
 
-  // Push a history entry the moment a chat/group/broadcast opens on
-  // mobile; clear the flag once it closes (whichever way it closed).
+  // Push a base history entry the moment the panel mounts on mobile, so
+  // there's always one "level" to consume before the panel actually closes.
+  useEffect(() => {
+    if (!isMobile()) return;
+
+    window.history.pushState({ mpPanelOpen: true }, "");
+    panelHistoryPushedRef.current = true;
+
+    return () => {
+      panelHistoryPushedRef.current = false;
+    };
+  }, []);
+
+  // Push a second history entry the moment a chat/group/broadcast opens
+  // on mobile; clear the flag once it closes (whichever way it closed).
   useEffect(() => {
     if (!isMobile()) return;
 
@@ -396,16 +412,26 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     }
   }, [activeUsername, activeGroup, activeBroadcast]);
 
-  // Intercept the back button: if we're the ones who pushed the extra
-  // history entry, consume it here and close the ENTIRE Messages panel
-  // (inbox + chat/group/broadcast) in one press, instead of only
-  // stepping back to the inbox list first.
+  // Intercept the back button one level at a time: if a chat/group/
+  // broadcast is open, the first press closes just that (back to the
+  // inbox). Otherwise, if the panel itself is open, the press closes
+  // the whole Messages panel.
   useEffect(() => {
     if (!isMobile()) return;
 
     const handlePopState = () => {
-      if (chatHistoryPushedRef.current && isMountedRef.current) {
+      if (!isMountedRef.current) return;
+
+      if (chatHistoryPushedRef.current) {
         chatHistoryPushedRef.current = false;
+        setActiveUsername(null);
+        setActiveGroup(null);
+        setActiveBroadcast(null);
+        return;
+      }
+
+      if (panelHistoryPushedRef.current) {
+        panelHistoryPushedRef.current = false;
         onClose();
       }
     };
@@ -699,7 +725,14 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
           filter: `conversation_id=eq.${activeConvo.id}`,
         },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
+          // Guard against duplicates: the sender already appends their own
+          // message optimistically in handleSend, so this same row can
+          // arrive again here once Supabase Realtime broadcasts the INSERT.
+          setMessages((prev) =>
+            prev.some((m) => m.id === payload.new.id)
+              ? prev
+              : [...prev, payload.new],
+          );
         },
       )
       .on(
@@ -928,17 +961,28 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       return;
     }
 
-    const { error } = await supabase.from("direct_messages").insert({
-      conversation_id: activeConvo.id,
-      sender_username: currentUser,
-      text: trimmed || null,
-      attachment_url,
-      attachment_type,
-      attachment_name,
-      attachment_size,
-    });
+    // .select().single() hands back the inserted row so we can show it
+    // immediately instead of waiting on the Realtime broadcast to echo
+    // it back — that round trip is what made sent messages feel delayed.
+    const { data: inserted, error } = await supabase
+      .from("direct_messages")
+      .insert({
+        conversation_id: activeConvo.id,
+        sender_username: currentUser,
+        text: trimmed || null,
+        attachment_url,
+        attachment_type,
+        attachment_name,
+        attachment_size,
+      })
+      .select()
+      .single();
 
-    if (!error) {
+    if (!error && inserted) {
+      setMessages((prev) =>
+        prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted],
+      );
+
       const previewText =
         trimmed ||
         (attachment_type === "image"
@@ -1105,7 +1149,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
   // Used by the on-screen "←" arrow only: just returns to the inbox
   // list without touching the browser history stack. The hardware/
-  // gesture back button is handled separately above (closes everything).
+  // gesture back button is handled separately above.
   const handleBackFromChat = (e) => {
     e.stopPropagation();
     setActiveUsername(null);
