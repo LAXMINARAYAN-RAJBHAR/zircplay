@@ -221,6 +221,25 @@ function App() {
   const [showMessagesPanel, setShowMessagesPanel] = useState(false);
   const [messagesActiveUser, setMessagesActiveUser] = useState(null);
 
+  // ── Mirrors showMessagesPanel in a ref so the mobile back-button
+  // popstate handler (defined inside a useEffect with a stable dependency
+  // array) can read the CURRENT value instead of a stale closed-over one.
+  // Also used to suppress App's own exit-toast logic while a pop event is
+  // actually being consumed by MessagesPanel closing itself — see the
+  // handlePopState guard below for why this is needed. ──
+  const showMessagesPanelRef = useRef(false);
+  useEffect(() => {
+    showMessagesPanelRef.current = showMessagesPanel;
+    // If the panel just opened, clear any exit-toast countdown that might
+    // still be armed from an earlier home back-press, so opening Messages
+    // never inherits a half-finished "press back again to exit" state.
+    if (showMessagesPanel) {
+      backPressedOnce.current = false;
+      setShowExitToast(false);
+      clearTimeout(exitToastTimer.current);
+    }
+  }, [showMessagesPanel]);
+
   // ── Username setup prompt: fires when a logged-in user still has an
   // auto-generated fallback username (e.g. "user_41859fe2") ──
   const { needsSetup: needsUsernameSetup, markComplete: markUsernameSetupComplete } =
