@@ -168,6 +168,14 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
           <span className="gcw-name">{group.name}</span>
           <span className="gcw-member-count">{members.length} members</span>
         </div>
+        <button
+          className="gcw-header-add-btn"
+          onClick={() => setShowAddMembers(true)}
+          aria-label="Add members"
+          title="Add members"
+        >
+          👤＋
+        </button>
         <button className="gcw-close-btn" onClick={onClose} aria-label="Close">✕</button>
       </div>
 
