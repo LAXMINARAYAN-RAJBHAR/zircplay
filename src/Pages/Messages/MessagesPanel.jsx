@@ -352,8 +352,8 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const isMobile = () => window.innerWidth <= 768;
 
   // ── Mobile back-button: pressing back while a chat is open should
-  // close just the chat window (back to the inbox list), not the whole
-  // Messages panel / navigate away from the page. ──
+  // close the WHOLE Messages panel (both the chat window and the inbox
+  // behind it) in a single press — not just step back to the inbox. ──
   const chatHistoryPushedRef = useRef(false);
   const isMountedRef = useRef(true);
 
@@ -380,21 +380,22 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   }, [activeUsername]);
 
   // Intercept the back button: if we're the ones who pushed the extra
-  // history entry, consume it here and just close the chat instead of
-  // letting the browser navigate/exit.
+  // history entry, consume it here and close the ENTIRE Messages panel
+  // (inbox + chat) in one press, instead of only stepping back to the
+  // inbox list first.
   useEffect(() => {
     if (!isMobile()) return;
 
     const handlePopState = () => {
       if (chatHistoryPushedRef.current && isMountedRef.current) {
         chatHistoryPushedRef.current = false;
-        setActiveUsername(null);
+        onClose();
       }
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [onClose]);
 
   const handleDragStart = (e) => {
     if (isMobile()) return;
@@ -1053,16 +1054,12 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setActiveUsername(username);
   };
 
-  // Used by the on-screen back button: on mobile, if we pushed a history
-  // entry when the chat opened, pop it (fires popstate → closes the
-  // chat). On desktop, or if no entry was pushed, just close directly.
+  // Used by the on-screen "←" arrow only: just returns to the inbox
+  // list without touching the browser history stack. The hardware/
+  // gesture back button is handled separately above (closes everything).
   const handleBackFromChat = (e) => {
     e.stopPropagation();
-    if (isMobile() && chatHistoryPushedRef.current) {
-      window.history.back();
-    } else {
-      setActiveUsername(null);
-    }
+    setActiveUsername(null);
   };
 
   return (
