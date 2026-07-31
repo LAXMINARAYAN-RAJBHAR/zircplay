@@ -6,6 +6,7 @@ import {
   markGroupRead,
   leaveGroup,
 } from "../../utils/groupChat";
+import AddMembersModal from "./AddMembersModal";
 import "./GroupChatWindow.css";
 
 const CLOUDINARY_CLOUD_NAME = "uaa756bj";
@@ -32,11 +33,16 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [sending, setSending] = useState(false);
   const [members, setMembers] = useState([]);
   const [showMembers, setShowMembers] = useState(false);
+  const [showAddMembers, setShowAddMembers] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   const fileInputRef = useRef();
   const bottomRef = useRef();
+
+  const loadMembers = useCallback(() => {
+    fetchGroupMembers(group.id).then(setMembers);
+  }, [group.id]);
 
   useEffect(() => {
     const load = async () => {
@@ -51,8 +57,8 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       markGroupRead(group.id, currentUser);
     };
     load();
-    fetchGroupMembers(group.id).then(setMembers);
-  }, [group.id, currentUser]);
+    loadMembers();
+  }, [group.id, currentUser, loadMembers]);
 
   useEffect(() => {
     const channel = supabase
@@ -65,6 +71,20 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [group.id]);
+
+  // Keep the member list live if someone else adds/removes people while
+  // this window is open (e.g. another admin adding members concurrently).
+  useEffect(() => {
+    const channel = supabase
+      .channel(`group-members-${group.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "group_members", filter: `group_id=eq.${group.id}` },
+        () => loadMembers(),
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [group.id, loadMembers]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -153,6 +173,12 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
 
       {showMembers && (
         <div className="gcw-members-panel">
+          <div className="gcw-members-panel-header">
+            <span>Members</span>
+            <button className="gcw-add-member-btn" onClick={() => setShowAddMembers(true)}>
+              ＋ Add
+            </button>
+          </div>
           {members.map((m) => (
             <div key={m.username} className="gcw-member-row">
               <div className="gcw-avatar-sm">{m.username.slice(0, 2).toUpperCase()}</div>
@@ -162,6 +188,19 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
           ))}
           <button className="gcw-leave-btn" onClick={handleLeaveGroup}>Leave group</button>
         </div>
+      )}
+
+      {showAddMembers && (
+        <AddMembersModal
+          group={group}
+          currentUser={currentUser}
+          existingUsernames={members.map((m) => m.username)}
+          onClose={() => setShowAddMembers(false)}
+          onAdded={() => {
+            setShowAddMembers(false);
+            loadMembers();
+          }}
+        />
       )}
 
       <div className="gcw-body">

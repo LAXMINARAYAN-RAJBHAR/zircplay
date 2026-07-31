@@ -246,3 +246,32 @@
 @media (max-width: 768px) {
   .gcw-window { width: 100vw; height: 100vh; }
 }
+/* ── Append these rules to your existing GroupChatWindow.css ──
+   (I don't have the current file, so these are additive and use the
+   same gcw- prefix as your other classes; adjust colors/fonts to match
+   if your existing panel uses different variables.) */
+
+.gcw-members-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 6px 4px 8px;
+  color: var(--zx-text2, #7a3a3a);
+}
+
+.gcw-add-member-btn {
+  background: transparent;
+  border: 1.5px solid var(--zx-border, #fbd5d5);
+  color: var(--zx-primary, #dc2626);
+  font-weight: 800;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.gcw-add-member-btn:hover {
+  background: var(--zx-bg, #fff5f5);
+}
