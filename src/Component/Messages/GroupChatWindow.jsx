@@ -39,6 +39,8 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
 
   const fileInputRef = useRef();
   const bottomRef = useRef();
+  const membersPanelRef = useRef();
+  const membersTriggerRef = useRef();
 
   const loadMembers = useCallback(() => {
     fetchGroupMembers(group.id).then(setMembers);
@@ -89,6 +91,26 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Close the members panel when tapping/clicking anywhere outside it
+  // (mirrors the emoji-picker / reaction-picker click-outside pattern
+  // used in MessagesPanel). Skips the panel itself and the group-name
+  // trigger so opening/toggling still works normally.
+  useEffect(() => {
+    if (!showMembers) return;
+    const handleClickOutside = (e) => {
+      if (
+        membersPanelRef.current &&
+        !membersPanelRef.current.contains(e.target) &&
+        membersTriggerRef.current &&
+        !membersTriggerRef.current.contains(e.target)
+      ) {
+        setShowMembers(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showMembers]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -164,7 +186,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       <div className="gcw-header">
         <button className="gcw-back-btn" onClick={onBack}>←</button>
         <div className="gcw-avatar">{group.name.slice(0, 2).toUpperCase()}</div>
-        <div className="gcw-title" onClick={() => setShowMembers((v) => !v)}>
+        <div className="gcw-title" ref={membersTriggerRef} onClick={() => setShowMembers((v) => !v)}>
           <span className="gcw-name">{group.name}</span>
           <span className="gcw-member-count">{members.length} members</span>
         </div>
@@ -180,7 +202,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       </div>
 
       {showMembers && (
-        <div className="gcw-members-panel">
+        <div className="gcw-members-panel" ref={membersPanelRef}>
           <div className="gcw-members-panel-header">
             <span>Members</span>
             <button className="gcw-add-member-btn" onClick={() => setShowAddMembers(true)}>
