@@ -370,10 +370,13 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   // ── Mobile back-button: pressing back should step out ONE level at a
   // time — first press closes an open chat/group/broadcast (back to the
   // inbox), a second press then closes the whole Messages panel. We
-  // mirror this with two history entries: one pushed when the panel
-  // itself opens, and one pushed when a detail view opens on top of it. ──
-  const panelHistoryPushedRef = useRef(false);
-  const chatHistoryPushedRef = useRef(false);
+  // mirror this with a history-depth model: depth 0 = whatever page was
+  // showing before the panel opened, depth 1 = panel open (inbox), depth
+  // 2 = a chat/group/broadcast open on top of the panel. Every close
+  // action — hardware back, the on-screen back arrow, or any ✕ button —
+  // goes through this same depth so the history stack and UI state never
+  // drift out of sync with each other.
+  const historyDepthRef = useRef(0);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -383,63 +386,89 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, []);
 
-  // Push a base history entry the moment the panel mounts on mobile, so
-  // there's always one "level" to consume before the panel actually closes.
+  // Push a base history entry (depth 1) the moment the panel mounts on
+  // mobile, so there's always one "level" to consume before the panel
+  // actually closes.
   useEffect(() => {
     if (!isMobile()) return;
 
-    window.history.pushState({ mpPanelOpen: true }, "");
-    panelHistoryPushedRef.current = true;
+    window.history.pushState({ mpDepth: 1 }, "");
+    historyDepthRef.current = 1;
 
     return () => {
-      panelHistoryPushedRef.current = false;
+      historyDepthRef.current = 0;
     };
   }, []);
 
-  // Push a second history entry the moment a chat/group/broadcast opens
-  // on mobile; clear the flag once it closes (whichever way it closed).
+  // Push a second history entry (depth 2) the moment a chat/group/
+  // broadcast opens on mobile. We only ever push here — closing is
+  // always done by popping via closeDetail()/closePanel() below, which
+  // keeps historyDepthRef and the real browser history stack in sync.
   useEffect(() => {
     if (!isMobile()) return;
 
     const anyDetailOpen = !!(activeUsername || activeGroup || activeBroadcast);
 
-    if (anyDetailOpen && !chatHistoryPushedRef.current) {
-      window.history.pushState({ mpChatOpen: true }, "");
-      chatHistoryPushedRef.current = true;
-    }
-
-    if (!anyDetailOpen) {
-      chatHistoryPushedRef.current = false;
+    if (anyDetailOpen && historyDepthRef.current < 2) {
+      window.history.pushState({ mpDepth: 2 }, "");
+      historyDepthRef.current = 2;
     }
   }, [activeUsername, activeGroup, activeBroadcast]);
 
-  // Intercept the back button one level at a time: if a chat/group/
-  // broadcast is open, the first press closes just that (back to the
-  // inbox). Otherwise, if the panel itself is open, the press closes
-  // the whole Messages panel.
+  // Intercept the back button (hardware or gesture) one level at a time,
+  // driven entirely by the depth stored in history.state rather than by
+  // separate boolean flags — this is what keeps repeated open/close
+  // cycles from ever getting out of sync.
   useEffect(() => {
     if (!isMobile()) return;
 
-    const handlePopState = () => {
+    const handlePopState = (e) => {
       if (!isMountedRef.current) return;
 
-      if (chatHistoryPushedRef.current) {
-        chatHistoryPushedRef.current = false;
+      const depth = e.state?.mpDepth ?? 0;
+
+      if (depth < 2 && historyDepthRef.current >= 2) {
         setActiveUsername(null);
         setActiveGroup(null);
         setActiveBroadcast(null);
-        return;
       }
 
-      if (panelHistoryPushedRef.current) {
-        panelHistoryPushedRef.current = false;
+      if (depth < 1) {
         onClose();
       }
+
+      historyDepthRef.current = depth;
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [onClose]);
+
+  // Close just the open chat/group/broadcast, back to the inbox list.
+  // On mobile this pops the depth-2 history entry (triggering the same
+  // popstate handler the hardware back button uses); on desktop there's
+  // no history entry to pop, so it just updates state directly.
+  const closeDetail = () => {
+    if (isMobile() && historyDepthRef.current >= 2) {
+      window.history.back();
+    } else {
+      setActiveUsername(null);
+      setActiveGroup(null);
+      setActiveBroadcast(null);
+    }
+  };
+
+  // Close the whole Messages panel. On mobile this jumps back past
+  // however many history entries the panel pushed (1 or 2) in a single
+  // hop, so the popstate handler fires once with depth 0 and calls
+  // onClose() — never leaving an orphaned history entry behind.
+  const closePanel = () => {
+    if (isMobile() && historyDepthRef.current >= 1) {
+      window.history.go(-historyDepthRef.current);
+    } else {
+      onClose();
+    }
+  };
 
   const handleDragStart = (e) => {
     if (isMobile()) return;
@@ -1148,12 +1177,12 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setActiveUsername(username);
   };
 
-  // Used by the on-screen "←" arrow only: just returns to the inbox
-  // list without touching the browser history stack. The hardware/
-  // gesture back button is handled separately above.
+  // Used by the on-screen "←" arrow: routes through closeDetail() so it
+  // behaves identically to the hardware/gesture back button (pops the
+  // depth-2 history entry on mobile, keeping the stack in sync).
   const handleBackFromChat = (e) => {
     e.stopPropagation();
-    setActiveUsername(null);
+    closeDetail();
   };
 
   const openConversation = (username) => {
@@ -1180,7 +1209,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     <div
       className={`mp-overlay ${!currentUser ? "mp-overlay-center" : ""}`}
       onClick={(e) => {
-        if (!dragging) onClose();
+        if (!dragging) closePanel();
       }}
     >
       <div
@@ -1197,7 +1226,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             >
               Login
             </button>
-            <button className="mp-close-btn-alt" onClick={onClose}>
+            <button className="mp-close-btn-alt" onClick={closePanel}>
               Close
             </button>
           </div>
@@ -1243,7 +1272,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                   )}
                   <button
                     className="mp-close-btn"
-                    onClick={onClose}
+                    onClick={closePanel}
                     aria-label="Close"
                   >
                     ✕
@@ -1436,22 +1465,22 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                 <GroupChatWindow
                   group={activeGroup}
                   currentUser={currentUser}
-                  onBack={() => setActiveGroup(null)}
-                  onClose={onClose}
+                  onBack={closeDetail}
+                  onClose={closePanel}
                 />
               ) : activeBroadcast ? (
                 <BroadcastComposeWindow
                   list={activeBroadcast}
                   currentUser={currentUser}
-                  onBack={() => setActiveBroadcast(null)}
-                  onClose={onClose}
+                  onBack={closeDetail}
+                  onClose={closePanel}
                 />
               ) : !activeUsername ? (
                 <div className="mp-placeholder">
                   <span>Select a conversation to start chatting</span>
                   <button
                     className="mp-close-btn-desktop"
-                    onClick={onClose}
+                    onClick={closePanel}
                     aria-label="Close"
                   >
                     ✕
@@ -1489,7 +1518,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                     </div>
                     <button
                       className="mp-close-btn"
-                      onClick={onClose}
+                      onClick={closePanel}
                       aria-label="Close"
                     >
                       ✕
