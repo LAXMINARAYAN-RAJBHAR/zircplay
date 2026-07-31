@@ -367,6 +367,37 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
   const isMobile = () => window.innerWidth <= 768;
 
+  // ── Keyboard-aware viewport height ──────────────────────────────────────
+  // On mobile, the panel is sized with 100vh in CSS. 100vh reflects the
+  // LAYOUT viewport, which does NOT shrink when the on-screen keyboard
+  // opens — only the VISUAL viewport does. That mismatch is what made
+  // "instant" sent messages seem to vanish: the new bubble was appended
+  // to the DOM correctly, but .mp-chat-body was still sized against the
+  // stale, taller 100vh, so the new content rendered off-screen behind
+  // the keyboard until a reload/resize forced a recalculation.
+  //
+  // Fix: track the real visible height via visualViewport (falling back
+  // to innerHeight where visualViewport isn't supported) and expose it
+  // as a CSS var the stylesheet uses instead of raw vh units.
+  useEffect(() => {
+    if (!isMobile()) return;
+
+    const setVh = () => {
+      const vh = (window.visualViewport?.height || window.innerHeight) * 0.01;
+      panelRef.current?.style.setProperty("--mp-vh", `${vh}px`);
+    };
+
+    setVh();
+    window.visualViewport?.addEventListener("resize", setVh);
+    window.addEventListener("resize", setVh);
+    window.addEventListener("orientationchange", setVh);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", setVh);
+      window.removeEventListener("resize", setVh);
+      window.removeEventListener("orientationchange", setVh);
+    };
+  }, []);
+
   // ── Mobile back-button: pressing back should step out ONE level at a
   // time — first press closes an open chat/group/broadcast (back to the
   // inbox), a second press then closes the whole Messages panel. We
@@ -392,13 +423,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   useEffect(() => {
     if (!isMobile()) return;
 
-    console.log("[MP-DEBUG] mount: pushing depth 1, history.length before =", window.history.length);
     window.history.pushState({ mpDepth: 1 }, "");
     historyDepthRef.current = 1;
-    console.log("[MP-DEBUG] mount: history.length after =", window.history.length);
 
     return () => {
-      console.log("[MP-DEBUG] unmount: resetting historyDepthRef (was", historyDepthRef.current, ")");
       historyDepthRef.current = 0;
     };
   }, []);
@@ -412,13 +440,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
     const anyDetailOpen = !!(activeUsername || activeGroup || activeBroadcast);
 
-    console.log("[MP-DEBUG] detail-effect fired: anyDetailOpen =", anyDetailOpen, "historyDepthRef =", historyDepthRef.current, "history.length =", window.history.length);
-
     if (anyDetailOpen && historyDepthRef.current < 2) {
-      console.log("[MP-DEBUG] pushing depth 2");
       window.history.pushState({ mpDepth: 2 }, "");
       historyDepthRef.current = 2;
-      console.log("[MP-DEBUG] after push depth 2: history.length =", window.history.length);
     }
   }, [activeUsername, activeGroup, activeBroadcast]);
 
@@ -430,22 +454,17 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     if (!isMobile()) return;
 
     const handlePopState = (e) => {
-      console.log("[MP-DEBUG] popstate fired. e.state =", e.state, "isMounted =", isMountedRef.current, "historyDepthRef (before) =", historyDepthRef.current, "history.length =", window.history.length);
-
       if (!isMountedRef.current) return;
 
       const depth = e.state?.mpDepth ?? 0;
-      console.log("[MP-DEBUG] resolved depth =", depth);
 
       if (depth < 2 && historyDepthRef.current >= 2) {
-        console.log("[MP-DEBUG] closing detail (chat/group/broadcast)");
         setActiveUsername(null);
         setActiveGroup(null);
         setActiveBroadcast(null);
       }
 
       if (depth < 1) {
-        console.log("[MP-DEBUG] calling onClose() -- panel closing!");
         onClose();
       }
 
@@ -826,6 +845,8 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       });
   }, [messages, activeConvo, currentUser]);
 
+  // Fallback auto-scroll whenever the message list changes (covers
+  // incoming messages from the other person, edits, reactions, etc).
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -1024,6 +1045,18 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       setMessages((prev) =>
         prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted],
       );
+
+      // Force the scroll on the very next frame instead of relying only
+      // on the `messages`-effect above. On mobile, sending a message
+      // often happens while the keyboard is still open/animating; a
+      // scroll that fires in the same tick as the state update can run
+      // against a layout that hasn't settled yet (see the --mp-vh fix
+      // above) and end up scrolling to a position that's stale the
+      // instant the keyboard finishes moving. Doing it on the next
+      // animation frame lets layout catch up first.
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      });
 
       const previewText =
         trimmed ||

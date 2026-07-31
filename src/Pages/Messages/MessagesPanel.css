@@ -471,10 +471,18 @@
     background: rgba(0,0,0,0.25);
     pointer-events: auto;
   }
+  /* ── FIX: use the JS-measured visual-viewport height (--mp-vh, set by
+     MessagesPanel's resize/visualViewport listener) instead of raw vh
+     units. 100vh reflects the LAYOUT viewport and does not shrink when
+     the on-screen keyboard opens, so the chat body kept sizing itself
+     against stale, too-tall dimensions while typing/sending — new
+     messages were appended to the DOM correctly but rendered off-screen
+     behind the keyboard until a reload forced a relayout. Falls back to
+     1vh so nothing breaks before the JS var is set on first mount. ── */
   .mp-panel:not(.mp-panel-login) {
     width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
+    height: calc(var(--mp-vh, 1vh) * 100);
+    max-height: calc(var(--mp-vh, 1vh) * 100);
     border-radius: 0;
     position: static !important;
     left: auto !important;
