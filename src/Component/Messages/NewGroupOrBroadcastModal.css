@@ -1,0 +1,195 @@
+.ngb-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 27, 75, 0.3);
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.ngb-panel {
+  width: 380px;
+  max-width: 100%;
+  max-height: 80vh;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  font-family: 'Outfit', sans-serif;
+  overflow: hidden;
+}
+
+.ngb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 2px solid #fbd5d5;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  font-size: 15px;
+}
+
+.ngb-close {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #b08585;
+}
+
+.ngb-search-row {
+  padding: 10px 14px;
+  border-bottom: 2px solid #fbd5d5;
+}
+.ngb-search-row input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 2px solid #fbd5d5;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+}
+.ngb-search-row input:focus { border-color: #dc2626; }
+
+.ngb-selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #fbd5d5;
+}
+
+.ngb-chip {
+  background: #fef2f2;
+  border: 1.5px solid #dc2626;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ngb-results {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 160px;
+  max-height: 300px;
+}
+
+.ngb-empty {
+  padding: 24px 14px;
+  text-align: center;
+  color: #b08585;
+  font-size: 13px;
+}
+
+.ngb-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ngb-result-item:hover { background: #fff5f5; }
+.ngb-result-item.selected { background: #fef2f2; }
+
+.ngb-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #fff;
+  font-weight: 800;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ngb-result-item span:nth-child(2) {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ngb-check {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.ngb-next-btn {
+  margin: 12px 14px;
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 11px;
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+}
+.ngb-next-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ngb-name-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a3a3a;
+  padding: 14px 14px 4px;
+}
+
+.ngb-name-input {
+  margin: 0 14px;
+  border: 2px solid #fbd5d5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+}
+.ngb-name-input:focus { border-color: #dc2626; }
+
+.ngb-error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 8px 14px 0;
+}
+
+.ngb-name-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px;
+}
+
+.ngb-back-btn {
+  flex: 1;
+  background: #fef2f2;
+  border: 2px solid #fbd5d5;
+  color: #7a3a3a;
+  border-radius: 12px;
+  padding: 10px;
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+}
+
+.ngb-create-btn {
+  flex: 2;
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 10px;
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+}
+.ngb-create-btn:disabled,
+.ngb-back-btn:disabled { opacity: 0.5; cursor: not-allowed; }

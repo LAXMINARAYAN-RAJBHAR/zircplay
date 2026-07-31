@@ -989,3 +989,23 @@
   text-align: right;
   opacity: 0.85;
 }
+
+.mp-new-menu {
+  position: absolute;
+  top: 100%;
+  right: 30px;
+  background: #fff;
+  border: 2px solid var(--zx-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  z-index: 30;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.mp-new-menu div {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mp-new-menu div:hover { background: var(--zx-bg); }

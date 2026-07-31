@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../../config/supabase";
 import "./MessagesPanel.css";
 import { usePresence } from "../../context/PresenceContext";
+import { fetchUserGroups } from "../../utils/groupChat";
+import { fetchUserBroadcastLists } from "../../utils/broadcast";
+import NewGroupOrBroadcastModal from "../../Component/Messages/NewGroupOrBroadcastModal";
+import GroupChatWindow from "../../Component/Messages/GroupChatWindow";
+import BroadcastComposeWindow from "../../Component/Messages/BroadcastComposeWindow";
 
 const EMOJI_ONLY_REGEX = /^(\p{Extended_Pictographic}|\u200d|\ufe0f|\s)+$/u;
 
@@ -327,6 +332,16 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const { onlineUsers, getLastSeen } = usePresence();
   const [activeUserLastSeen, setActiveUserLastSeen] = useState(null);
 
+  // ── Group chat + Broadcast lists ──
+  const [groups, setGroups] = useState([]);
+  const [broadcastLists, setBroadcastLists] = useState([]);
+  const [activeGroup, setActiveGroup] = useState(null); // group object, or null
+  const [activeBroadcast, setActiveBroadcast] = useState(null); // broadcast list object, or null
+  const [showNewModal, setShowNewModal] = useState(null); // "group" | "broadcast" | null
+  const [showNewMenu, setShowNewMenu] = useState(false);
+  const newMenuRef = useRef();
+  const newMenuBtnRef = useRef();
+
   useEffect(() => {
     if (!activeUsername || onlineUsers.has(activeUsername)) {
       setActiveUserLastSeen(null);
@@ -364,25 +379,27 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, []);
 
-  // Push a history entry the moment a chat opens on mobile; clear the
-  // flag once the chat closes (whichever way it closed).
+  // Push a history entry the moment a chat/group/broadcast opens on
+  // mobile; clear the flag once it closes (whichever way it closed).
   useEffect(() => {
     if (!isMobile()) return;
 
-    if (activeUsername && !chatHistoryPushedRef.current) {
+    const anyDetailOpen = !!(activeUsername || activeGroup || activeBroadcast);
+
+    if (anyDetailOpen && !chatHistoryPushedRef.current) {
       window.history.pushState({ mpChatOpen: true }, "");
       chatHistoryPushedRef.current = true;
     }
 
-    if (!activeUsername) {
+    if (!anyDetailOpen) {
       chatHistoryPushedRef.current = false;
     }
-  }, [activeUsername]);
+  }, [activeUsername, activeGroup, activeBroadcast]);
 
   // Intercept the back button: if we're the ones who pushed the extra
   // history entry, consume it here and close the ENTIRE Messages panel
-  // (inbox + chat) in one press, instead of only stepping back to the
-  // inbox list first.
+  // (inbox + chat/group/broadcast) in one press, instead of only
+  // stepping back to the inbox list first.
   useEffect(() => {
     if (!isMobile()) return;
 
@@ -476,6 +493,23 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openReactionFor]);
 
+  // Close the "New" menu (New Group / New Broadcast) when clicking outside it
+  useEffect(() => {
+    if (!showNewMenu) return;
+    const handleClickOutside = (e) => {
+      if (
+        newMenuRef.current &&
+        !newMenuRef.current.contains(e.target) &&
+        newMenuBtnRef.current &&
+        !newMenuBtnRef.current.contains(e.target)
+      ) {
+        setShowNewMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showNewMenu]);
+
   // Safety net: if the panel unmounts (or the user navigates away) while
   // a recording is in progress, make sure the mic is released.
   useEffect(() => {
@@ -545,6 +579,21 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
     return () => supabase.removeChannel(channel);
   }, [fetchConversations]);
+
+  // ── Fetch groups + broadcast lists the user belongs to / created ──
+  const fetchGroupsAndBroadcasts = useCallback(async () => {
+    if (!currentUser) return;
+    const [g, b] = await Promise.all([
+      fetchUserGroups(currentUser),
+      fetchUserBroadcastLists(currentUser),
+    ]);
+    setGroups(g);
+    setBroadcastLists(b);
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchGroupsAndBroadcasts();
+  }, [fetchGroupsAndBroadcasts]);
 
   useEffect(() => {
     const query = inboxSearch.trim();
@@ -1062,6 +1111,26 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setActiveUsername(null);
   };
 
+  const openConversation = (username) => {
+    setActiveGroup(null);
+    setActiveBroadcast(null);
+    setActiveUsername(username);
+  };
+
+  const openGroup = (group) => {
+    setActiveUsername(null);
+    setActiveBroadcast(null);
+    setActiveGroup(group);
+  };
+
+  const openBroadcast = (list) => {
+    setActiveUsername(null);
+    setActiveGroup(null);
+    setActiveBroadcast(list);
+  };
+
+  const anyDetailOpen = !!(activeUsername || activeGroup || activeBroadcast);
+
   return (
     <div
       className={`mp-overlay ${!currentUser ? "mp-overlay-center" : ""}`}
@@ -1090,7 +1159,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         ) : (
           <>
             <div
-              className={`mp-inbox ${activeUsername ? "mp-inbox-hidden-mobile" : ""}`}
+              className={`mp-inbox ${anyDetailOpen ? "mp-inbox-hidden-mobile" : ""}`}
             >
               <div
                 className="mp-inbox-header mp-drag-handle"
@@ -1098,13 +1167,43 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                 onTouchStart={handleDragStart}
               >
                 <span>Messages</span>
-                <button
-                  className="mp-close-btn"
-                  onClick={onClose}
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 2, position: "relative" }}>
+                  <button
+                    ref={newMenuBtnRef}
+                    className="mp-close-btn"
+                    onClick={() => setShowNewMenu((v) => !v)}
+                    aria-label="New"
+                  >
+                    ＋
+                  </button>
+                  {showNewMenu && (
+                    <div className="mp-new-menu" ref={newMenuRef}>
+                      <div
+                        onClick={() => {
+                          setShowNewMenu(false);
+                          setShowNewModal("group");
+                        }}
+                      >
+                        👥 New Group
+                      </div>
+                      <div
+                        onClick={() => {
+                          setShowNewMenu(false);
+                          setShowNewModal("broadcast");
+                        }}
+                      >
+                        📢 New Broadcast List
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    className="mp-close-btn"
+                    onClick={onClose}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               <div className="mp-inbox-search-row">
@@ -1153,48 +1252,98 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
               {loadingConvos ? (
                 <p className="mp-empty">Loading…</p>
-              ) : conversations.length === 0 && !normalizedSearch ? (
+              ) : conversations.length === 0 &&
+                groups.length === 0 &&
+                broadcastLists.length === 0 &&
+                !normalizedSearch ? (
                 <p className="mp-empty">No conversations yet.</p>
               ) : (
                 <>
                   {filteredConversations.length === 0 &&
+                  groups.length === 0 &&
+                  broadcastLists.length === 0 &&
                   newProfileResults.length === 0 &&
                   !searchingProfiles &&
                   normalizedSearch ? (
                     <p className="mp-empty">No matches for "{inboxSearch}"</p>
                   ) : (
-                    filteredConversations.map((conv) => {
-                      const other = getOtherUser(conv);
-                      const isActive = other === activeUsername;
-                      const isOnline = onlineUsers.has(other);
-                      const unread = isConvoUnread(conv);
-                      return (
-                        <div
-                          key={conv.id}
-                          className={`mp-convo-item ${isActive ? "active" : ""} ${unread ? "mp-convo-unread" : ""}`}
-                          onClick={() => setActiveUsername(other)}
-                        >
-                          <div className="mp-convo-avatar">
-                            {other.slice(0, 2).toUpperCase()}
-                            <span
-                              className={`mp-status-dot ${isOnline ? "online" : "offline"}`}
-                            />
-                          </div>
-                          <div className="mp-convo-meta">
-                            <div className="mp-convo-name">{other}</div>
-                            <div className="mp-convo-last">
-                              {conv.last_message || "No messages yet"}
+                    <>
+                      {filteredConversations.map((conv) => {
+                        const other = getOtherUser(conv);
+                        const isActive = other === activeUsername;
+                        const isOnline = onlineUsers.has(other);
+                        const unread = isConvoUnread(conv);
+                        return (
+                          <div
+                            key={conv.id}
+                            className={`mp-convo-item ${isActive ? "active" : ""} ${unread ? "mp-convo-unread" : ""}`}
+                            onClick={() => openConversation(other)}
+                          >
+                            <div className="mp-convo-avatar">
+                              {other.slice(0, 2).toUpperCase()}
+                              <span
+                                className={`mp-status-dot ${isOnline ? "online" : "offline"}`}
+                              />
+                            </div>
+                            <div className="mp-convo-meta">
+                              <div className="mp-convo-name">{other}</div>
+                              <div className="mp-convo-last">
+                                {conv.last_message || "No messages yet"}
+                              </div>
+                            </div>
+                            <div className="mp-convo-right">
+                              <div className="mp-convo-time">
+                                {timeAgo(conv.last_message_at)}
+                              </div>
+                              {unread && <span className="mp-unread-dot" />}
                             </div>
                           </div>
-                          <div className="mp-convo-right">
-                            <div className="mp-convo-time">
-                              {timeAgo(conv.last_message_at)}
+                        );
+                      })}
+
+                      {!normalizedSearch &&
+                        groups.map((g) => (
+                          <div
+                            key={g.id}
+                            className={`mp-convo-item ${activeGroup?.id === g.id ? "active" : ""}`}
+                            onClick={() => openGroup(g)}
+                          >
+                            <div className="mp-convo-avatar">
+                              {g.name.slice(0, 2).toUpperCase()}
                             </div>
-                            {unread && <span className="mp-unread-dot" />}
+                            <div className="mp-convo-meta">
+                              <div className="mp-convo-name">{g.name} 👥</div>
+                              <div className="mp-convo-last">
+                                {g.lastMessage
+                                  ? `${g.lastMessage.sender_username}: ${g.lastMessage.text || "📎 Attachment"}`
+                                  : "No messages yet"}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })
+                        ))}
+
+                      {!normalizedSearch &&
+                        broadcastLists.map((b) => (
+                          <div
+                            key={b.id}
+                            className={`mp-convo-item ${activeBroadcast?.id === b.id ? "active" : ""}`}
+                            onClick={() => openBroadcast(b)}
+                          >
+                            <div
+                              className="mp-convo-avatar"
+                              style={{ background: "linear-gradient(135deg, #f97316, #eab308)" }}
+                            >
+                              📢
+                            </div>
+                            <div className="mp-convo-meta">
+                              <div className="mp-convo-name">{b.name}</div>
+                              <div className="mp-convo-last">
+                                {(b.broadcast_recipients || []).length} recipients
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </>
                   )}
 
                   {normalizedSearch &&
@@ -1236,9 +1385,23 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             </div>
 
             <div
-              className={`mp-chat-window ${!activeUsername ? "mp-chat-hidden-mobile" : ""}`}
+              className={`mp-chat-window ${!anyDetailOpen ? "mp-chat-hidden-mobile" : ""}`}
             >
-              {!activeUsername ? (
+              {activeGroup ? (
+                <GroupChatWindow
+                  group={activeGroup}
+                  currentUser={currentUser}
+                  onBack={() => setActiveGroup(null)}
+                  onClose={onClose}
+                />
+              ) : activeBroadcast ? (
+                <BroadcastComposeWindow
+                  list={activeBroadcast}
+                  currentUser={currentUser}
+                  onBack={() => setActiveBroadcast(null)}
+                  onClose={onClose}
+                />
+              ) : !activeUsername ? (
                 <div className="mp-placeholder">
                   <span>Select a conversation to start chatting</span>
                   <button
@@ -1698,6 +1861,20 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
           </>
         )}
       </div>
+
+      {showNewModal && (
+        <NewGroupOrBroadcastModal
+          mode={showNewModal}
+          currentUser={currentUser}
+          onClose={() => setShowNewModal(null)}
+          onCreated={({ type, data }) => {
+            setShowNewModal(false);
+            fetchGroupsAndBroadcasts();
+            if (type === "group") openGroup({ ...data, lastMessage: null });
+            else openBroadcast({ ...data, broadcast_recipients: [] });
+          }}
+        />
+      )}
     </div>
   );
 };
