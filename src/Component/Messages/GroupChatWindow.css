@@ -1,3 +1,251 @@
+.gcw-window {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+.gcw-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 2px solid #fbd5d5;
+  background: #fff;
+}
+
+.gcw-back-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #dc2626;
+}
+
+.gcw-avatar,
+.gcw-avatar-sm {
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.gcw-avatar { width: 36px; height: 36px; font-size: 12px; }
+.gcw-avatar-sm { width: 28px; height: 28px; font-size: 10px; }
+
+.gcw-title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  cursor: pointer;
+}
+.gcw-name {
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gcw-member-count {
+  font-size: 10px;
+  color: #b08585;
+}
+
+.gcw-close-btn {
+  background: transparent;
+  border: none;
+  color: #b08585;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.gcw-members-panel {
+  position: absolute;
+  top: 56px;
+  right: 14px;
+  width: 220px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 2px solid #fbd5d5;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  z-index: 20;
+  padding: 6px 0;
+}
+
+.gcw-member-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.gcw-admin-tag {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 800;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.gcw-leave-btn {
+  width: calc(100% - 20px);
+  margin: 8px 10px 4px;
+  background: #fef2f2;
+  border: 1.5px solid #dc2626;
+  color: #dc2626;
+  border-radius: 10px;
+  padding: 8px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.gcw-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gcw-empty {
+  padding: 20px;
+  color: #b08585;
+  font-size: 13px;
+  text-align: center;
+}
+
+.gcw-bubble-row { display: flex; justify-content: flex-start; }
+.gcw-bubble-row.mine { justify-content: flex-end; }
+
+.gcw-bubble {
+  max-width: 70%;
+  background: #fff;
+  border: 2px solid #fbd5d5;
+  border-radius: 14px 14px 14px 4px;
+  padding: 7px 12px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gcw-bubble-row.mine .gcw-bubble {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #fff;
+  border-color: transparent;
+  border-radius: 14px 14px 4px 14px;
+}
+
+.gcw-sender-name {
+  font-size: 10px;
+  font-weight: 800;
+  color: #dc2626;
+  font-family: 'Nunito', sans-serif;
+}
+
+.gcw-bubble-image, .gcw-bubble-video {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 10px;
+  display: block;
+}
+
+.gcw-bubble-file {
+  color: inherit;
+  text-decoration: underline;
+  font-size: 12px;
+}
+
+.gcw-bubble-time {
+  font-size: 9px;
+  opacity: 0.7;
+  align-self: flex-end;
+}
+
+.gcw-deleted-text {
+  font-style: italic;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.gcw-pending-attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 2px solid #fbd5d5;
+  background: #fff5f5;
+}
+.gcw-pending-attachment img, .gcw-pending-attachment video {
+  width: 44px; height: 44px; object-fit: cover; border-radius: 8px;
+}
+.gcw-pending-attachment button {
+  margin-left: auto;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  cursor: pointer;
+}
+.gcw-uploading { font-size: 11px; color: #dc2626; font-weight: 700; }
+
+.gcw-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 2px solid #fbd5d5;
+  background: #fff;
+}
+
+.gcw-icon-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.gcw-text-input {
+  flex: 1;
+  border: 2px solid #fbd5d5;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 13px;
+  outline: none;
+  background: #fff5f5;
+}
+.gcw-text-input:focus { border-color: #dc2626; }
+
+.gcw-send-btn {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.gcw-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 768px) {
+  .gcw-window { width: 100vw; height: 100vh; }
+}
 /* ── Append these rules to your existing GroupChatWindow.css ──
    (I don't have the current file, so these are additive and use the
    same gcw- prefix as your other classes; adjust colors/fonts to match
