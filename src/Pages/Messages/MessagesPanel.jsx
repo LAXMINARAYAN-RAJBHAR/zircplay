@@ -392,10 +392,13 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   useEffect(() => {
     if (!isMobile()) return;
 
+    console.log("[MP-DEBUG] mount: pushing depth 1, history.length before =", window.history.length);
     window.history.pushState({ mpDepth: 1 }, "");
     historyDepthRef.current = 1;
+    console.log("[MP-DEBUG] mount: history.length after =", window.history.length);
 
     return () => {
+      console.log("[MP-DEBUG] unmount: resetting historyDepthRef (was", historyDepthRef.current, ")");
       historyDepthRef.current = 0;
     };
   }, []);
@@ -409,9 +412,13 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
     const anyDetailOpen = !!(activeUsername || activeGroup || activeBroadcast);
 
+    console.log("[MP-DEBUG] detail-effect fired: anyDetailOpen =", anyDetailOpen, "historyDepthRef =", historyDepthRef.current, "history.length =", window.history.length);
+
     if (anyDetailOpen && historyDepthRef.current < 2) {
+      console.log("[MP-DEBUG] pushing depth 2");
       window.history.pushState({ mpDepth: 2 }, "");
       historyDepthRef.current = 2;
+      console.log("[MP-DEBUG] after push depth 2: history.length =", window.history.length);
     }
   }, [activeUsername, activeGroup, activeBroadcast]);
 
@@ -423,17 +430,22 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     if (!isMobile()) return;
 
     const handlePopState = (e) => {
+      console.log("[MP-DEBUG] popstate fired. e.state =", e.state, "isMounted =", isMountedRef.current, "historyDepthRef (before) =", historyDepthRef.current, "history.length =", window.history.length);
+
       if (!isMountedRef.current) return;
 
       const depth = e.state?.mpDepth ?? 0;
+      console.log("[MP-DEBUG] resolved depth =", depth);
 
       if (depth < 2 && historyDepthRef.current >= 2) {
+        console.log("[MP-DEBUG] closing detail (chat/group/broadcast)");
         setActiveUsername(null);
         setActiveGroup(null);
         setActiveBroadcast(null);
       }
 
       if (depth < 1) {
+        console.log("[MP-DEBUG] calling onClose() -- panel closing!");
         onClose();
       }
 
