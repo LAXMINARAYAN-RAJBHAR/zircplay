@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../../config/supabase";
 import "./MessagesPanel.css";
 import { usePresence } from "../../context/PresenceContext";
