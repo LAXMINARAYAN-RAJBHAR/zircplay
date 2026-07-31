@@ -95,8 +95,6 @@ const PostFeed = ({ sideNavbar }) => {
   }, [fetchPosts]);
 
   // ── Handle shared post links: /feed?post=<id> ──────────────────────────
-  // Ensures the specific shared post is loaded (even if not on page 1),
-  // prepended to the feed, and scrolled into view + highlighted.
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const sharedPostId = params.get("post");
@@ -141,7 +139,6 @@ const PostFeed = ({ sideNavbar }) => {
     ensurePostLoaded();
   }, [location.search, currentUser]);
 
-  // ── Scroll to + highlight the shared post once it's rendered ──────────
   useEffect(() => {
     if (!highlightedPostId) return;
     const el = document.getElementById(`post-${highlightedPostId}`);
@@ -153,17 +150,6 @@ const PostFeed = ({ sideNavbar }) => {
     }
   }, [posts, highlightedPostId]);
 
-  // ── Notify subscribers about a new post ─────────────────────────────────
-  // FIX: "subscriptions" table columns are "subscriber_id" and
-  // "subscribed_to" (NOT "subscriber_username"). The old query selected a
-  // column that doesn't exist, so `s.subscriber_username` was always
-  // undefined, the .filter() dropped every row, and notifications were
-  // silently never sent to anyone. "subscriber_id" can hold either a UUID
-  // (current accounts) or a legacy plain username (older rows written
-  // before the UUID standardization) — same dual-format situation as in
-  // Profile.jsx, so we resolve UUIDs to usernames via the "profiles" table
-  // before building notification rows, and pass legacy username rows
-  // straight through.
   const notifySubscribers = async (uploaderUsername, post) => {
     if (!uploaderUsername) return;
 
@@ -196,21 +182,21 @@ const PostFeed = ({ sideNavbar }) => {
               ? idToUsername[s.subscriber_id]
               : s.subscriber_id
           )
-          .filter(Boolean) // drops UUIDs that still couldn't be resolved
+          .filter(Boolean)
       ),
     ];
 
     if (recipientUsernames.length === 0) return;
 
     const notifications = recipientUsernames.map((recipient) => ({
-  recipient_username: recipient,
-  sender_username: uploaderUsername,
-  type: "upload",
-  message: `${uploaderUsername} made a new post: "${post.text?.slice(0, 60) || "Check it out"}"`,
-  is_read: false,
-  content_id: post.id,
-  content_type: "post",
-}));
+      recipient_username: recipient,
+      sender_username: uploaderUsername,
+      type: "upload",
+      message: `${uploaderUsername} made a new post: "${post.text?.slice(0, 60) || "Check it out"}"`,
+      is_read: false,
+      content_id: post.id,
+      content_type: "post",
+    }));
 
     await supabase.from("notifications").insert(notifications);
   };
@@ -290,22 +276,43 @@ const PostFeed = ({ sideNavbar }) => {
     );
   };
 
+  // ── Share to feed ──
+  // FIX: this previously swallowed any insert error silently (`if (!err
+  // && data)`), so a failed share looked like nothing happened at all —
+  // no error surfaced anywhere. It also had no anonymous-user guard
+  // (every other action here does), and only copied `image_url`,
+  // dropping `image_urls` (multi-image posts), `video_url`, and
+  // `feeling` from the original post. Now: guards anonymous users like
+  // Like/Comment do, surfaces real errors via the existing `pf-error`
+  // banner + console, and carries over the full original content.
   const handleShare = async (postId) => {
+    if (!currentUser || currentUser === "anonymous") {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
     const post = posts.find((p) => p.id === postId);
     if (!post) return;
-    const { data, error: err } = await supabase
-      .from("posts")
-      .insert({
-        username: currentUser,
-        text: `Shared: "${post.text?.slice(0, 120) || ""}"`,
-        image_url: post.image_url,
-        link: post.link,
-        privacy: "public",
-        shared_from: postId,
-      })
-      .select()
-      .single();
-    if (!err && data) {
+
+    setError("");
+    try {
+      const { data, error: err } = await supabase
+        .from("posts")
+        .insert({
+          username: currentUser,
+          text: `Shared: "${post.text?.slice(0, 120) || ""}"`,
+          image_url: post.image_url || null,
+          image_urls: post.image_urls && post.image_urls.length > 0 ? post.image_urls : null,
+          video_url: post.video_url || null,
+          feeling: post.feeling || null,
+          link: post.link || null,
+          privacy: "public",
+          shared_from: postId,
+        })
+        .select()
+        .single();
+
+      if (err) throw err;
+
       setPosts((prev) => [
         {
           ...data,
@@ -316,7 +323,27 @@ const PostFeed = ({ sideNavbar }) => {
         },
         ...prev,
       ]);
+    } catch (err) {
+      console.error("Share to feed failed:", err);
+      setError(
+        err.message ||
+          "Couldn't share this post. Please try again."
+      );
     }
+  };
+
+  // ── Report a post ──
+  // Requires a `post_reports` table: post_id, reporter_username, reason,
+  // details (nullable), created_at. Add an insert policy that allows any
+  // logged-in user to insert their own report.
+  const handleReportPost = async (postId, reason, details) => {
+    const { error: err } = await supabase.from("post_reports").insert({
+      post_id: postId,
+      reporter_username: currentUser,
+      reason,
+      details: details || null,
+    });
+    if (err) throw err;
   };
 
   const handleDeletePost = async (postId) => {
@@ -335,23 +362,23 @@ const PostFeed = ({ sideNavbar }) => {
   };
 
   const handleEditPost = async (postId, updates) => {
-  const { data, error: editErr } = await supabase
-    .from("posts")
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq("id", postId)
-    .eq("username", currentUser)
-    .select()
-    .single();
+    const { data, error: editErr } = await supabase
+      .from("posts")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", postId)
+      .eq("username", currentUser)
+      .select()
+      .single();
 
-  if (editErr) {
-    setError(editErr.message || "Failed to update post.");
-    return;
-  }
+    if (editErr) {
+      setError(editErr.message || "Failed to update post.");
+      return;
+    }
 
-  setPosts((all) =>
-    all.map((p) => (p.id === postId ? { ...p, ...data } : p))
-  );
-};
+    setPosts((all) =>
+      all.map((p) => (p.id === postId ? { ...p, ...data } : p))
+    );
+  };
 
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
@@ -378,8 +405,6 @@ const PostFeed = ({ sideNavbar }) => {
 
   return (
     <>
-      {/* <SideNavbar sideNavbar={sideNavbar} /> */}
-
       <div className={`pf-feed${!sideNavbar ? " sidebar-closed" : ""}`}>
         {currentUser && currentUser !== "anonymous" ? (
           <PostComposer currentUser={currentUser} onPost={handleNewPost} />
@@ -436,9 +461,9 @@ const PostFeed = ({ sideNavbar }) => {
                 onShare={handleShare}
                 onDelete={handleDeletePost}
                 onEdit={handleEditPost}
+                onReport={handleReportPost}
               />
             </div>
-            {/* Google AdSense — one native-style unit every 5 posts */}
             {(index + 1) % 5 === 0 && (
               <AdUnit slot="7412839650" format="fluid" layout="in-feed" />
             )}

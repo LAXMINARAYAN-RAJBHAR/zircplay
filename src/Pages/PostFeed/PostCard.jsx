@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import EmojiPicker from "./EmojiPicker";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
+import ReportPostModal from "./ReportPostModal";
 
 const REACTIONS = [
   { key: "like", emoji: "👍", label: "Like", color: "#1877f2" },
@@ -568,6 +569,7 @@ const PostCard = ({
   onShare,
   onDelete,
   onEdit,
+  onReport,
 }) => {
   const [commentText, setCommentText] = useState("");
   const [showPicker, setShowPicker] = useState(false);
@@ -575,6 +577,7 @@ const PostCard = ({
   const [showMenu, setShowMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const [lightboxData, setLightboxData] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(post.text || "");
@@ -664,6 +667,24 @@ const PostCard = ({
     }
   };
 
+  const handleShareClick = () => {
+    if (!currentUser || currentUser === "anonymous") {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
+    setShowShareMenu((v) => !v);
+  };
+
+  const handleReportClick = () => {
+    if (!currentUser || currentUser === "anonymous") {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      setShowMenu(false);
+      return;
+    }
+    setShowReportModal(true);
+    setShowMenu(false);
+  };
+
   return (
     <>
       {lightboxData && (
@@ -671,6 +692,14 @@ const PostCard = ({
           images={lightboxData.images}
           startIndex={lightboxData.startIndex}
           onClose={() => setLightboxData(null)}
+        />
+      )}
+
+      {showReportModal && (
+        <ReportPostModal
+          post={post}
+          onClose={() => setShowReportModal(false)}
+          onReport={onReport}
         />
       )}
 
@@ -753,6 +782,14 @@ const PostCard = ({
                       }}
                     >
                       🗑️ Delete post
+                    </button>
+                  )}
+                  {post.username !== currentUser && (
+                    <button
+                      className="pf-dropdown-item pf-dropdown-danger"
+                      onClick={handleReportClick}
+                    >
+                      🚩 Report post
                     </button>
                   )}
                 </div>
@@ -974,10 +1011,7 @@ const PostCard = ({
 
             {/* Share */}
             <div className="pf-action-wrap" ref={shareRef}>
-              <button
-                className="pf-action-btn"
-                onClick={() => setShowShareMenu((v) => !v)}
-              >
+              <button className="pf-action-btn" onClick={handleShareClick}>
                 🔁 <span>Share</span>
               </button>
               {showShareMenu && (
