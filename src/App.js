@@ -9,7 +9,6 @@ import VideoUpload from "./Pages/VideoUpload/videoUpload";
 import SignUp from "./Pages/SignUp/signUp";
 import Reels from "./Component/Reels/reels";
 import Footer from "./Component/Footer/footer";
-import YouTubeSearch from "./Component/YouTubeSearch/youTubeSearch";
 import SearchResults from "./Component/SearchResults/searchResults";
 import Notifications from "./Component/Notifications/notifications";
 import ComingSoon from "./Pages/ComingSoon/comingSoon";
@@ -682,7 +681,6 @@ function App() {
               <Route path="/reels"          element={<Reels />} />
               <Route path="/reels/:id"      element={<Reels />} />
               <Route path="/search"         element={<SearchResults />} />
-              <Route path="/youtube"        element={<YouTubeSearch />} />
               <Route path="/notifications"  element={<Notifications currentUser={currentUser} />} />
 
               <Route path="/history"        element={<History      currentUser={currentUser} sideNavbar={sideNavbar} />} />
