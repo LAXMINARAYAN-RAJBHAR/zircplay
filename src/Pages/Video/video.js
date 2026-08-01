@@ -209,6 +209,7 @@ const Video = ({ sideNavbar }) => {
         setDbVideos(
           data.map((v) => ({
             id: String(v.id),
+            short_id: v.short_id, // alphanumeric alias used only for the share link
             src: v.video_url,
             thumbnail: v.thumbnail_url || getCloudinaryThumbnail(v.video_url),
             title: v.title,
@@ -397,8 +398,14 @@ const Video = ({ sideNavbar }) => {
     }
   };
 
+  // FIX: use the video's alphanumeric short_id in the shared link instead
+  // of the raw numeric id, so links pasted into WhatsApp/etc. show
+  // something like ?id=aB3xY9kLm2 instead of ?id=76. Falls back to the
+  // numeric id if short_id isn't available for some reason (e.g. a row
+  // created before the short_id migration ran), so this never breaks.
   const handleShare = () => {
-    const ogUrl = `https://zixplon.in/api/og?type=video&id=${id}`;
+    const shareId = video?.short_id || id;
+    const ogUrl = `https://zixplon.in/api/og?type=video&id=${shareId}`;
     if (navigator.share) {
       navigator
         .share({
