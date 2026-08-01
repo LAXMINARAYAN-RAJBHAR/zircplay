@@ -19,12 +19,6 @@ function getVideoThumbnail(videoUrl) {
   return null;
 }
 
-// Supabase can occasionally be slow to respond from an edge function's cold
-// start. WhatsApp/Facebook's crawler has a short timeout of its own — if we
-// don't answer in time, the crawler treats it as a failure and CACHES that
-// failure against this exact URL, often for days. This wraps the fetch so a
-// slow response degrades to the fallback branding instead of the whole
-// request hanging past the crawler's patience.
 const FETCH_TIMEOUT_MS = 4000;
 
 async function fetchWithTimeout(url, options, timeoutMs = FETCH_TIMEOUT_MS) {
@@ -68,14 +62,6 @@ function renderHtml({ type, title, description, image, url }) {
 </html>`;
 }
 
-// FIX: this used to be the fallback INSIDE the try block's og image chain,
-// but a total fetch failure (timeout, network error, Supabase down) skipped
-// straight to the catch block below and returned a page with NO og: tags
-// at all — the worst possible outcome, since Meta caches that "no preview"
-// result against the URL for a long time. Every code path now returns full,
-// valid OG tags — worst case it's generic ZIXPLON branding instead of the
-// real post, which is recoverable (a re-share/re-scrape fixes it) instead
-// of poisoning the cache with nothing.
 function fallbackHtml(type, url) {
   return renderHtml({
     type,
@@ -89,33 +75,29 @@ function fallbackHtml(type, url) {
 export default async function handler(req) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type");
-  const id = searchParams.get("id");
+  const id = searchParams.get("id"); // for video/reel this is now the short_id (alphanumeric)
 
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
-  // Cache-Control tells Meta/WhatsApp to treat this as fresh for a bounded
-  // window and then re-check, rather than caching indefinitely. Combined
-  // with the fallback above, even a bad scrape self-heals within an hour
-  // instead of needing a manual "Scrape Again" forever.
   const headers = {
     "content-type": "text/html",
     "cache-control": "public, max-age=3600, s-maxage=3600",
   };
 
-  const fallbackUrl =
-    type === "post"
-      ? `https://zixplon.in/feed?post=${id}`
-      : `https://zixplon.in/${type === "reel" ? `reels/db_${id}` : `video/${id}`}`;
+  // Generic fallback redirect target — we don't know the real numeric id
+  // yet at this point, so this only gets used if lookup fails entirely.
+  const genericFallbackUrl = "https://zixplon.in";
 
   if (!id || !type) {
-    return new Response(fallbackHtml(type || "post", fallbackUrl), { headers });
+    return new Response(fallbackHtml(type || "post", genericFallbackUrl), { headers });
   }
 
   try {
     let title, description, image, url;
 
     if (type === "post") {
+      // Posts are unaffected — they already use real uuid ids, unchanged.
       const res = await fetchWithTimeout(
         `${SUPABASE_URL}/rest/v1/posts?id=eq.${id}&select=*`,
         {
@@ -132,7 +114,7 @@ export default async function handler(req) {
       const item = data?.[0];
 
       if (!item) {
-        return new Response(fallbackHtml(type, fallbackUrl), { headers });
+        return new Response(fallbackHtml(type, `https://zixplon.in/feed`), { headers });
       }
 
       title = item?.username ? `${item.username} on ZIXPLON` : "Post on ZIXPLON";
@@ -144,9 +126,14 @@ export default async function handler(req) {
         "https://zixplon.in/logo192.png";
       url = `https://zixplon.in/feed?post=${id}`;
     } else {
+      // FIX: video/reel are now looked up by `short_id` (the alphanumeric
+      // alias) instead of the real numeric `id` — this is the only thing
+      // that changed. The redirect target `url` still uses the real
+      // internal `item.id` (or the reel's `db_<id>` form), so nothing
+      // about internal routing, likes, comments, or views changes at all.
       const table = type === "reel" ? "reels" : "videos";
       const res = await fetchWithTimeout(
-        `${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}&select=*`,
+        `${SUPABASE_URL}/rest/v1/${table}?short_id=eq.${id}&select=*`,
         {
           headers: {
             apikey: SUPABASE_ANON_KEY,
@@ -161,7 +148,7 @@ export default async function handler(req) {
       const item = data?.[0];
 
       if (!item) {
-        return new Response(fallbackHtml(type, fallbackUrl), { headers });
+        return new Response(fallbackHtml(type, genericFallbackUrl), { headers });
       }
 
       title = item?.title || "Watch on ZIXPLON";
@@ -171,16 +158,20 @@ export default async function handler(req) {
         item?.thumbnail ||
         getVideoThumbnail(item?.video_url) ||
         "https://zixplon.in/logo192.png";
-      url = `https://zixplon.in/${type === "reel" ? `reels/db_${id}` : `video/${id}`}`;
+
+      // Internal route still uses the REAL id — reels keep their existing
+      // `db_<id>` convention, videos keep their plain numeric id. This is
+      // exactly what the app already expects, so nothing downstream needs
+      // to change.
+      url =
+        type === "reel"
+          ? `https://zixplon.in/reels/db_${item.id}`
+          : `https://zixplon.in/video/${item.id}`;
     }
 
     return new Response(renderHtml({ type, title, description, image, url }), { headers });
   } catch (err) {
-    // Previously returned a bare error page with no og: tags at all —
-    // now falls back to valid generic branding instead, so a transient
-    // Supabase/network failure can never get a "no preview" result
-    // cached against this URL.
     console.error("og handler error:", err);
-    return new Response(fallbackHtml(type, fallbackUrl), { headers });
+    return new Response(fallbackHtml(type, genericFallbackUrl), { headers });
   }
 }
