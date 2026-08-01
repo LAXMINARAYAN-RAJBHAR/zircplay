@@ -354,11 +354,19 @@ const ReelItem = ({ reel, allReels }) => {
     setCommentText("");
   };
 
+  // FIX: use the reel's alphanumeric short_id in the shared link instead
+  // of the raw numeric id, so links pasted into WhatsApp/etc. show
+  // something like ?id=aB3xY9kLm2 instead of ?id=86. Falls back to the
+  // old numeric-id form if short_id isn't available for some reason
+  // (e.g. a row created before the short_id migration ran), so this
+  // never breaks. Everything else about the reel (likes, comments,
+  // views, remix chains, "New" badge tracking) is untouched — reel.id
+  // still keeps its existing `db_<realid>` form everywhere else.
   const handleShare = () => {
     const isDbReel = String(reel.id).startsWith("db_");
-    const dbId = isDbReel ? String(reel.id).replace("db_", "") : null;
+    const shareId = reel.short_id || String(reel.id).replace("db_", "");
     const url = isDbReel
-      ? `https://zixplon.in/api/og?type=reel&id=${dbId}`
+      ? `https://zixplon.in/api/og?type=reel&id=${shareId}`
       : `https://zixplon.in/reels/${reel.id}`;
     navigator.clipboard.writeText(url).catch(() => {});
     setShareToast(true);
@@ -886,6 +894,7 @@ const Reels = () => {
         setDbReels(
           data.map((r) => ({
             id:                    `db_${r.id}`,
+            short_id:               r.short_id, // alphanumeric alias used only for the share link
             src:                   r.video_url,
             thumbnail:             r.thumbnail || "https://picsum.photos/200/350?random=99",
             title:                 r.title    || "Untitled",
@@ -913,6 +922,7 @@ const Reels = () => {
         markReelFresh(`db_${r.id}`);
         setDbReels((prev) => [{
           id:                    `db_${r.id}`,
+          short_id:               r.short_id, // alphanumeric alias used only for the share link
           src:                   r.video_url,
           thumbnail:             r.thumbnail || "https://picsum.photos/200/350?random=99",
           title:                 r.title    || "Untitled",
