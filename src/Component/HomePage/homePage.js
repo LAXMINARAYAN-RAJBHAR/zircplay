@@ -2772,7 +2772,7 @@ const HomePage = ({ sideNavbar }) => {
         .select("*")
         .order("created_at", { ascending: false });
       if (!error && data) {
-        const newVideo = {
+        const formatted = data.map((v) => ({
   id: v.id,
   short_id: v.short_id,
   src: v.video_url,
@@ -2784,7 +2784,7 @@ const HomePage = ({ sideNavbar }) => {
   tags: [v.category || "All"],
   likes: v.likes ?? 0,
   created_at: v.created_at || null,
-};
+}));
         const videoIds = formatted.map((v) => String(v.id));
         const { data: likesData } = await supabase
           .from("likes")
