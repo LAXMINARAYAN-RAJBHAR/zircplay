@@ -1010,9 +1010,10 @@ const SaveMenuButton = ({
       icon: <span style={{ fontSize: 15 }}>🔗</span>,
       label: "Share",
       onClick: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const url = `https://zixplon-tawny.vercel.app/api/og?type=video&id=${videoId}`;
+  e.preventDefault();
+  e.stopPropagation();
+  const shareId = video?.short_id || videoId;
+  const url = `https://zixplon.in/api/og?type=video&id=${shareId}`;
 
         if (navigator.share) {
           navigator
@@ -2771,18 +2772,19 @@ const HomePage = ({ sideNavbar }) => {
         .select("*")
         .order("created_at", { ascending: false });
       if (!error && data) {
-        const formatted = data.map((v) => ({
-          id: v.id,
-          src: v.video_url,
-          thumbnail: v.thumbnail_url,
-          title: v.title,
-          duration: v.duration || "00:00",
-          channel: v.channel,
-          username: v.username || v.channel?.toLowerCase() || "unknown",
-          tags: [v.category || "All"],
-          likes: v.likes ?? 0,
-          created_at: v.created_at || null,
-        }));
+        const newVideo = {
+  id: v.id,
+  short_id: v.short_id,
+  src: v.video_url,
+  thumbnail: v.thumbnail_url,
+  title: v.title,
+  duration: v.duration || "00:00",
+  channel: v.channel,
+  username: v.username || v.channel?.toLowerCase() || "unknown",
+  tags: [v.category || "All"],
+  likes: v.likes ?? 0,
+  created_at: v.created_at || null,
+};
         const videoIds = formatted.map((v) => String(v.id));
         const { data: likesData } = await supabase
           .from("likes")
