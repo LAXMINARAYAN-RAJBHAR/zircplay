@@ -7,7 +7,9 @@ import "../../styles/libraryPages.css";
 
 export const logHistory = async (username, videoId) => {
   if (!username || !videoId) return;
-  await supabase.from("history").insert({ username, video_id: Number(videoId) });
+  // videoId is now a uuid string (post-migration) — do NOT wrap in Number(),
+  // that would produce NaN and fail the insert against the uuid column.
+  await supabase.from("history").insert({ username, video_id: videoId });
 };
 
 const History = ({ currentUser, sideNavbar }) => {
