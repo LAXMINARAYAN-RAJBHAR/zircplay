@@ -7,25 +7,59 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import "../../styles/libraryPages.css";
 
 const YourClips = ({ currentUser, sideNavbar }) => {
-  const [clips, setClips] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [playing, setPlaying] = useState(null);
+  const [clips, setClips]           = useState([]);
+  const [likeCounts, setLikeCounts] = useState({});
+  const [loading, setLoading]       = useState(true);
+  const [playing, setPlaying]       = useState(null);
   const username = currentUser || "";
 
   useEffect(() => {
     if (!username) { setLoading(false); setClips([]); return; }
-    const loadClips = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("clips")
-        .select("*")
-        .eq("username", username)
-        .order("created_at", { ascending: false });
-      if (!error && data) setClips(data);
-      setLoading(false);
-    };
     loadClips();
   }, [username]);
+
+  const loadClips = async () => {
+    setLoading(true);
+
+    // 1) Fetch the user's clips
+    const { data, error } = await supabase
+      .from("clips")
+      .select("*")
+      .eq("username", username)
+      .order("created_at", { ascending: false });
+
+    if (error || !data) {
+      setClips([]);
+      setLoading(false);
+      return;
+    }
+
+    setClips(data);
+
+    // 2) Fetch live like counts from the `likes` table instead of trusting
+    // any stale count column on `clips` (same fix as YourVideos/LikedVideos)
+    if (data.length > 0) {
+      const ids = data.map((c) => String(c.id));
+      const { data: likeRows, error: likeErr } = await supabase
+        .from("likes")
+        .select("content_id")
+        .eq("content_type", "clip")
+        .eq("reaction_type", "like")
+        .in("content_id", ids);
+
+      if (!likeErr && likeRows) {
+        const counts = {};
+        ids.forEach((id) => {
+          counts[id] = likeRows.filter((l) => l.content_id === id).length;
+        });
+        setLikeCounts(counts);
+      }
+    } else {
+      setLikeCounts({});
+    }
+
+    setLoading(false);
+  };
 
   const deleteClip = async (id, e) => {
     e.stopPropagation();
@@ -78,7 +112,9 @@ const YourClips = ({ currentUser, sideNavbar }) => {
               </div>
               <div className="lib-card-info">
                 <p className="lib-card-title">{clip.title}</p>
-                <p className="lib-card-meta">{formatDate(clip.created_at)}</p>
+                <p className="lib-card-meta">
+                  {formatDate(clip.created_at)} · 👍 {likeCounts[String(clip.id)] ?? 0}
+                </p>
               </div>
               <button className="lib-remove-btn lib-clip-delete" onClick={(e) => deleteClip(clip.id, e)}><DeleteOutlineIcon /></button>
             </div>
