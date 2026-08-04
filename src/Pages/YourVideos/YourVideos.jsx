@@ -12,18 +12,61 @@ const YourVideos = ({ currentUser, sideNavbar }) => {
 
   useEffect(() => {
     if (!username) { setLoading(false); setVideos([]); return; }
+
     const loadVideos = async () => {
       setLoading(true);
       setError("");
-      const { data, error: err } = await supabase
+
+      // 1) Fetch the user's videos (no more relying on a stale `likes` column)
+      const { data: videoRows, error: videosErr } = await supabase
         .from("videos")
-        .select("id, title, thumbnail_url, likes, created_at")
+        .select("id, title, thumbnail_url, created_at")
         .eq("username", username)
         .order("created_at", { ascending: false });
-      if (err) setError(`Videos fetch error: ${err.message}`);
-      else if (data) setVideos(data);
+
+      if (videosErr) {
+        setError(`Videos fetch error: ${videosErr.message}`);
+        setLoading(false);
+        return;
+      }
+
+      if (!videoRows || videoRows.length === 0) {
+        setVideos([]);
+        setLoading(false);
+        return;
+      }
+
+      const videoIds = videoRows.map((v) => v.id);
+
+      // 2) Fetch live likes for those video ids and compute counts manually
+      const { data: likeRows, error: likesErr } = await supabase
+        .from("likes")
+        .select("content_id")
+        .eq("content_type", "video")
+        .in("content_id", videoIds);
+
+      if (likesErr) {
+        // Don't fully block the page on a likes error — just show 0s and surface the issue
+        setError(`Likes fetch error: ${likesErr.message}`);
+        setVideos(videoRows.map((v) => ({ ...v, likeCount: 0 })));
+        setLoading(false);
+        return;
+      }
+
+      const likeCountMap = {};
+      (likeRows || []).forEach((l) => {
+        likeCountMap[l.content_id] = (likeCountMap[l.content_id] || 0) + 1;
+      });
+
+      const merged = videoRows.map((v) => ({
+        ...v,
+        likeCount: likeCountMap[v.id] || 0,
+      }));
+
+      setVideos(merged);
       setLoading(false);
     };
+
     loadVideos();
   }, [username]);
 
@@ -65,7 +108,7 @@ const YourVideos = ({ currentUser, sideNavbar }) => {
               <div className="lib-list-info">
                 <p className="lib-card-title">{v.title}</p>
                 <p className="lib-card-meta">{formatDate(v.created_at)}</p>
-                <p className="lib-card-meta">👍 {Number(v.likes ?? 0)}</p>
+                <p className="lib-card-meta">👍 {v.likeCount}</p>
               </div>
             </Link>
           ))}
