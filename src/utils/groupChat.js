@@ -83,6 +83,12 @@ export const markGroupRead = async (groupId, username) => {
     .match({ group_id: groupId, username });
 };
 
+// FIX: this previously did a plain `.insert(...)` with no `.select()`,
+// so it always returned `undefined` — the caller (GroupChatWindow's
+// handleSend) had no row to optimistically append to local state, which
+// is why sent messages only ever showed up after a refresh or whenever
+// the realtime event happened to arrive. Now returns the inserted row
+// so the UI can show the message immediately.
 export const sendGroupMessage = async ({
   groupId,
   senderUsername,
@@ -92,14 +98,20 @@ export const sendGroupMessage = async ({
   attachmentName,
   attachmentSize,
 }) => {
-  const { error } = await supabase.from("group_messages").insert({
-    group_id: groupId,
-    sender_username: senderUsername,
-    text: text || null,
-    attachment_url: attachmentUrl || null,
-    attachment_type: attachmentType || null,
-    attachment_name: attachmentName || null,
-    attachment_size: attachmentSize || null,
-  });
+  const { data, error } = await supabase
+    .from("group_messages")
+    .insert({
+      group_id: groupId,
+      sender_username: senderUsername,
+      text: text || null,
+      attachment_url: attachmentUrl || null,
+      attachment_type: attachmentType || null,
+      attachment_name: attachmentName || null,
+      attachment_size: attachmentSize || null,
+    })
+    .select()
+    .single();
+
   if (error) throw error;
+  return data;
 };
