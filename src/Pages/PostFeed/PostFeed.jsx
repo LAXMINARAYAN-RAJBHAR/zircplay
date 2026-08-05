@@ -19,6 +19,17 @@ const PostFeed = ({ sideNavbar }) => {
   const offsetRef = useRef(0);
   const currentUser = localStorage.getItem("username") || "anonymous";
 
+  // ── Infinite scroll sentinel ──
+  // A near-invisible div placed after the last post. When it scrolls
+  // into the viewport, loadMore() fires automatically — same
+  // IntersectionObserver pattern used for Reels autoplay detection.
+  const sentinelRef = useRef(null);
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(true);
+
+  useEffect(() => { loadingMoreRef.current = loadingMore; }, [loadingMore]);
+  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+
   const fetchPosts = useCallback(async (reset = false) => {
     try {
       const offset = reset ? 0 : offsetRef.current;
@@ -68,6 +79,12 @@ const PostFeed = ({ sideNavbar }) => {
     }
   }, [currentUser]);
 
+  const loadMore = useCallback(() => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return;
+    setLoadingMore(true);
+    fetchPosts(false);
+  }, [fetchPosts]);
+
   useEffect(() => {
     fetchPosts(true);
 
@@ -93,6 +110,23 @@ const PostFeed = ({ sideNavbar }) => {
 
     return () => supabase.removeChannel(channel);
   }, [fetchPosts]);
+
+  // ── Infinite scroll observer ──
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { rootMargin: "600px" } // start loading well before the sentinel is actually visible
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   // ── Handle shared post links: /feed?post=<id> ──────────────────────────
   useEffect(() => {
@@ -277,14 +311,6 @@ const PostFeed = ({ sideNavbar }) => {
   };
 
   // ── Share to feed ──
-  // FIX: this previously swallowed any insert error silently (`if (!err
-  // && data)`), so a failed share looked like nothing happened at all —
-  // no error surfaced anywhere. It also had no anonymous-user guard
-  // (every other action here does), and only copied `image_url`,
-  // dropping `image_urls` (multi-image posts), `video_url`, and
-  // `feeling` from the original post. Now: guards anonymous users like
-  // Like/Comment do, surfaces real errors via the existing `pf-error`
-  // banner + console, and carries over the full original content.
   const handleShare = async (postId) => {
     if (!currentUser || currentUser === "anonymous") {
       window.dispatchEvent(new CustomEvent("openLogin"));
@@ -333,9 +359,6 @@ const PostFeed = ({ sideNavbar }) => {
   };
 
   // ── Report a post ──
-  // Requires a `post_reports` table: post_id, reporter_username, reason,
-  // details (nullable), created_at. Add an insert policy that allows any
-  // logged-in user to insert their own report.
   const handleReportPost = async (postId, reason, details) => {
     const { error: err } = await supabase.from("post_reports").insert({
       post_id: postId,
@@ -378,12 +401,6 @@ const PostFeed = ({ sideNavbar }) => {
     setPosts((all) =>
       all.map((p) => (p.id === postId ? { ...p, ...data } : p))
     );
-  };
-
-  const loadMore = () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    fetchPosts(false);
   };
 
   if (loading) {
@@ -470,14 +487,20 @@ const PostFeed = ({ sideNavbar }) => {
           </React.Fragment>
         ))}
 
+        {/* ── Infinite scroll sentinel + status row ──
+            FIX: replaced the manual "Load more posts" button with this
+            sentinel div. IntersectionObserver above watches it and calls
+            loadMore() automatically once it scrolls near the viewport
+            (rootMargin: 600px means it fires a bit early, before the
+            user actually hits the bottom, so there's no visible pause). */}
         {hasMore && (
-          <button
-            className="pf-load-more"
-            onClick={loadMore}
-            disabled={loadingMore}
-          >
-            {loadingMore ? "Loading…" : "Load more posts"}
-          </button>
+          <div ref={sentinelRef} className="pf-scroll-sentinel">
+            {loadingMore && <span className="pf-scroll-loading">Loading more posts…</span>}
+          </div>
+        )}
+
+        {!hasMore && posts.length > 0 && (
+          <p className="pf-scroll-end">You're all caught up 🎉</p>
         )}
       </div>
     </>
