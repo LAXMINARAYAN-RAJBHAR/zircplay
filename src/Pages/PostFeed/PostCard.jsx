@@ -590,6 +590,17 @@ const PostCard = ({
 
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
 
+  // ── Action bar animation state ──
+  // likePopKey / burstKey: replayed via React key remount rather than
+  // toggling classes, since remounting an element always restarts its
+  // CSS animation cleanly (no need to force a reflow).
+  const [likePopKey, setLikePopKey] = useState(0);
+  const [burstKey, setBurstKey] = useState(null);
+  const [commentBounceKey, setCommentBounceKey] = useState(0);
+  const [countPopKey, setCountPopKey] = useState(0);
+  const prevReactionRef = useRef(post.myReaction);
+  const prevTotalRef = useRef(0);
+
   const pickerRef = useRef();
   const shareRef = useRef();
   const menuRef = useRef();
@@ -602,6 +613,33 @@ const PostCard = ({
     0,
   );
   const myReact = REACTIONS.find((r) => r.key === post.myReaction);
+
+  // Fire the like-burst + icon pop only when going from "no reaction" to
+  // "reacted" — not on every reaction swap, so picking a different
+  // reaction doesn't retrigger the confetti-style burst repeatedly.
+  useEffect(() => {
+    const prev = prevReactionRef.current;
+    prevReactionRef.current = post.myReaction;
+    if (!prev && post.myReaction) {
+      setLikePopKey((k) => k + 1);
+      setBurstKey(Date.now());
+    }
+  }, [post.myReaction]);
+
+  useEffect(() => {
+    if (burstKey === null) return;
+    const t = setTimeout(() => setBurstKey(null), 650);
+    return () => clearTimeout(t);
+  }, [burstKey]);
+
+  // Small pop on the reaction count whenever it changes, in either
+  // direction (someone else's like landing counts too, via realtime).
+  useEffect(() => {
+    if (prevTotalRef.current !== totalReactions) {
+      setCountPopKey((k) => k + 1);
+      prevTotalRef.current = totalReactions;
+    }
+  }, [totalReactions]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -945,7 +983,9 @@ const PostCard = ({
                   const r = REACTIONS.find((x) => x.key === k);
                   return r ? <span key={k}>{r.emoji}</span> : null;
                 })}
-              <span className="pf-reaction-count">{totalReactions}</span>
+              <span className="pf-reaction-count pf-count-pop" key={countPopKey}>
+                {totalReactions}
+              </span>
             </div>
             <button
               className="pf-text-btn"
@@ -971,16 +1011,36 @@ const PostCard = ({
                     return;
                   }
                   if (post.myReaction) onReaction(post.id, post.myReaction);
-                  else setShowPicker((v) => !v);
+                  else {
+                    onReaction(post.id, "like");
+                  }
                 }}
                 onMouseEnter={() => {
                   if (currentUser && currentUser !== "anonymous")
                     setShowPicker(true);
                 }}
               >
-                {myReact ? myReact.emoji : "👍"}
+                <span className="pf-action-icon pf-icon-pop" key={likePopKey}>
+                  {myReact ? myReact.emoji : "👍"}
+                </span>
                 <span>{myReact ? myReact.label : "Like"}</span>
               </button>
+
+              {/* Signature moment: a small particle burst radiating from
+                  the Like button the instant a reaction lands, echoing
+                  the tactile "pop" of a physical button press. */}
+              {burstKey !== null && (
+                <span
+                  className="pf-like-burst"
+                  key={burstKey}
+                  style={{ "--pf-burst-color": myReact?.color || "var(--zx-primary)" }}
+                >
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <span key={i} />
+                  ))}
+                </span>
+              )}
+
               {showPicker && (
                 <div
                   className="pf-reaction-picker"
@@ -1011,16 +1071,21 @@ const PostCard = ({
                   window.dispatchEvent(new CustomEvent("openLogin"));
                   return;
                 }
+                setCommentBounceKey((k) => k + 1);
                 onToggleComments(post.id);
               }}
             >
-              💬 <span>Comment</span>
+              <span className="pf-action-icon pf-comment-bounce" key={commentBounceKey}>
+                💬
+              </span>
+              <span>Comment</span>
             </button>
 
             {/* Share */}
             <div className="pf-action-wrap" ref={shareRef}>
               <button className="pf-action-btn" onClick={handleShareClick}>
-                🔁 <span>Share</span>
+                <span className="pf-action-icon pf-share-icon">🔁</span>
+                <span>Share</span>
               </button>
               {showShareMenu && (
                 <div className="pf-dropdown pf-dropdown-up">

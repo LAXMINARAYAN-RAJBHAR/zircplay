@@ -546,38 +546,6 @@
 
 .pf-text-btn:hover { color: var(--zx-primary); }
 
-/* Action bar */
-.pf-action-bar {
-  display: flex;
-  border-top: 2px solid var(--zx-border);
-  padding: 2px 8px;
-  gap: 2px;
-}
-
-.pf-action-wrap { flex: 1; position: relative; }
-
-.pf-action-btn {
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: var(--zx-text3);
-  font-family: 'Nunito', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 9px 6px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.15s;
-}
-
-.pf-action-btn:hover { background: var(--zx-bg); color: var(--zx-primary); }
-.pf-action-btn.pf-action-active { color: var(--zx-primary); font-weight: 800; }
-.pf-action-btn span { font-size: 11px; }
-
 /* Reaction picker */
 .pf-reaction-picker {
   position: absolute;
@@ -1315,4 +1283,225 @@
   font-weight: 700;
   color: var(--zx-text3);
   padding: 16px 0 8px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ACTION BAR REDESIGN — replace the existing rules of the same name
+   in PostFeed.css with these. New keyframes/classes at the bottom are
+   additive.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Action bar ── */
+.pf-action-bar {
+  display: flex;
+  border-top: 2px solid var(--zx-border);
+  padding: 6px 10px;
+  gap: 6px;
+}
+
+.pf-action-wrap { flex: 1; position: relative; }
+
+.pf-action-btn {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--zx-text3);
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 10px 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.12s ease;
+}
+
+.pf-action-btn:hover {
+  background: var(--zx-bg);
+  color: var(--zx-primary);
+  transform: translateY(-1px);
+}
+
+.pf-action-btn:active {
+  transform: scale(0.94);
+  transition-duration: 0.06s;
+}
+
+.pf-action-btn.pf-action-active {
+  color: var(--zx-primary);
+  font-weight: 800;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.pf-action-btn span:last-child { font-size: 11px; }
+
+/* Icon wrapper shared by all three buttons — gives every icon a
+   consistent hover lift, with each button adding its own extra motion
+   on top (rotate for like, wiggle for comment, slide for share). */
+.pf-action-icon {
+  display: inline-flex;
+  font-size: 16px;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pf-action-btn:hover .pf-action-icon {
+  transform: scale(1.12);
+}
+
+/* Share icon: slides and tilts on hover, like it's about to launch */
+.pf-share-icon {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pf-action-btn:hover .pf-share-icon {
+  transform: translateX(2px) rotate(14deg);
+}
+
+/* ── Replayed pop/bounce animations (triggered via React key remount) ── */
+@keyframes pf-icon-pop {
+  0%   { transform: scale(0.55); }
+  55%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.pf-icon-pop {
+  animation: pf-icon-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes pf-comment-bounce {
+  0%   { transform: scale(1) rotate(0); }
+  35%  { transform: scale(1.25) rotate(-10deg); }
+  65%  { transform: scale(0.95) rotate(6deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+.pf-comment-bounce {
+  animation: pf-comment-bounce 0.45s ease;
+}
+
+/* ── Like burst: signature moment. A small ring of colored particles
+   fires from the Like button the instant a reaction is newly applied. ── */
+.pf-like-burst {
+  position: absolute;
+  top: 18px;
+  left: 26px;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.pf-like-burst span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pf-burst-color, var(--zx-primary));
+  opacity: 0;
+  animation: pf-burst-dot 0.6s ease-out forwards;
+}
+
+.pf-like-burst span:nth-child(1) { --tx: -18px; --ty: -16px; animation-delay: 0s; }
+.pf-like-burst span:nth-child(2) { --tx: 2px;   --ty: -24px; animation-delay: 0.02s; }
+.pf-like-burst span:nth-child(3) { --tx: 20px;  --ty: -14px; animation-delay: 0.04s; }
+.pf-like-burst span:nth-child(4) { --tx: -24px; --ty: 2px;   animation-delay: 0.01s; }
+.pf-like-burst span:nth-child(5) { --tx: 24px;  --ty: 2px;   animation-delay: 0.03s; }
+.pf-like-burst span:nth-child(6) { --tx: -16px; --ty: 18px;  animation-delay: 0.05s; }
+.pf-like-burst span:nth-child(7) { --tx: 2px;   --ty: 22px;  animation-delay: 0.02s; }
+.pf-like-burst span:nth-child(8) { --tx: 16px;  --ty: 18px;  animation-delay: 0.04s; }
+
+@keyframes pf-burst-dot {
+  0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.3); }
+}
+
+/* ── Reaction picker: springy staggered pop-in, livelier hover ── */
+.pf-reaction-picker {
+  position: absolute;
+  bottom: 50px;
+  left: 0;
+  background: var(--zx-surface);
+  border: 2px solid var(--zx-border);
+  border-radius: 24px;
+  padding: 8px 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 50;
+  box-shadow: 0 10px 36px rgba(124, 58, 237, 0.18);
+  animation: pf-picker-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: bottom left;
+}
+
+@keyframes pf-picker-in {
+  0%   { opacity: 0; transform: scale(0.7) translateY(6px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.pf-reaction-pick-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: pf-pick-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.pf-reaction-pick-btn:nth-child(1) { animation-delay: 0.00s; }
+.pf-reaction-pick-btn:nth-child(2) { animation-delay: 0.03s; }
+.pf-reaction-pick-btn:nth-child(3) { animation-delay: 0.06s; }
+.pf-reaction-pick-btn:nth-child(4) { animation-delay: 0.09s; }
+.pf-reaction-pick-btn:nth-child(5) { animation-delay: 0.12s; }
+.pf-reaction-pick-btn:nth-child(6) { animation-delay: 0.15s; }
+
+@keyframes pf-pick-pop-in {
+  0%   { opacity: 0; transform: scale(0) translateY(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.pf-reaction-pick-btn:hover {
+  transform: scale(1.5) translateY(-6px) rotate(-8deg);
+}
+
+/* ── Share dropdown: spring slide-up instead of a flat appear ── */
+.pf-dropdown-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+  animation: pf-dropdown-in 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: bottom right;
+}
+
+@keyframes pf-dropdown-in {
+  0%   { opacity: 0; transform: scale(0.9) translateY(6px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── Reaction count: small pop when the total changes ── */
+@keyframes pf-count-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+.pf-count-pop {
+  display: inline-block;
+  animation: pf-count-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── Respect reduced-motion preferences ── */
+@media (prefers-reduced-motion: reduce) {
+  .pf-action-icon,
+  .pf-share-icon,
+  .pf-icon-pop,
+  .pf-comment-bounce,
+  .pf-like-burst span,
+  .pf-reaction-picker,
+  .pf-reaction-pick-btn,
+  .pf-dropdown-up,
+  .pf-count-pop {
+    animation: none !important;
+    transition: none !important;
+  }
 }
