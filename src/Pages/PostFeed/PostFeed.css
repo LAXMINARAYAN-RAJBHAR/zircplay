@@ -1289,30 +1289,3 @@
   padding: 8px 2px;
 }
 
-/* ── ADD TO PostFeed.css ──
-   Supports the infinite-scroll sentinel in PostFeed.jsx, replacing the
-   old .pf-load-more button. That class can be removed if nothing else
-   uses it. */
-
-.pf-scroll-sentinel {
-  display: flex;
-  justify-content: center;
-  padding: 16px 0;
-  min-height: 40px;
-}
-
-.pf-scroll-loading {
-  font-family: 'Nunito', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--zx-text3);
-}
-
-.pf-scroll-end {
-  text-align: center;
-  font-family: 'Nunito', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--zx-text3);
-  padding: 16px 0 8px;
-}
