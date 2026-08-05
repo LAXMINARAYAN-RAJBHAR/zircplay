@@ -1,13 +1,74 @@
 // /api/link-preview.js
-// Vercel Edge Function — fetches Open Graph metadata for any pasted URL
-// so post links show a real title/description/thumbnail instead of a
-// generic "Link from <domain>" card.
+// Vercel Edge Function — fetches Open Graph / oEmbed metadata for any
+// pasted URL so post links show a real title/description/thumbnail.
+//
+// Strategy, in order:
+//   1. Known-provider oEmbed fast path (YouTube, Vimeo, Dailymotion,
+//      SoundCloud, TikTok, Reddit, Spotify, CodePen) — most reliable
+//      source for these, and avoids bot-blocking entirely since these
+//      are public, unauthenticated JSON APIs made for exactly this.
+//   2. Generic fetch of the page + parse of Open Graph / Twitter meta
+//      tags, PLUS oEmbed discovery via <link rel="alternate"
+//      type="application/json+oembed"> if the page advertises one
+//      (this covers many sites not in the hardcoded provider list).
+//   3. Plain domain-card fallback if nothing else worked.
 //
 // Usage: GET /api/link-preview?url=<encoded url>
 
 export const config = { runtime: "edge" };
 
-const YOUTUBE_HOSTS = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"];
+// ── Known oEmbed providers ──────────────────────────────────────────────
+// Each entry: hosts to match, and a function building the oEmbed request
+// URL. All of these are public, no-auth-required oEmbed endpoints.
+const OEMBED_PROVIDERS = [
+  {
+    name: "youtube",
+    hosts: ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"],
+    endpoint: (url) => `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+  },
+  {
+    name: "vimeo",
+    hosts: ["vimeo.com", "www.vimeo.com", "player.vimeo.com"],
+    endpoint: (url) => `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: "dailymotion",
+    hosts: ["dailymotion.com", "www.dailymotion.com", "dai.ly"],
+    endpoint: (url) => `https://www.dailymotion.com/services/oembed?url=${encodeURIComponent(url)}&format=json`,
+  },
+  {
+    name: "soundcloud",
+    hosts: ["soundcloud.com", "www.soundcloud.com"],
+    endpoint: (url) => `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: "tiktok",
+    hosts: ["tiktok.com", "www.tiktok.com"],
+    endpoint: (url) => `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: "reddit",
+    hosts: ["reddit.com", "www.reddit.com", "old.reddit.com"],
+    endpoint: (url) => `https://www.reddit.com/oembed?url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: "spotify",
+    hosts: ["open.spotify.com"],
+    endpoint: (url) => `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: "codepen",
+    hosts: ["codepen.io"],
+    endpoint: (url) => `https://codepen.io/api/oembed?url=${encodeURIComponent(url)}&format=json`,
+  },
+];
+
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+};
 
 function stripWww(hostname) {
   return hostname.replace(/^www\./, "");
@@ -29,7 +90,16 @@ function decodeEntities(str) {
     .replace(/&#39;/g, "'");
 }
 
-function extractMeta(html) {
+function resolveUrl(maybeRelative, baseUrl) {
+  if (!maybeRelative) return null;
+  try {
+    return new URL(maybeRelative, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractMeta(html, baseUrl) {
   const metaTags = [...html.matchAll(/<meta\s+[^>]*>/gi)].map((m) => m[0]);
   const result = {};
 
@@ -46,7 +116,7 @@ function extractMeta(html) {
       result.description = decodeEntities(content);
     }
     if ((key === "og:image" || key === "og:image:secure_url" || key === "twitter:image") && !result.image) {
-      result.image = content;
+      result.image = resolveUrl(content, baseUrl);
     }
     if (key === "og:site_name" && !result.siteName) {
       result.siteName = decodeEntities(content);
@@ -58,7 +128,34 @@ function extractMeta(html) {
     if (titleMatch) result.title = decodeEntities(titleMatch[1].trim());
   }
 
+  // ── oEmbed discovery: many sites (not just the hardcoded providers
+  // above) advertise an oEmbed endpoint via a <link> tag. If present,
+  // the caller can fetch it as a secondary pass to fill in gaps
+  // (especially thumbnail_url, which some sites omit from og:image). ──
+  const oembedLinkMatch = html.match(
+    /<link[^>]+type=["']application\/json\+oembed["'][^>]*>/i
+  );
+  if (oembedLinkMatch) {
+    result.oembedUrl = resolveUrl(getAttr(oembedLinkMatch[0], "href"), baseUrl);
+  }
+
   return result;
+}
+
+function findProvider(hostname) {
+  const host = hostname.toLowerCase();
+  return OEMBED_PROVIDERS.find((p) => p.hosts.includes(host));
+}
+
+async function tryOembed(endpointUrl) {
+  try {
+    const res = await fetch(endpointUrl, { headers: BROWSER_HEADERS });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 function jsonResponse(body, status = 200) {
@@ -96,55 +193,58 @@ export default async function handler(req) {
     image: null,
   };
 
-  // ── YouTube fast path: their oEmbed endpoint is public, fast, and far
-  // more reliable than scraping the watch page for meta tags. ──
-  if (YOUTUBE_HOSTS.includes(parsed.hostname.toLowerCase())) {
-    try {
-      const oembedRes = await fetch(
-        `https://www.youtube.com/oembed?url=${encodeURIComponent(parsed.toString())}&format=json`
-      );
-      if (oembedRes.ok) {
-        const oembed = await oembedRes.json();
-        return jsonResponse({
-          url: parsed.toString(),
-          domain,
-          title: oembed.title || fallback.title,
-          desc: oembed.author_name ? `by ${oembed.author_name}` : parsed.toString(),
-          image: oembed.thumbnail_url || null,
-        });
-      }
-    } catch {
-      // fall through to generic OG scraping below
+  // ── 1) Known-provider oEmbed fast path ──
+  const provider = findProvider(parsed.hostname);
+  if (provider) {
+    const data = await tryOembed(provider.endpoint(parsed.toString()));
+    if (data) {
+      return jsonResponse({
+        url: parsed.toString(),
+        domain,
+        title: data.title || fallback.title,
+        desc: data.author_name ? `by ${data.author_name}` : parsed.toString(),
+        image: data.thumbnail_url || null,
+      });
     }
+    // fall through to generic path if the provider's oEmbed call failed
   }
 
-  // ── Generic path: fetch the page and parse Open Graph / Twitter meta tags.
-  // Note: some sites (Instagram, Facebook, X/Twitter) actively block
-  // server-side scraping without login, so those may fall back to a plain
-  // domain card even though the request itself succeeds. ──
+  // ── 2) Generic fetch + OG parsing (+ oEmbed discovery) ──
   try {
     const res = await fetch(parsed.toString(), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; ZixplonLinkPreview/1.0; +https://zixplon.in)",
-      },
+      headers: BROWSER_HEADERS,
       redirect: "follow",
     });
 
     const contentType = res.headers.get("content-type") || "";
-    if (!res.ok || !contentType.includes("text/html")) {
+    if (!res.ok || !contentType.includes("html")) {
       return jsonResponse(fallback);
     }
 
     const html = await res.text();
-    const meta = extractMeta(html.slice(0, 150000)); // cap for performance
+    const meta = extractMeta(html.slice(0, 200000), parsed.toString()); // cap for performance
+
+    let image = meta.image || null;
+    let title = meta.title || fallback.title;
+    let desc = meta.description || fallback.desc;
+
+    // If the page advertises an oEmbed endpoint and we're still missing
+    // an image, try it — this fills in a lot of the "site not in our
+    // provider list" gaps (WordPress sites, Flickr, many blogs, etc.)
+    if (!image && meta.oembedUrl) {
+      const oembedData = await tryOembed(meta.oembedUrl);
+      if (oembedData) {
+        image = oembedData.thumbnail_url || image;
+        title = oembedData.title || title;
+      }
+    }
 
     return jsonResponse({
       url: parsed.toString(),
       domain,
-      title: meta.title || fallback.title,
-      desc: meta.description || fallback.desc,
-      image: meta.image || null,
+      title,
+      desc,
+      image,
     });
   } catch {
     return jsonResponse(fallback);
