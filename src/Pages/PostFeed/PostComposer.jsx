@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "../../config/supabase";
 import axios from "axios";
 import EmojiPicker from "./EmojiPicker";
@@ -8,6 +8,7 @@ const CLOUDINARY_PRESET = "zixplon-data";
 
 const MAX_IMAGES = 6;
 const MAX_VIDEO_MB = 100; // adjust to your Cloudinary plan's limit
+const LINK_PREVIEW_DEBOUNCE_MS = 600;
 
 const PRIVACY_OPTIONS = [
   { value: "public", label: "Public", icon: "🌐" },
@@ -26,6 +27,7 @@ const PostComposer = ({ currentUser, onPost }) => {
   const [videoFile, setVideoFile] = useState(null); // ← NEW: { file, preview }
   const [linkUrl, setLinkUrl] = useState("");
   const [linkPreview, setLinkPreview] = useState(null);
+  const [fetchingPreview, setFetchingPreview] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [showFeelings, setShowFeelings] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -36,6 +38,13 @@ const PostComposer = ({ currentUser, onPost }) => {
   const [error, setError] = useState("");
   const fileRef = useRef();
   const videoRef = useRef(); // ← NEW
+  const linkDebounceRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (linkDebounceRef.current) clearTimeout(linkDebounceRef.current);
+    };
+  }, []);
 
   const initials = currentUser.slice(0, 2).toUpperCase();
   const canPost = text.trim() || imageFiles.length > 0 || videoFile || linkUrl;
@@ -119,15 +128,55 @@ const PostComposer = ({ currentUser, onPost }) => {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const handleLinkInput = (val) => {
-    setLinkUrl(val);
-    if (!val) { setLinkPreview(null); return; }
+  // ── Real link preview: fetches Open Graph metadata (title, description,
+  // thumbnail image) from /api/link-preview instead of faking a card from
+  // just the domain name. Debounced so we don't hit the API on every
+  // keystroke while the user is still typing/pasting the URL. ──
+  const fetchLinkPreview = async (rawUrl) => {
+    let parsedUrl;
     try {
-      const domain = new URL(val).hostname;
-      setLinkPreview({ url: val, domain, title: `Link from ${domain}`, desc: val });
+      parsedUrl = new URL(rawUrl);
     } catch {
       setLinkPreview(null);
+      setFetchingPreview(false);
+      return;
     }
+
+    setFetchingPreview(true);
+    try {
+      const res = await axios.get("/api/link-preview", {
+        params: { url: parsedUrl.toString() },
+      });
+      setLinkPreview(res.data);
+    } catch {
+      // API failed — fall back to a plain domain card rather than nothing
+      const domain = parsedUrl.hostname.replace(/^www\./, "");
+      setLinkPreview({
+        url: parsedUrl.toString(),
+        domain,
+        title: `Link from ${domain}`,
+        desc: parsedUrl.toString(),
+        image: null,
+      });
+    } finally {
+      setFetchingPreview(false);
+    }
+  };
+
+  const handleLinkInput = (val) => {
+    setLinkUrl(val);
+
+    if (linkDebounceRef.current) clearTimeout(linkDebounceRef.current);
+
+    if (!val.trim()) {
+      setLinkPreview(null);
+      setFetchingPreview(false);
+      return;
+    }
+
+    linkDebounceRef.current = setTimeout(() => {
+      fetchLinkPreview(val.trim());
+    }, LINK_PREVIEW_DEBOUNCE_MS);
   };
 
   const uploadImageToCloudinary = async (file, onProgress) => {
@@ -217,6 +266,7 @@ const PostComposer = ({ currentUser, onPost }) => {
       removeVideo();
       setLinkUrl("");
       setLinkPreview(null);
+      setFetchingPreview(false);
       setShowLinkInput(false);
       setFeeling("");
       setShowFeelings(false);
@@ -290,8 +340,20 @@ const PostComposer = ({ currentUser, onPost }) => {
             />
           )}
 
-          {linkPreview && (
+          {fetchingPreview && (
+            <div className="pf-link-loading">Fetching link preview…</div>
+          )}
+
+          {!fetchingPreview && linkPreview && (
             <div className="pf-link-preview">
+              {linkPreview.image && (
+                <img
+                  src={linkPreview.image}
+                  alt=""
+                  className="pf-link-image"
+                  loading="lazy"
+                />
+              )}
               <div className="pf-link-bar" />
               <div className="pf-link-body">
                 <p className="pf-link-domain">{linkPreview.domain}</p>

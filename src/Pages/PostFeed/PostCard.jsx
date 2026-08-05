@@ -914,6 +914,14 @@ const PostCard = ({
                 rel="noreferrer"
                 className="pf-link-preview"
               >
+                {post.link.image && (
+                  <img
+                    src={post.link.image}
+                    alt=""
+                    className="pf-link-image"
+                    loading="lazy"
+                  />
+                )}
                 <div className="pf-link-bar" />
                 <div className="pf-link-body">
                   <p className="pf-link-domain">{post.link.domain}</p>
