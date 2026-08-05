@@ -62,13 +62,24 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     loadMembers();
   }, [group.id, currentUser, loadMembers]);
 
+  // ── Realtime listener ──
+  // FIX: this used to blindly append every INSERT event, including the
+  // one that echoes back the message THIS client just sent — but since
+  // handleSend now appends the sent message locally right away (see
+  // below), we need to dedupe here by id so the realtime echo doesn't
+  // add a second copy of the same message.
   useEffect(() => {
     const channel = supabase
       .channel(`group-messages-${group.id}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` },
-        (payload) => setMessages((prev) => [...prev, payload.new]),
+        (payload) => {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
+        },
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
@@ -147,7 +158,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         setUploading(false);
       }
 
-      await sendGroupMessage({
+      const sentMessage = await sendGroupMessage({
         groupId: group.id,
         senderUsername: currentUser,
         text: trimmed,
@@ -156,6 +167,19 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         attachmentName: attachment_name,
         attachmentSize: attachment_size,
       });
+
+      // ── FIX: append the message locally right away instead of waiting
+      // for the realtime INSERT event to come back around. This is what
+      // was causing "need to refresh every time" — the UI previously had
+      // no source of truth for the just-sent message other than realtime,
+      // which can lag or, in some Supabase project configs, not reliably
+      // echo back to the very client that triggered the insert. ──
+      if (sentMessage && sentMessage.id) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === sentMessage.id)) return prev;
+          return [...prev, sentMessage];
+        });
+      }
 
       if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
       setPendingAttachment(null);
