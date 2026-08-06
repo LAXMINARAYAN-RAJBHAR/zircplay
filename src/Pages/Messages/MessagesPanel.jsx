@@ -118,6 +118,14 @@ const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
 // huge upload. Auto-stops and hands off to the preview stage.
 const MAX_VOICE_SECONDS = 180;
 
+// ── Typing indicator tuning ──
+// How long after the last keystroke we broadcast "stopped typing".
+const TYPING_STOP_DELAY_MS = 1500;
+// Safety net: if a "stopped typing" broadcast is ever lost (dropped
+// connection, tab closed mid-type, etc.) we auto-clear the indicator on
+// the receiving side after this long regardless.
+const TYPING_AUTO_CLEAR_MS = 4000;
+
 const EMOJI_LIST = [
   "😀",
   "😁",
@@ -209,6 +217,18 @@ const uploadToCloudinary = async (file, resourceType) => {
   const data = await res.json();
   return data.secure_url;
 };
+
+// ── Small three-dot "typing…" bubble, rendered as its own row in the
+// message list, styled to match the other person's bubble shape. ──
+const TypingBubble = () => (
+  <div className="mp-bubble-row">
+    <div className="mp-typing-bubble" aria-label="typing">
+      <span />
+      <span />
+      <span />
+    </div>
+  </div>
+);
 
 // ── Compact custom audio player used for both the pre-send preview and
 // the sent voice-message bubble. Built instead of native <audio controls>
@@ -332,6 +352,19 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   // ── Presence / last-seen ──
   const { onlineUsers, getLastSeen } = usePresence();
   const [activeUserLastSeen, setActiveUserLastSeen] = useState(null);
+
+  // ── Typing indicator ──
+  // otherTyping: whether the person we're chatting with is currently typing.
+  // typingChannelRef: the Supabase broadcast channel scoped to this
+  // conversation — created fresh whenever activeConvo changes.
+  // stopTypingTimeoutRef: debounce timer that sends "stopped typing" a
+  // moment after the user stops pressing keys.
+  // autoClearTimeoutRef: safety timer on the RECEIVING side in case the
+  // other person's "stopped typing" broadcast never arrives.
+  const [otherTyping, setOtherTyping] = useState(false);
+  const typingChannelRef = useRef(null);
+  const stopTypingTimeoutRef = useRef(null);
+  const autoClearTimeoutRef = useRef(null);
 
   // ── Group chat + Broadcast lists ──
   const [groups, setGroups] = useState([]);
@@ -815,6 +848,72 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     return () => supabase.removeChannel(channel);
   }, [activeConvo]);
 
+  // ── Typing indicator: broadcast channel scoped to this conversation ──
+  // Uses Supabase Realtime's ephemeral "broadcast" feature rather than a
+  // database table — typing status is inherently transient and doesn't
+  // need to be persisted, queried later, or survive a page reload.
+  useEffect(() => {
+    // Reset whenever we leave/switch conversations.
+    setOtherTyping(false);
+    clearTimeout(autoClearTimeoutRef.current);
+    clearTimeout(stopTypingTimeoutRef.current);
+
+    if (!activeConvo || !currentUser) {
+      typingChannelRef.current = null;
+      return;
+    }
+
+    const channel = supabase.channel(`typing:${activeConvo.id}`, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (!payload || payload.username === currentUser) return;
+        setOtherTyping(!!payload.typing);
+        clearTimeout(autoClearTimeoutRef.current);
+        if (payload.typing) {
+          autoClearTimeoutRef.current = setTimeout(
+            () => setOtherTyping(false),
+            TYPING_AUTO_CLEAR_MS,
+          );
+        }
+      })
+      .subscribe();
+
+    typingChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      typingChannelRef.current = null;
+      clearTimeout(autoClearTimeoutRef.current);
+      clearTimeout(stopTypingTimeoutRef.current);
+    };
+  }, [activeConvo?.id, currentUser]);
+
+  // Called on every keystroke in the message input. Broadcasts "typing"
+  // immediately, then debounces a "stopped typing" broadcast for
+  // TYPING_STOP_DELAY_MS after the last keystroke.
+  const handleTypingInput = () => {
+    const channel = typingChannelRef.current;
+    if (!channel) return;
+
+    channel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { username: currentUser, typing: true },
+    });
+
+    clearTimeout(stopTypingTimeoutRef.current);
+    stopTypingTimeoutRef.current = setTimeout(() => {
+      channel.send({
+        type: "broadcast",
+        event: "typing",
+        payload: { username: currentUser, typing: false },
+      });
+    }, TYPING_STOP_DELAY_MS);
+  };
+
   useEffect(() => {
     if (!activeConvo || !currentUser) return;
 
@@ -846,10 +945,12 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   }, [messages, activeConvo, currentUser]);
 
   // Fallback auto-scroll whenever the message list changes (covers
-  // incoming messages from the other person, edits, reactions, etc).
+  // incoming messages from the other person, edits, reactions, etc) —
+  // also fires when the typing bubble appears/disappears so it's never
+  // scrolled out of view.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, otherTyping]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -991,6 +1092,15 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setSending(true);
     const trimmed = text.trim();
     setText("");
+
+    // Sending counts as "done typing" — clear the debounce timer and
+    // tell the other person right away instead of waiting out the delay.
+    clearTimeout(stopTypingTimeoutRef.current);
+    typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { username: currentUser, typing: false },
+    });
 
     let attachment_url = null;
     let attachment_type = null;
@@ -1552,13 +1662,21 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                         {activeUsername}
                       </span>
                       <span
-                        className={`mp-chat-status ${onlineUsers.has(activeUsername) ? "online" : "offline"}`}
+                        className={`mp-chat-status ${
+                          otherTyping
+                            ? "typing"
+                            : onlineUsers.has(activeUsername)
+                              ? "online"
+                              : "offline"
+                        }`}
                       >
-                        {onlineUsers.has(activeUsername)
-                          ? "Online"
-                          : activeUserLastSeen
-                            ? `Last seen ${timeAgo(activeUserLastSeen)} ago`
-                            : "Offline"}
+                        {otherTyping
+                          ? "typing…"
+                          : onlineUsers.has(activeUsername)
+                            ? "Online"
+                            : activeUserLastSeen
+                              ? `Last seen ${timeAgo(activeUserLastSeen)} ago`
+                              : "Offline"}
                       </span>
                     </div>
                     <button
@@ -1573,7 +1691,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                   <div className="mp-chat-body">
                     {loadingMessages ? (
                       <p className="mp-empty">Loading messages…</p>
-                    ) : messages.length === 0 ? (
+                    ) : messages.length === 0 && !otherTyping ? (
                       <p className="mp-empty">No messages yet. Say hello!</p>
                     ) : (
                       messages.map((m) => {
@@ -1822,6 +1940,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                         );
                       })
                     )}
+                    {otherTyping && <TypingBubble />}
                     <div ref={bottomRef} />
                   </div>
 
@@ -1949,7 +2068,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                           className="mp-chat-input"
                           placeholder="Type a message…"
                           value={text}
-                          onChange={(e) => setText(e.target.value)}
+                          onChange={(e) => {
+                            setText(e.target.value);
+                            handleTypingInput();
+                          }}
                           onKeyDown={handleKeyDown}
                         />
 

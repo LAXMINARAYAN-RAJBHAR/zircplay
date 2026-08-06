@@ -1017,3 +1017,101 @@
   cursor: pointer;
 }
 .mp-new-menu div:hover { background: var(--zx-bg); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   TYPING INDICATOR — append this block to the end of MessagesPanel.css
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Header status text turns accent-colored + italic while the other
+   person is typing, distinguishing it from the plain Online/Offline
+   states without needing a different layout. */
+.mp-chat-status.typing {
+  color: var(--zx-primary);
+  font-style: italic;
+  font-weight: 700;
+}
+
+/* Three-dot bubble shown in the message thread, styled to match the
+   other person's message bubble (left-aligned, same border/radius). */
+.mp-typing-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--zx-surface);
+  border: 2px solid var(--zx-border);
+  border-radius: 14px 14px 14px 4px;
+  padding: 10px 14px;
+  width: fit-content;
+}
+
+.mp-typing-bubble span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--zx-text3);
+  animation: mp-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.mp-typing-bubble span:nth-child(1) { animation-delay: 0s; }
+.mp-typing-bubble span:nth-child(2) { animation-delay: 0.15s; }
+.mp-typing-bubble span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes mp-typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   GROUP CHAT TYPING INDICATOR — append this block to GroupChatWindow.css
+   (I don't have your original GroupChatWindow.css contents, so these
+   rules use the gcw- prefix to match that component's existing class
+   naming convention. Adjust colors to match your palette if needed.)
+   ══════════════════════════════════════════════════════════════════════ */
+
+.gcw-typing-status {
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--zx-primary, #dc2626);
+  padding: 2px 14px 6px;
+}
+
+.gcw-typing-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fff;
+  border: 2px solid var(--zx-border, #fbd5d5);
+  border-radius: 14px 14px 14px 4px;
+  padding: 10px 14px;
+  width: fit-content;
+}
+
+.gcw-typing-bubble span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b08585;
+  animation: gcw-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.gcw-typing-bubble span:nth-child(1) { animation-delay: 0s; }
+.gcw-typing-bubble span:nth-child(2) { animation-delay: 0.15s; }
+.gcw-typing-bubble span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes gcw-typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}

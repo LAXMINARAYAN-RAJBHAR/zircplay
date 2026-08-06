@@ -12,6 +12,10 @@ import "./GroupChatWindow.css";
 const CLOUDINARY_CLOUD_NAME = "uaa756bj";
 const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
 
+// ── Typing indicator tuning (mirrors MessagesPanel's 1:1 chat) ──
+const TYPING_STOP_DELAY_MS = 1500;
+const TYPING_AUTO_CLEAR_MS = 4000;
+
 const uploadToCloudinary = async (file, resourceType) => {
   const formData = new FormData();
   formData.append("file", file);
@@ -26,6 +30,27 @@ const uploadToCloudinary = async (file, resourceType) => {
 const timeShort = (dateStr) =>
   new Date(dateStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
+// Formats the set of currently-typing member usernames into a readable
+// line, WhatsApp-group style: "Alice is typing…", "Alice and Bob are
+// typing…", or "3 people are typing…" once it gets crowded.
+const formatTypingLabel = (usernames) => {
+  const names = Array.from(usernames);
+  if (names.length === 0) return "";
+  if (names.length === 1) return `${names[0]} is typing…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+  return `${names.length} people are typing…`;
+};
+
+const TypingBubble = () => (
+  <div className="gcw-bubble-row">
+    <div className="gcw-typing-bubble" aria-label="typing">
+      <span />
+      <span />
+      <span />
+    </div>
+  </div>
+);
+
 const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +61,18 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  // ── Typing indicator state ──
+  // typingUsers: Set of usernames (excluding self) currently typing.
+  // typingChannelRef: broadcast channel scoped to this group.
+  // stopTypingTimeoutRef: debounce timer for OUR OWN "stopped typing".
+  // autoClearTimersRef: map of username -> timeout id, so each group
+  // member's indicator auto-expires independently if their "stopped"
+  // broadcast is ever lost.
+  const [typingUsers, setTypingUsers] = useState(new Set());
+  const typingChannelRef = useRef(null);
+  const stopTypingTimeoutRef = useRef(null);
+  const autoClearTimersRef = useRef({});
 
   const fileInputRef = useRef();
   const bottomRef = useRef();
@@ -99,9 +136,79 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     return () => supabase.removeChannel(channel);
   }, [group.id, loadMembers]);
 
+  // ── Typing indicator: broadcast channel scoped to this group ──
+  // Same ephemeral broadcast approach as the 1:1 DM panel, but tracks a
+  // Set of usernames instead of a single boolean, since multiple group
+  // members can be typing at once.
+  useEffect(() => {
+    setTypingUsers(new Set());
+    Object.values(autoClearTimersRef.current).forEach(clearTimeout);
+    autoClearTimersRef.current = {};
+    clearTimeout(stopTypingTimeoutRef.current);
+
+    const channel = supabase.channel(`typing:group:${group.id}`, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (!payload || payload.username === currentUser) return;
+        const { username, typing } = payload;
+
+        setTypingUsers((prev) => {
+          const next = new Set(prev);
+          if (typing) next.add(username);
+          else next.delete(username);
+          return next;
+        });
+
+        clearTimeout(autoClearTimersRef.current[username]);
+        if (typing) {
+          autoClearTimersRef.current[username] = setTimeout(() => {
+            setTypingUsers((prev) => {
+              const next = new Set(prev);
+              next.delete(username);
+              return next;
+            });
+          }, TYPING_AUTO_CLEAR_MS);
+        }
+      })
+      .subscribe();
+
+    typingChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      typingChannelRef.current = null;
+      Object.values(autoClearTimersRef.current).forEach(clearTimeout);
+      autoClearTimersRef.current = {};
+      clearTimeout(stopTypingTimeoutRef.current);
+    };
+  }, [group.id, currentUser]);
+
+  const handleTypingInput = () => {
+    const channel = typingChannelRef.current;
+    if (!channel) return;
+
+    channel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { username: currentUser, typing: true },
+    });
+
+    clearTimeout(stopTypingTimeoutRef.current);
+    stopTypingTimeoutRef.current = setTimeout(() => {
+      channel.send({
+        type: "broadcast",
+        event: "typing",
+        payload: { username: currentUser, typing: false },
+      });
+    }, TYPING_STOP_DELAY_MS);
+  };
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, typingUsers]);
 
   // Close the members panel when tapping/clicking anywhere outside it
   // (mirrors the emoji-picker / reaction-picker click-outside pattern
@@ -141,6 +248,15 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     setSending(true);
     const trimmed = text.trim();
     setText("");
+
+    // Sending counts as "done typing" — clear the debounce and notify
+    // the group right away instead of waiting out the delay.
+    clearTimeout(stopTypingTimeoutRef.current);
+    typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { username: currentUser, typing: false },
+    });
 
     let attachment_url = null;
     let attachment_type = null;
@@ -205,6 +321,8 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     onBack();
   };
 
+  const typingLabel = formatTypingLabel(typingUsers);
+
   return (
     <div className="gcw-window">
       <div className="gcw-header">
@@ -212,7 +330,9 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         <div className="gcw-avatar">{group.name.slice(0, 2).toUpperCase()}</div>
         <div className="gcw-title" ref={membersTriggerRef} onClick={() => setShowMembers((v) => !v)}>
           <span className="gcw-name">{group.name}</span>
-          <span className="gcw-member-count">{members.length} members</span>
+          <span className="gcw-member-count">
+            {typingLabel || `${members.length} members`}
+          </span>
         </div>
         <button
           className="gcw-header-add-btn"
@@ -260,7 +380,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       <div className="gcw-body">
         {loading ? (
           <p className="gcw-empty">Loading messages…</p>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && typingUsers.size === 0 ? (
           <p className="gcw-empty">No messages yet. Say hello!</p>
         ) : (
           messages.map((m) => {
@@ -298,6 +418,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
             );
           })
         )}
+        {typingUsers.size > 0 && <TypingBubble />}
         <div ref={bottomRef} />
       </div>
 
@@ -318,7 +439,10 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
           className="gcw-text-input"
           placeholder="Type a message…"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            handleTypingInput();
+          }}
           onKeyDown={handleKeyDown}
         />
         <button className="gcw-send-btn" onClick={handleSend} disabled={sending || uploading || (!text.trim() && !pendingAttachment)}>
