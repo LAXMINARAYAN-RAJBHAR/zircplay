@@ -8,6 +8,8 @@ import { fetchUserBroadcastLists } from "../../utils/broadcast";
 import NewGroupOrBroadcastModal from "../../Component/Messages/NewGroupOrBroadcastModal";
 import GroupChatWindow from "../../Component/Messages/GroupChatWindow";
 import BroadcastComposeWindow from "../../Component/Messages/BroadcastComposeWindow";
+import { playSendSound, playReceiveSound, playNotificationSound } from "../../utils/soundEffects";
+import { ensureNotificationPermission, showChatNotification } from "../../utils/chatNotifications";
 
 const EMOJI_ONLY_REGEX = /^(\p{Extended_Pictographic}|\u200d|\ufe0f|\s)+$/u;
 
@@ -315,6 +317,16 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const currentUser = localStorage.getItem("username") || "";
 
   const [activeUsername, setActiveUsername] = useState(initialUsername || null);
+
+  // Kept in sync via the effect below so long-lived realtime subscriptions
+  // (created once, closing over state as of that moment) can always check
+  // "is this the conversation currently open" against a fresh value
+  // instead of a stale one from whenever they first subscribed.
+  const activeUsernameRef = useRef(activeUsername);
+  useEffect(() => {
+    activeUsernameRef.current = activeUsername;
+  }, [activeUsername]);
+
   const [conversations, setConversations] = useState([]);
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [inboxSearch, setInboxSearch] = useState("");
@@ -375,6 +387,26 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const [showNewMenu, setShowNewMenu] = useState(false);
   const newMenuRef = useRef();
   const newMenuBtnRef = useRef();
+
+  // Same freshness pattern as activeUsernameRef above, used by the
+  // group-message notification listener further down.
+  const activeGroupRef = useRef(activeGroup);
+  useEffect(() => {
+    activeGroupRef.current = activeGroup;
+  }, [activeGroup]);
+
+  const groupsRef = useRef(groups);
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
+
+  // Ask for notification permission once a user is logged in. Browsers
+  // only show this prompt on a real user gesture / page context, and
+  // silently ignore repeat calls once permission is granted or denied,
+  // so this is safe to call on every mount.
+  useEffect(() => {
+    if (currentUser) ensureNotificationPermission();
+  }, [currentUser]);
 
   useEffect(() => {
     if (!activeUsername || onlineUsers.has(activeUsername)) {
@@ -688,17 +720,74 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   useEffect(() => {
     fetchConversations();
 
+    // Fires on every conversation change (new conversation created, or
+    // last_message_* updated by a new message). If the message wasn't
+    // sent by us AND isn't for the conversation currently open (that
+    // conversation's own dm-panel listener already plays the inline
+    // "receive" pop — we don't want to double-chime for the same
+    // message), play the louder background notification chime and show
+    // a browser notification.
+    const handleConversationRealtime = (convRow) => {
+      fetchConversations();
+      if (!convRow.last_message_sender || convRow.last_message_sender === currentUser) return;
+      const other = convRow.user_a === currentUser ? convRow.user_b : convRow.user_a;
+      if (other === activeUsernameRef.current) return;
+      playNotificationSound();
+      showChatNotification(other, convRow.last_message || "New message");
+    };
+
     const channel = supabase
       .channel("conversations-realtime-panel")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "conversations" },
-        () => fetchConversations(),
+        { event: "INSERT", schema: "public", table: "conversations" },
+        (payload) => handleConversationRealtime(payload.new),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "conversations" },
+        (payload) => handleConversationRealtime(payload.new),
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [fetchConversations]);
+  }, [fetchConversations, currentUser]);
+
+  // ── Group message notifications ──
+  // Mirrors the logic above but for group_messages: chimes + a browser
+  // notification for any group this user belongs to, EXCEPT the one
+  // currently open (whose own GroupChatWindow already plays the inline
+  // receive sound via its own realtime listener). Membership is checked
+  // client-side against `groups` (kept fresh via groupsRef) — if your
+  // group_messages RLS already restricts SELECT to members only, this
+  // check is redundant-but-harmless extra safety.
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const channel = supabase
+      .channel("group-messages-notify-panel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "group_messages" },
+        (payload) => {
+          const msg = payload.new;
+          if (msg.sender_username === currentUser) return;
+          if (activeGroupRef.current?.id === msg.group_id) return;
+
+          const group = groupsRef.current.find((g) => g.id === msg.group_id);
+          if (!group) return; // not a group this user belongs to
+
+          playNotificationSound();
+          showChatNotification(
+            group.name,
+            msg.text || (msg.attachment_type ? "📎 Attachment" : "New message"),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [currentUser]);
 
   // ── Fetch groups + broadcast lists the user belongs to / created ──
   const fetchGroupsAndBroadcasts = useCallback(async () => {
@@ -822,11 +911,18 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
           // Guard against duplicates: the sender already appends their own
           // message optimistically in handleSend, so this same row can
           // arrive again here once Supabase Realtime broadcasts the INSERT.
-          setMessages((prev) =>
-            prev.some((m) => m.id === payload.new.id)
-              ? prev
-              : [...prev, payload.new],
-          );
+          const incoming = payload.new;
+          let wasAppended = false;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === incoming.id)) return prev;
+            wasAppended = true;
+            return [...prev, incoming];
+          });
+          // Only chime for messages that actually arrived from the other
+          // person — our own optimistic echo shouldn't play "receive".
+          if (wasAppended && incoming.sender_username !== currentUser) {
+            playReceiveSound();
+          }
         },
       )
       .on(
@@ -1155,6 +1251,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       setMessages((prev) =>
         prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted],
       );
+      playSendSound();
 
       // Force the scroll on the very next frame instead of relying only
       // on the `messages`-effect above. On mobile, sending a message

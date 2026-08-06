@@ -8,6 +8,7 @@ import {
 } from "../../utils/groupChat";
 import AddMembersModal from "./AddMembersModal";
 import "./GroupChatWindow.css";
+import { playSendSound, playReceiveSound } from "../../utils/soundEffects";
 
 const CLOUDINARY_CLOUD_NAME = "uaa756bj";
 const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
@@ -51,6 +52,9 @@ const TypingBubble = () => (
   </div>
 );
 
+let optimisticCounter = 0;
+const makeTempId = () => `temp-${Date.now()}-${++optimisticCounter}`;
+
 const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,13 +66,14 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  // ── Optimistic send tracking ──
+  // Holds the tempId of the message we just appended locally but haven't
+  // reconciled with the server yet. Since the send button is disabled
+  // while `sending` is true, there's only ever at most one of these in
+  // flight per client, so a single ref is enough (no need for a map).
+  const pendingOptimisticIdRef = useRef(null);
+
   // ── Typing indicator state ──
-  // typingUsers: Set of usernames (excluding self) currently typing.
-  // typingChannelRef: broadcast channel scoped to this group.
-  // stopTypingTimeoutRef: debounce timer for OUR OWN "stopped typing".
-  // autoClearTimersRef: map of username -> timeout id, so each group
-  // member's indicator auto-expires independently if their "stopped"
-  // broadcast is ever lost.
   const [typingUsers, setTypingUsers] = useState(new Set());
   const typingChannelRef = useRef(null);
   const stopTypingTimeoutRef = useRef(null);
@@ -100,11 +105,13 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   }, [group.id, currentUser, loadMembers]);
 
   // ── Realtime listener ──
-  // FIX: this used to blindly append every INSERT event, including the
-  // one that echoes back the message THIS client just sent — but since
-  // handleSend now appends the sent message locally right away (see
-  // below), we need to dedupe here by id so the realtime echo doesn't
-  // add a second copy of the same message.
+  // Dedupes against real ids we already have, AND reconciles against a
+  // still-pending optimistic placeholder for our OWN message — this is
+  // what prevents a duplicate bubble from appearing if the realtime
+  // INSERT event happens to arrive before (or instead of) the insert's
+  // own .select() response resolving (e.g. under RLS, where the select
+  // half of insert().select() can be denied even though the insert
+  // itself succeeded).
   useEffect(() => {
     const channel = supabase
       .channel(`group-messages-${group.id}`)
@@ -112,15 +119,34 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` },
         (payload) => {
+          const incoming = payload.new;
+          let wasAppended = false;
           setMessages((prev) => {
-            if (prev.some((m) => m.id === payload.new.id)) return prev;
-            return [...prev, payload.new];
+            if (prev.some((m) => m.id === incoming.id)) return prev;
+
+            const pendingId = pendingOptimisticIdRef.current;
+            if (
+              pendingId &&
+              incoming.sender_username === currentUser &&
+              prev.some((m) => m.id === pendingId)
+            ) {
+              pendingOptimisticIdRef.current = null;
+              return prev.map((m) => (m.id === pendingId ? incoming : m));
+            }
+
+            wasAppended = true;
+            return [...prev, incoming];
           });
+          // Only chime for genuinely new messages from other members —
+          // not for our own message being reconciled from its temp id.
+          if (wasAppended && incoming.sender_username !== currentUser) {
+            playReceiveSound();
+          }
         },
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [group.id]);
+  }, [group.id, currentUser]);
 
   // Keep the member list live if someone else adds/removes people while
   // this window is open (e.g. another admin adding members concurrently).
@@ -137,9 +163,6 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   }, [group.id, loadMembers]);
 
   // ── Typing indicator: broadcast channel scoped to this group ──
-  // Same ephemeral broadcast approach as the 1:1 DM panel, but tracks a
-  // Set of usernames instead of a single boolean, since multiple group
-  // members can be typing at once.
   useEffect(() => {
     setTypingUsers(new Set());
     Object.values(autoClearTimersRef.current).forEach(clearTimeout);
@@ -210,10 +233,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingUsers]);
 
-  // Close the members panel when tapping/clicking anywhere outside it
-  // (mirrors the emoji-picker / reaction-picker click-outside pattern
-  // used in MessagesPanel). Skips the panel itself and the group-name
-  // trigger so opening/toggling still works normally.
+  // Close the members panel when tapping/clicking anywhere outside it.
   useEffect(() => {
     if (!showMembers) return;
     const handleClickOutside = (e) => {
@@ -262,17 +282,49 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     let attachment_type = null;
     let attachment_name = null;
     let attachment_size = null;
+    const pendingAttachmentSnapshot = pendingAttachment;
 
     try {
-      if (pendingAttachment) {
+      if (pendingAttachmentSnapshot) {
         setUploading(true);
-        const resourceType = pendingAttachment.type === "image" ? "image" : pendingAttachment.type === "video" ? "video" : "raw";
-        attachment_url = await uploadToCloudinary(pendingAttachment.file, resourceType);
-        attachment_type = pendingAttachment.type;
-        attachment_name = pendingAttachment.name;
-        attachment_size = pendingAttachment.size;
+        const resourceType =
+          pendingAttachmentSnapshot.type === "image"
+            ? "image"
+            : pendingAttachmentSnapshot.type === "video"
+              ? "video"
+              : "raw";
+        attachment_url = await uploadToCloudinary(pendingAttachmentSnapshot.file, resourceType);
+        attachment_type = pendingAttachmentSnapshot.type;
+        attachment_name = pendingAttachmentSnapshot.name;
+        attachment_size = pendingAttachmentSnapshot.size;
         setUploading(false);
       }
+
+      // ── Optimistic append ──
+      // Show the message immediately using a temporary local object,
+      // BEFORE waiting on the network insert at all. This is what
+      // guarantees instant feedback regardless of whether the insert's
+      // own .select() manages to return the row (which RLS can block
+      // even when the insert itself succeeds).
+      const tempId = makeTempId();
+      pendingOptimisticIdRef.current = tempId;
+      const optimisticMessage = {
+        id: tempId,
+        group_id: group.id,
+        sender_username: currentUser,
+        text: trimmed || null,
+        attachment_url,
+        attachment_type,
+        attachment_name,
+        attachment_size,
+        created_at: new Date().toISOString(),
+        deleted_at: null,
+      };
+      setMessages((prev) => [...prev, optimisticMessage]);
+      playSendSound();
+
+      if (pendingAttachmentSnapshot?.previewUrl) URL.revokeObjectURL(pendingAttachmentSnapshot.previewUrl);
+      setPendingAttachment(null);
 
       const sentMessage = await sendGroupMessage({
         groupId: group.id,
@@ -284,22 +336,27 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         attachmentSize: attachment_size,
       });
 
-      // ── FIX: append the message locally right away instead of waiting
-      // for the realtime INSERT event to come back around. This is what
-      // was causing "need to refresh every time" — the UI previously had
-      // no source of truth for the just-sent message other than realtime,
-      // which can lag or, in some Supabase project configs, not reliably
-      // echo back to the very client that triggered the insert. ──
+      // Happy path: the insert's .select() came back with a real row —
+      // swap the placeholder for it right away. If it DIDN'T come back
+      // (RLS denies the select, or any other reason sentMessage is
+      // falsy), we leave the optimistic bubble as-is; the realtime
+      // listener above will reconcile it with the real row once that
+      // event arrives, using pendingOptimisticIdRef as the match key.
       if (sentMessage && sentMessage.id) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === sentMessage.id)) return prev;
-          return [...prev, sentMessage];
-        });
+        pendingOptimisticIdRef.current = null;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? sentMessage : m)),
+        );
       }
-
-      if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
-      setPendingAttachment(null);
     } catch (err) {
+      // The insert itself failed (not just the select-after-insert) —
+      // remove the optimistic bubble since it was never actually sent,
+      // and give the user their text back to retry.
+      const tempId = pendingOptimisticIdRef.current;
+      if (tempId) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        pendingOptimisticIdRef.current = null;
+      }
       setText(trimmed);
       alert("Failed to send. Please try again.");
     } finally {
