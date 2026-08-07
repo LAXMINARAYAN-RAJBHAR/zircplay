@@ -6,7 +6,8 @@ import SearchIcon from "@mui/icons-material/Search";
 import KeyboardVoiceIcon from "@mui/icons-material/KeyboardVoice";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
-import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import MailOutlineIcon from "@mui/icons-material/MailOutline";
+import MailIcon from "@mui/icons-material/Mail";
 import HistoryIcon from "@mui/icons-material/History";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import Login from "../Login/login";
@@ -1118,7 +1119,11 @@ const Navbar = ({
           <VideoCallIcon sx={{ fontSize: "30px", color: "white" }} />
         </span>
 
-        {/* Messages */}
+        {/* Messages — envelope icon; switches to the filled variant
+            whenever there's at least one unread DM, so the icon itself
+            doubles as a subtle "you've got messages" cue (mirrors the
+            filled/outline pattern already used elsewhere in the app,
+            e.g. liked-state icons). */}
         <span
           className="navbar-messages-btn"
           onClick={() => {
@@ -1130,7 +1135,11 @@ const Navbar = ({
           style={{ position: "relative", cursor: "pointer", display: "flex" }}
           title="Messages"
         >
-          <ChatBubbleOutlineIcon sx={{ fontSize: "26px", color: "white" }} />
+          {unreadMessages > 0 ? (
+            <MailIcon sx={{ fontSize: "26px", color: "white" }} />
+          ) : (
+            <MailOutlineIcon sx={{ fontSize: "26px", color: "white" }} />
+          )}
           {unreadMessages > 0 && (
             <span style={{
               position: "absolute",
