@@ -269,20 +269,55 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     const trimmed = text.trim();
     setText("");
 
+    // ── Optimistic append happens FIRST, before anything else that could
+    // possibly throw (e.g. the typing-stop broadcast below, which has
+    // been known to throw if the realtime channel isn't fully joined
+    // yet). If any later step fails, the worst case is the message gets
+    // removed again in the catch block — but it's never simply invisible
+    // with no feedback, which is what "blank until refresh" looked like
+    // before this reordering. For messages WITH an attachment, the
+    // attachment_url starts null and gets filled in once the upload
+    // finishes (see below) — the text/bubble itself still shows instantly. ──
+    const pendingAttachmentSnapshot = pendingAttachment;
+    const tempId = makeTempId();
+    pendingOptimisticIdRef.current = tempId;
+    const optimisticMessage = {
+      id: tempId,
+      group_id: group.id,
+      sender_username: currentUser,
+      text: trimmed || null,
+      attachment_url: null,
+      attachment_type: pendingAttachmentSnapshot?.type || null,
+      attachment_name: pendingAttachmentSnapshot?.name || null,
+      attachment_size: pendingAttachmentSnapshot?.size || null,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+    playSendSound();
+
+    if (pendingAttachmentSnapshot?.previewUrl) URL.revokeObjectURL(pendingAttachmentSnapshot.previewUrl);
+    setPendingAttachment(null);
+
     // Sending counts as "done typing" — clear the debounce and notify
-    // the group right away instead of waiting out the delay.
-    clearTimeout(stopTypingTimeoutRef.current);
-    typingChannelRef.current?.send({
-      type: "broadcast",
-      event: "typing",
-      payload: { username: currentUser, typing: false },
-    });
+    // the group right away instead of waiting out the delay. Wrapped in
+    // its own try/catch: this is a nice-to-have side effect, and must
+    // never be allowed to block or break the actual message send above.
+    try {
+      clearTimeout(stopTypingTimeoutRef.current);
+      typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "typing",
+        payload: { username: currentUser, typing: false },
+      });
+    } catch {
+      /* no-op — typing indicator is best-effort, never critical */
+    }
 
     let attachment_url = null;
     let attachment_type = null;
     let attachment_name = null;
     let attachment_size = null;
-    const pendingAttachmentSnapshot = pendingAttachment;
 
     try {
       if (pendingAttachmentSnapshot) {
@@ -298,33 +333,16 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         attachment_name = pendingAttachmentSnapshot.name;
         attachment_size = pendingAttachmentSnapshot.size;
         setUploading(false);
+
+        // Fill in the real attachment URL on the optimistic bubble now
+        // that the upload has finished, so image/video/file previews
+        // render even before the server row comes back.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, attachment_url, attachment_type } : m,
+          ),
+        );
       }
-
-      // ── Optimistic append ──
-      // Show the message immediately using a temporary local object,
-      // BEFORE waiting on the network insert at all. This is what
-      // guarantees instant feedback regardless of whether the insert's
-      // own .select() manages to return the row (which RLS can block
-      // even when the insert itself succeeds).
-      const tempId = makeTempId();
-      pendingOptimisticIdRef.current = tempId;
-      const optimisticMessage = {
-        id: tempId,
-        group_id: group.id,
-        sender_username: currentUser,
-        text: trimmed || null,
-        attachment_url,
-        attachment_type,
-        attachment_name,
-        attachment_size,
-        created_at: new Date().toISOString(),
-        deleted_at: null,
-      };
-      setMessages((prev) => [...prev, optimisticMessage]);
-      playSendSound();
-
-      if (pendingAttachmentSnapshot?.previewUrl) URL.revokeObjectURL(pendingAttachmentSnapshot.previewUrl);
-      setPendingAttachment(null);
 
       const sentMessage = await sendGroupMessage({
         groupId: group.id,
@@ -352,11 +370,8 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       // The insert itself failed (not just the select-after-insert) —
       // remove the optimistic bubble since it was never actually sent,
       // and give the user their text back to retry.
-      const tempId = pendingOptimisticIdRef.current;
-      if (tempId) {
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        pendingOptimisticIdRef.current = null;
-      }
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      pendingOptimisticIdRef.current = null;
       setText(trimmed);
       alert("Failed to send. Please try again.");
     } finally {
