@@ -1136,10 +1136,10 @@ const Navbar = ({
           title="Messages"
         >
           {unreadMessages > 0 ? (
-            <MailIcon sx={{ fontSize: "26px", color: "white" }} />
-          ) : (
-            <MailOutlineIcon sx={{ fontSize: "26px", color: "white" }} />
-          )}
+  <ForumIcon sx={{ fontSize: "26px", color: "white" }} />
+) : (
+  <ForumOutlinedIcon sx={{ fontSize: "26px", color: "white" }} />
+)}
           {unreadMessages > 0 && (
             <span style={{
               position: "absolute",
