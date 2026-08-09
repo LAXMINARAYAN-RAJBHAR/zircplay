@@ -771,6 +771,22 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         { event: "INSERT", schema: "public", table: "group_messages" },
         (payload) => {
           const msg = payload.new;
+
+          // ── Live reorder: move this group to the top of the sidebar
+          // and refresh its preview text, regardless of whether it's the
+          // currently open chat or a background one. Without this, the
+          // groups list only ever reflected activity as of whenever it
+          // was last fetched (on mount) — a group with brand new
+          // messages could sit anywhere in the list until the panel was
+          // closed and reopened.
+          setGroups((prev) => {
+            const idx = prev.findIndex((g) => g.id === msg.group_id);
+            if (idx === -1) return prev; // not a group this user belongs to (or not loaded yet)
+            const updated = { ...prev[idx], lastMessage: msg };
+            const rest = prev.filter((_, i) => i !== idx);
+            return [updated, ...rest];
+          });
+
           if (msg.sender_username === currentUser) return;
           if (activeGroupRef.current?.id === msg.group_id) return;
 

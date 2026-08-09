@@ -25,6 +25,14 @@ export const createGroup = async ({ name, createdBy, memberUsernames }) => {
 
 // Fetches every group the given user belongs to, with member count and
 // last message preview (mirrors the conversations list shape).
+//
+// FIX: results are now sorted by most-recent activity (latest group
+// message, falling back to the group's own created_at if it has no
+// messages yet) — descending, most recent first. Previously this just
+// returned rows in whatever order Supabase's implicit join order
+// produced (effectively insertion order), so a group with brand new
+// messages could sit anywhere in the list instead of bubbling to the
+// top like the 1:1 conversations list already does.
 export const fetchUserGroups = async (username) => {
   const { data: memberships } = await supabase
     .from("group_members")
@@ -47,11 +55,18 @@ export const fetchUserGroups = async (username) => {
     if (!latestByGroup[m.group_id]) latestByGroup[m.group_id] = m;
   });
 
-  return memberships.map((m) => ({
+  const groups = memberships.map((m) => ({
     ...m.groups,
     lastMessage: latestByGroup[m.group_id] || null,
     lastReadAt: m.last_read_at,
   }));
+
+  // Sort by most recent activity: latest message time if there is one,
+  // otherwise fall back to when the group itself was created.
+  const activityTime = (g) =>
+    new Date(g.lastMessage?.created_at || g.created_at || 0).getTime();
+
+  return groups.sort((a, b) => activityTime(b) - activityTime(a));
 };
 
 export const fetchGroupMembers = async (groupId) => {
