@@ -673,7 +673,7 @@ function App() {
             }}
           >
             <Routes>
-              <Route path="/"               element={<Home sideNavbar={sideNavbar} />} />
+              <Route path="/"               element={<ExploreGrid />} />
               <Route path="/video/:id"      element={<Video sideNavbar={sideNavbar} />} />
               <Route path="/user/:username" element={<Profile sideNavbar={sideNavbar} />} />
               <Route path="/videoUpload"    element={<VideoUpload />} />
@@ -707,7 +707,7 @@ function App() {
               <Route path="/feed"                  element={<PostFeed sideNavbar={sideNavbar} />} />
               <Route path="/admin"                 element={<AdminPanel />} />
               <Route path="/live"                  element={<LiveBrowser currentUser={currentUser} />} />
-              <Route path="/foryou"                element={<ExploreGrid />} />
+              <Route path="/foryou"                element={<Home sideNavbar={sideNavbar} />} />
             </Routes>
           </div>
         </div>
