@@ -184,6 +184,79 @@ const useHoverPreview = (canPreview) => {
   return { isPreviewing, videoRef, onMouseEnter, onMouseLeave };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// usePostPreview — same idea as useHoverPreview, but works on BOTH desktop
+// and mobile: desktop still hovers-to-preview after HOVER_PREVIEW_DELAY;
+// mobile has no hover, so a card previews automatically once ~60% of it is
+// scrolled into view (and pauses again the instant it scrolls back out).
+// This mirrors the preview behaviour built for the Explore homepage grid.
+// ─────────────────────────────────────────────────────────────────────────────
+const usePostPreview = (isMobile, canPreview) => {
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const wrapRef = useRef(null);
+  const timeoutRef = useRef(null);
+  const videoRef = useRef(null);
+
+  const cancelTimer = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
+  const onMouseEnter = () => {
+    if (!canPreview || isMobile) return;
+    cancelTimer();
+    timeoutRef.current = setTimeout(() => setIsPreviewing(true), HOVER_PREVIEW_DELAY);
+  };
+
+  const onMouseLeave = () => {
+    if (isMobile) return;
+    cancelTimer();
+    setIsPreviewing(false);
+  };
+
+  // Mobile: autoplay preview as the card scrolls into view, pause on exit.
+  useEffect(() => {
+    if (!canPreview || !isMobile) return;
+    const node = wrapRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsPreviewing(entry.isIntersecting),
+      { threshold: 0.6 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [canPreview, isMobile]);
+
+  // Keep the underlying <video> element in sync with isPreviewing on both
+  // platforms — desktop's hover handlers only toggle state, this effect is
+  // what actually starts/stops playback and resets position on exit.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isPreviewing) {
+      try { v.currentTime = 0; } catch (_) {}
+      const p = v.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } else {
+      try {
+        v.pause();
+        v.currentTime = 0;
+      } catch (_) {}
+    }
+  }, [isPreviewing]);
+
+  useEffect(() => () => cancelTimer(), []);
+
+  return {
+    isPreviewing: canPreview ? isPreviewing : false,
+    wrapRef,
+    videoRef,
+    hoverHandlers: isMobile ? {} : { onMouseEnter, onMouseLeave },
+  };
+};
+
 const MOBILE_TABS = [
   { id: "shorts", label: "Shorts", icon: "📱" },
   { id: "videos", label: "Videos", icon: "🎬" },
@@ -435,6 +508,82 @@ const ShortsRow = ({
     </div>
   </div>
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PostCard / PostsSection — mirrors the ExploreGrid post-card behaviour:
+// shows the post's image if it has one; if not (a video-only post), the
+// thumbnail becomes hover-previewable on desktop and auto-previews on
+// mobile once scrolled into view, same as usePostPreview above.
+// ─────────────────────────────────────────────────────────────────────────────
+const PostCard = ({ post, isMobile }) => {
+  const media = post.image_urls?.[0] || post.image_url || null;
+  const previewSrc = media ? null : post.video_url || null;
+  const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
+    isMobile,
+    !!previewSrc,
+  );
+  const showPreview = isPreviewing && !!previewSrc;
+
+  return (
+    <Link to={`/feed?post=${post.id}`} className="homePage_postCard">
+      <div className="homePage_postThumbWrap" ref={wrapRef} {...hoverHandlers}>
+        {showPreview ? (
+          <video
+            ref={videoRef}
+            src={previewSrc}
+            className="homePage_postThumbImg homePage_postPreviewVideo"
+            muted
+            loop
+            playsInline
+            preload="none"
+          />
+        ) : media ? (
+          <img src={media} alt="" className="homePage_postThumbImg" loading="lazy" />
+        ) : post.video_url ? (
+          <video
+            src={post.video_url}
+            className="homePage_postThumbImg"
+            muted
+            preload="metadata"
+          />
+        ) : (
+          <div className="homePage_postThumbText">
+            <p>{post.text}</p>
+          </div>
+        )}
+        <span className="homePage_postBadge">📝 Post</span>
+      </div>
+      <div className="homePage_postMeta">
+        <p className="homePage_postCaption">{post.text || "View post"}</p>
+        <p className="homePage_postUser">@{post.username}</p>
+      </div>
+    </Link>
+  );
+};
+
+const PostsSection = ({ posts, isMobile }) => {
+  if (!posts || posts.length === 0) return null;
+  const visible = posts.slice(0, isMobile ? 8 : 10);
+
+  return (
+    <div className="homePage_postsSection">
+      <div className="homePage_postsSectionHeader">
+        <span className="homePage_postsSectionTitle">
+          <span className="homePage_postsZBadge">Z</span>
+          Posts
+        </span>
+        <Link to="/feed" className="homePage_postsViewAll">
+          View All →
+        </Link>
+      </div>
+      <div className="homePage_postsGrid">
+        {visible.map((post) => (
+          <PostCard key={post.id} post={post} isMobile={isMobile} />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const VideoCard = ({
   video,
@@ -2628,6 +2777,7 @@ const HomePage = ({ sideNavbar }) => {
   const [dbVideos, setDbVideos] = useState([]);
   const [dbLoading, setDbLoading] = useState(true);
   const [dbReels, setDbReels] = useState([]);
+  const [dbPosts, setDbPosts] = useState([]);
   const [viewCounts, setViewCounts] = useState({});
   const [watchedContentIds, setWatchedContentIds] = useState(new Set());
   const [watchLaterIds, setWatchLaterIds] = useState(new Set());
@@ -2919,6 +3069,39 @@ const HomePage = ({ sideNavbar }) => {
       .subscribe();
     return () => supabase.removeChannel(reelsSub);
   }, [loadWatchedIds]);
+
+  // ── Posts (for the Posts section, previewable exactly like the
+  // Explore homepage grid: hover on desktop, scroll-into-view on mobile) ──
+  useEffect(() => {
+    const fetchDbPosts = async () => {
+      const { data, error } = await supabase
+        .from("posts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(30);
+      if (!error && data) setDbPosts(data);
+    };
+    fetchDbPosts();
+
+    const postsSub = supabase
+      .channel("posts-channel-home")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts" },
+        (payload) => {
+          setDbPosts((prev) => [payload.new, ...prev]);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "posts" },
+        (payload) => {
+          setDbPosts((prev) => prev.filter((p) => p.id !== payload.old.id));
+        },
+      )
+      .subscribe();
+    return () => supabase.removeChannel(postsSub);
+  }, []);
 
   const allVideos = dbVideos;
   const allReels = dbReels;
@@ -3396,6 +3579,10 @@ const HomePage = ({ sideNavbar }) => {
               });
             }}
           />
+        )}
+
+        {!searchActive && (
+          <PostsSection posts={dbPosts} isMobile={isMobile} />
         )}
 
         {!searchActive && !isMobile && (
