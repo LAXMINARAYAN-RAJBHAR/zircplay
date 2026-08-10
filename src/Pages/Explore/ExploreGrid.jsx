@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import useUnifiedFeed from "../../hooks/useUnifiedFeed";
 import "./ExploreGrid.css";
@@ -105,12 +105,64 @@ const SkeletonCard = () => (
   </div>
 );
 
-// Instagram-Explore-style grid mixing videos, reels, and posts. Reuses
-// the same merged/sorted data source as the earlier vertical-feed
-// version — only the presentation layer changed.
+const ROW_SIZE = 5;
+const TYPE_ORDER = ["post", "reel", "video"];
+const TYPE_ROW_LABEL = {
+  post: "📝 Posts",
+  reel: "📱 Reels",
+  video: "🎬 Videos",
+};
+
+// Buckets items by type (keeping each type's original relative order
+// from useUnifiedFeed), then lays out rows of up to 5 cards, cycling
+// Post -> Reel -> Video -> Post -> Reel -> Video ... until every
+// bucket is drained. Desktop-only "lined" layout.
+function buildTypeRows(items) {
+  const buckets = { post: [], reel: [], video: [] };
+  items.forEach((item) => {
+    if (buckets[item._type]) buckets[item._type].push(item);
+  });
+
+  const cursor = { post: 0, reel: 0, video: 0 };
+  const rows = [];
+
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const type of TYPE_ORDER) {
+      const bucket = buckets[type];
+      const start = cursor[type];
+      if (start >= bucket.length) continue;
+      const chunk = bucket.slice(start, start + ROW_SIZE);
+      cursor[type] += chunk.length;
+      rows.push({ type, key: `${type}-${start}`, items: chunk });
+      progressed = true;
+    }
+  }
+  return rows;
+}
+
+function useIsDesktop(breakpoint = 769) {
+  const [isDesktop, setIsDesktop] = useState(
+    typeof window !== "undefined" ? window.innerWidth >= breakpoint : true
+  );
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth >= breakpoint);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [breakpoint]);
+  return isDesktop;
+}
+
+// Instagram-Explore-style grid mixing videos, reels, and posts on
+// mobile; on desktop, reorganized into same-type rows of 5
+// (Posts -> Reels -> Videos, repeating). Reuses the same
+// merged/sorted data source either way — only the presentation
+// layer changes.
 const ExploreGrid = () => {
   const currentUser = localStorage.getItem("username") || "anonymous";
   const { items, loading, loadingMore, hasMore, loadMore } = useUnifiedFeed(currentUser);
+  const isDesktop = useIsDesktop();
 
   const [sentinelNode, setSentinelNode] = useState(null);
   const loadingMoreRef = useRef(false);
@@ -134,6 +186,11 @@ const ExploreGrid = () => {
     observer.observe(sentinelNode);
     return () => observer.disconnect();
   }, [sentinelNode, handleLoadMore]);
+
+  const typeRows = useMemo(
+    () => (isDesktop ? buildTypeRows(items) : []),
+    [isDesktop, items]
+  );
 
   if (loading) {
     return (
@@ -161,11 +218,27 @@ const ExploreGrid = () => {
   return (
     <div className="eg-page">
       <h1 className="eg-heading">Explore</h1>
-      <div className="eg-grid">
-        {items.map((item) => (
-          <ExploreCard key={`${item._type}-${item.id}`} item={item} />
-        ))}
-      </div>
+
+      {isDesktop ? (
+        <div className="eg-type-rows">
+          {typeRows.map((row) => (
+            <div key={row.key} className="eg-type-row">
+              <p className="eg-type-row-label">{TYPE_ROW_LABEL[row.type]}</p>
+              <div className="eg-type-row-grid">
+                {row.items.map((item) => (
+                  <ExploreCard key={`${item._type}-${item.id}`} item={item} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="eg-grid">
+          {items.map((item) => (
+            <ExploreCard key={`${item._type}-${item.id}`} item={item} />
+          ))}
+        </div>
+      )}
 
       {hasMore && (
         <div ref={setSentinelNode} className="eg-sentinel">
