@@ -55,6 +55,15 @@
   display: block;
 }
 
+.eg-preview-video {
+  animation: eg-preview-fade 0.2s ease;
+}
+
+@keyframes eg-preview-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .eg-thumb-placeholder {
   width: 100%;
   height: 100%;

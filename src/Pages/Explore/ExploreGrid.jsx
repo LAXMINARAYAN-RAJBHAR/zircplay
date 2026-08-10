@@ -16,29 +16,123 @@ const TYPE_BADGE = {
   post: { label: "📝 Post", bg: "#f97316" },
 };
 
-// One grid tile. Unlike the earlier full-screen version, this never
-// mounts a playing <video> element at all — it's a thumbnail card that
-// links out to your EXISTING /video/:id, /reels/:id, or /feed?post=:id
-// pages, all of which already handle their own playback, likes,
-// comments, and view tracking correctly. This card only has to get the
-// person there.
-const ExploreCard = ({ item }) => {
+const HOVER_DELAY = 450;
+
+// Which URL (if any) a given item can preview as a muted, looping
+// video. Video/Reel items preview their own video_url. Posts only
+// preview if they have no image (i.e. they're a video post) — image
+// posts are left exactly as-is.
+const getPreviewSrc = (item) => {
+  if (item._type === "video") return item.video_url || item.preview_url || null;
+  if (item._type === "reel") return item.video_url || item.preview_url || null;
+  if (item._type === "post") {
+    const media = item.image_urls?.[0] || item.image_url || null;
+    if (media) return null;
+    return item.video_url || null;
+  }
+  return null;
+};
+
+// Shared preview-trigger logic for a single card:
+// - Desktop: hover for HOVER_DELAY ms before the preview activates,
+//   matching the same hover-preview feel used on Videos/Reels/Trending/Live.
+// - Mobile (no hover available): an IntersectionObserver on the card's
+//   thumbnail wrapper activates the preview once ~60% of the card is
+//   visible, and deactivates it the instant it scrolls back out — so
+//   only on-screen cards are ever actually decoding video.
+// `enabled` should be false when the item has no previewable source,
+// so cards without a video never attach listeners/observers at all.
+function usePreviewTrigger(isDesktop, enabled) {
+  const [active, setActive] = useState(false);
+  const wrapRef = useRef(null);
+  const hoverTimer = useRef(null);
+
+  const handleMouseEnter = useCallback(() => {
+    if (!enabled) return;
+    clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setActive(true), HOVER_DELAY);
+  }, [enabled]);
+
+  const handleMouseLeave = useCallback(() => {
+    clearTimeout(hoverTimer.current);
+    setActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || isDesktop) return; // mobile-only observer path
+    const node = wrapRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setActive(entry.isIntersecting),
+      { threshold: 0.6 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [enabled, isDesktop]);
+
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+
+  return {
+    active: enabled ? active : false,
+    wrapRef,
+    hoverHandlers: isDesktop
+      ? { onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave }
+      : {},
+  };
+}
+
+// One grid tile. Links out to your EXISTING /video/:id, /reels/:id, or
+// /feed?post=:id pages, which already handle full playback, likes,
+// comments, and view tracking — this card only has to get the person
+// there. It additionally shows a lightweight muted preview (hover on
+// desktop, scroll-into-view on mobile) before that happens.
+const ExploreCard = ({ item, isDesktop }) => {
   const badge = TYPE_BADGE[item._type];
+  const previewSrc = getPreviewSrc(item);
+  const { active, wrapRef, hoverHandlers } = usePreviewTrigger(isDesktop, !!previewSrc);
+  const videoRef = useRef(null);
+  const showPreview = active && !!previewSrc;
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (active) {
+      try { v.currentTime = 0; } catch (e) { /* not yet seekable, ignore */ }
+      const playPromise = v.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {}); // autoplay can be blocked; fail silently
+      }
+    } else {
+      v.pause();
+    }
+  }, [active]);
 
   if (item._type === "video") {
     return (
       <Link to={`/video/${item.id}`} className="eg-card">
-        <div className="eg-thumb-wrap">
-          {item.thumbnail_url ? (
+        <div className="eg-thumb-wrap" ref={wrapRef} {...hoverHandlers}>
+          {showPreview ? (
+            <video
+              ref={videoRef}
+              src={previewSrc}
+              className="eg-thumb eg-preview-video"
+              muted
+              loop
+              playsInline
+              preload="none"
+            />
+          ) : item.thumbnail_url ? (
             <img src={item.thumbnail_url} alt={item.title} className="eg-thumb" loading="lazy" />
           ) : (
             <div className="eg-thumb-placeholder" />
           )}
           <span className="eg-badge" style={{ background: badge.bg }}>{badge.label}</span>
-          {item.duration && <span className="eg-duration">{item.duration}</span>}
-          <div className="eg-hover-overlay">
-            <span className="eg-play-icon">▶</span>
-          </div>
+          {item.duration && !showPreview && <span className="eg-duration">{item.duration}</span>}
+          {!showPreview && (
+            <div className="eg-hover-overlay">
+              <span className="eg-play-icon">▶</span>
+            </div>
+          )}
         </div>
         <div className="eg-meta">
           <p className="eg-title">{item.title}</p>
@@ -52,16 +146,28 @@ const ExploreCard = ({ item }) => {
     const reelRoute = `/reels/db_${item.id}`;
     return (
       <Link to={reelRoute} className="eg-card eg-card-tall">
-        <div className="eg-thumb-wrap eg-thumb-tall">
-          {item.thumbnail ? (
+        <div className="eg-thumb-wrap eg-thumb-tall" ref={wrapRef} {...hoverHandlers}>
+          {showPreview ? (
+            <video
+              ref={videoRef}
+              src={previewSrc}
+              className="eg-thumb eg-preview-video"
+              muted
+              loop
+              playsInline
+              preload="none"
+            />
+          ) : item.thumbnail ? (
             <img src={item.thumbnail} alt={item.title} className="eg-thumb" loading="lazy" />
           ) : (
             <div className="eg-thumb-placeholder" />
           )}
           <span className="eg-badge" style={{ background: badge.bg }}>{badge.label}</span>
-          <div className="eg-hover-overlay">
-            <span className="eg-play-icon">▶</span>
-          </div>
+          {!showPreview && (
+            <div className="eg-hover-overlay">
+              <span className="eg-play-icon">▶</span>
+            </div>
+          )}
         </div>
         <div className="eg-meta">
           <p className="eg-title">{item.title}</p>
@@ -75,8 +181,18 @@ const ExploreCard = ({ item }) => {
   const media = item.image_urls?.[0] || item.image_url || null;
   return (
     <Link to={`/feed?post=${item.id}`} className="eg-card">
-      <div className="eg-thumb-wrap">
-        {media ? (
+      <div className="eg-thumb-wrap" ref={wrapRef} {...hoverHandlers}>
+        {showPreview ? (
+          <video
+            ref={videoRef}
+            src={previewSrc}
+            className="eg-thumb eg-preview-video"
+            muted
+            loop
+            playsInline
+            preload="none"
+          />
+        ) : media ? (
           <img src={media} alt="" className="eg-thumb" loading="lazy" />
         ) : item.video_url ? (
           <video src={item.video_url} className="eg-thumb" muted preload="metadata" />
@@ -160,7 +276,8 @@ function useIsDesktop(breakpoint = 769) {
 // Desktop shows 5 cards per row, mobile shows 2 per row — the
 // underlying merged/sorted data source and row-building logic are
 // identical, only ROW_SIZE and the CSS column count differ per
-// breakpoint.
+// breakpoint. Cards preview on hover (desktop) or scroll-into-view
+// (mobile) before the person taps/clicks through.
 const ExploreGrid = () => {
   const currentUser = localStorage.getItem("username") || "anonymous";
   const { items, loading, loadingMore, hasMore, loadMore } = useUnifiedFeed(currentUser);
@@ -228,7 +345,7 @@ const ExploreGrid = () => {
             <p className="eg-type-row-label">{TYPE_ROW_LABEL[row.type]}</p>
             <div className="eg-type-row-grid">
               {row.items.map((item) => (
-                <ExploreCard key={`${item._type}-${item.id}`} item={item} />
+                <ExploreCard key={`${item._type}-${item.id}`} item={item} isDesktop={isDesktop} />
               ))}
             </div>
           </div>
