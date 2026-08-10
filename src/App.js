@@ -45,7 +45,7 @@ import MessagesPanel    from "./Pages/Messages/MessagesPanel";
 import { PresenceProvider } from "./context/PresenceContext";
 import useRequireUsernameSetup from "./hooks/useRequireUsernameSetup";
 import UsernameSetupModal from "./Component/Auth/UsernameSetupModal";
-import UnifiedFeed from "./Pages/UnifiedFeed/UnifiedFeed";
+import ExploreGrid from "./Pages/Explore/ExploreGrid";
 
 // ── Google Identity Services (One Tap) config ──────────────────────────────
 // TODO: replace with the SAME OAuth Client ID configured under
@@ -707,7 +707,7 @@ function App() {
               <Route path="/feed"                  element={<PostFeed sideNavbar={sideNavbar} />} />
               <Route path="/admin"                 element={<AdminPanel />} />
               <Route path="/live"                  element={<LiveBrowser currentUser={currentUser} />} />
-              <Route path="/foryou"                element={<UnifiedFeed />} />
+              <Route path="/foryou"                element={<ExploreGrid />} />
             </Routes>
           </div>
         </div>
