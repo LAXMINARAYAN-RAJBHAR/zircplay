@@ -105,7 +105,6 @@ const SkeletonCard = () => (
   </div>
 );
 
-const ROW_SIZE = 5;
 const TYPE_ORDER = ["post", "reel", "video"];
 const TYPE_ROW_LABEL = {
   post: "📝 Posts",
@@ -114,10 +113,12 @@ const TYPE_ROW_LABEL = {
 };
 
 // Buckets items by type (keeping each type's original relative order
-// from useUnifiedFeed), then lays out rows of up to 5 cards, cycling
-// Post -> Reel -> Video -> Post -> Reel -> Video ... until every
-// bucket is drained. Desktop-only "lined" layout.
-function buildTypeRows(items) {
+// from useUnifiedFeed), then lays out rows of up to `rowSize` cards,
+// cycling Post -> Reel -> Video -> Post -> Reel -> Video ... until
+// every bucket is drained. Used on BOTH desktop (rowSize 5) and
+// mobile (rowSize 2) — only the row size and grid column count change
+// between breakpoints, the row-by-type structure itself stays.
+function buildTypeRows(items, rowSize) {
   const buckets = { post: [], reel: [], video: [] };
   items.forEach((item) => {
     if (buckets[item._type]) buckets[item._type].push(item);
@@ -133,7 +134,7 @@ function buildTypeRows(items) {
       const bucket = buckets[type];
       const start = cursor[type];
       if (start >= bucket.length) continue;
-      const chunk = bucket.slice(start, start + ROW_SIZE);
+      const chunk = bucket.slice(start, start + rowSize);
       cursor[type] += chunk.length;
       rows.push({ type, key: `${type}-${start}`, items: chunk });
       progressed = true;
@@ -154,15 +155,17 @@ function useIsDesktop(breakpoint = 769) {
   return isDesktop;
 }
 
-// Instagram-Explore-style grid mixing videos, reels, and posts on
-// mobile; on desktop, reorganized into same-type rows of 5
-// (Posts -> Reels -> Videos, repeating). Reuses the same
-// merged/sorted data source either way — only the presentation
-// layer changes.
+// Instagram-Explore-style grid, reorganized into same-type rows on
+// BOTH desktop and mobile: Posts -> Reels -> Videos, repeating.
+// Desktop shows 5 cards per row, mobile shows 2 per row — the
+// underlying merged/sorted data source and row-building logic are
+// identical, only ROW_SIZE and the CSS column count differ per
+// breakpoint.
 const ExploreGrid = () => {
   const currentUser = localStorage.getItem("username") || "anonymous";
   const { items, loading, loadingMore, hasMore, loadMore } = useUnifiedFeed(currentUser);
   const isDesktop = useIsDesktop();
+  const rowSize = isDesktop ? 5 : 2;
 
   const [sentinelNode, setSentinelNode] = useState(null);
   const loadingMoreRef = useRef(false);
@@ -188,8 +191,8 @@ const ExploreGrid = () => {
   }, [sentinelNode, handleLoadMore]);
 
   const typeRows = useMemo(
-    () => (isDesktop ? buildTypeRows(items) : []),
-    [isDesktop, items]
+    () => buildTypeRows(items, rowSize),
+    [items, rowSize]
   );
 
   if (loading) {
@@ -219,26 +222,18 @@ const ExploreGrid = () => {
     <div className="eg-page">
       <h1 className="eg-heading">Explore</h1>
 
-      {isDesktop ? (
-        <div className="eg-type-rows">
-          {typeRows.map((row) => (
-            <div key={row.key} className="eg-type-row">
-              <p className="eg-type-row-label">{TYPE_ROW_LABEL[row.type]}</p>
-              <div className="eg-type-row-grid">
-                {row.items.map((item) => (
-                  <ExploreCard key={`${item._type}-${item.id}`} item={item} />
-                ))}
-              </div>
+      <div className="eg-type-rows">
+        {typeRows.map((row) => (
+          <div key={row.key} className="eg-type-row">
+            <p className="eg-type-row-label">{TYPE_ROW_LABEL[row.type]}</p>
+            <div className="eg-type-row-grid">
+              {row.items.map((item) => (
+                <ExploreCard key={`${item._type}-${item.id}`} item={item} />
+              ))}
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="eg-grid">
-          {items.map((item) => (
-            <ExploreCard key={`${item._type}-${item.id}`} item={item} />
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
 
       {hasMore && (
         <div ref={setSentinelNode} className="eg-sentinel">
