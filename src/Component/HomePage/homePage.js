@@ -3529,10 +3529,14 @@ const HomePage = ({ sideNavbar }) => {
                             />
                           ))}
                         </div>
-                        {/* Google AdSense — one banner unit every other
+                        {/* Google AdSense — one banner unit every 4th
                             video row (skipped on the very first so the
-                            page doesn't open with an ad above the fold) */}
-                        {videoRowCount > 1 && videoRowCount % 2 === 0 && (
+                            page doesn't open with an ad above the fold).
+                            Lower frequency than before since rows are
+                            now much smaller (4 videos vs. the old 12),
+                            so a blank/unfilled ad slot is more visually
+                            noticeable relative to the content around it. */}
+                        {videoRowCount > 1 && videoRowCount % 4 === 0 && (
                           <AdUnit slot="3820561974" />
                         )}
                       </React.Fragment>
