@@ -1,0 +1,108 @@
+:root {
+  --zx-bg:        #fdf1ef;
+  --zx-surface:   #ffffff;
+  --zx-border:    #f3d6d2;
+  --zx-primary:   #9e1226;
+  --zx-primary2:  #c81e34;
+  --zx-text:      #1e1315;
+  --zx-text3:     #9c7a7c;
+}
+
+.hh-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100vh;
+  background: var(--zx-bg);
+}
+
+/* ── Tab bar — sits directly under the fixed Navbar (56px tall).
+   Sticky rather than fixed so it scrolls out naturally with the page
+   instead of needing its own left-offset math like homePage_options
+   does; it's already inside the .zx-content-shift wrapper in App.js,
+   which handles the sidebar's left margin for us. ── */
+.hh-tabbar {
+  position: sticky;
+  top: 56px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--zx-surface);
+  border-bottom: 2px solid var(--zx-border);
+  box-shadow: 0 2px 12px rgba(158, 18, 38, 0.06);
+}
+
+.hh-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--zx-text3);
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.hh-tab-btn:hover {
+  background: rgba(158, 18, 38, 0.06);
+  color: var(--zx-primary);
+}
+
+.hh-tab-btn.hh-tab-active {
+  background: rgba(158, 18, 38, 0.1);
+  color: var(--zx-primary);
+}
+
+.hh-upload-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, var(--zx-primary), var(--zx-primary2));
+  color: #ffffff;
+  border: none;
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 18px;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(158, 18, 38, 0.3);
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.hh-upload-btn:hover {
+  opacity: 0.92;
+  box-shadow: 0 6px 20px rgba(158, 18, 38, 0.42);
+}
+
+.hh-tab-content {
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .hh-tabbar {
+    top: 56px;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .hh-tab-btn span {
+    display: none;
+  }
+  .hh-tab-btn {
+    padding: 8px 12px;
+  }
+  .hh-upload-btn span {
+    display: none;
+  }
+  .hh-upload-btn {
+    padding: 8px 12px;
+  }
+}

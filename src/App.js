@@ -1,8 +1,11 @@
 import "./App.css";
 import Navbar from "./Component/Navbar/navbar";
-import Home from "./Pages/Home/home";
+// FIX: "/" now renders HomeHub (Home feed + Posts as sub-tabs, Upload as
+// an in-tab button) instead of the old standalone Home page — see
+// src/Pages/Home/HomeHub.jsx. The old `Home` import/route is removed.
+import HomeHub from "./Pages/Home/HomeHub";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes, useLocation, Navigate } from "react-router-dom";
 import Video from "./Pages/Video/video";
 import Profile from "./Pages/Profile/profile";
 import VideoUpload from "./Pages/VideoUpload/videoUpload";
@@ -673,7 +676,11 @@ function App() {
             }}
           >
             <Routes>
-              <Route path="/"               element={<Home sideNavbar={sideNavbar} />} />
+              {/* FIX: "/" now renders the merged HomeHub — Home feed and
+                  Posts as in-page sub-tabs (?tab=home / ?tab=posts), with
+                  Upload as a button inside that tab bar rather than its
+                  own nav entry. See src/Pages/Home/HomeHub.jsx. */}
+              <Route path="/"               element={<HomeHub sideNavbar={sideNavbar} currentUser={currentUser} />} />
               <Route path="/video/:id"      element={<Video sideNavbar={sideNavbar} />} />
               <Route path="/user/:username" element={<Profile sideNavbar={sideNavbar} />} />
               <Route path="/videoUpload"    element={<VideoUpload />} />
@@ -704,7 +711,11 @@ function App() {
               <Route path="/dmca"                  element={<DmcaPage />} />
               <Route path="/community-guidelines"  element={<CommunityGuidelinesPage />} />
               <Route path="/advertise"             element={<AdvertisePage />} />
-              <Route path="/feed"                  element={<PostFeed sideNavbar={sideNavbar} />} />
+              {/* FIX: /feed is now folded into HomeHub as the "Posts"
+                  sub-tab. Old bookmarks/shared links to /feed still work
+                  — they're redirected straight to /?tab=posts instead of
+                  rendering a separate standalone page. */}
+              <Route path="/feed"                  element={<Navigate to="/?tab=posts" replace />} />
               <Route path="/admin"                 element={<AdminPanel />} />
               <Route path="/live"                  element={<LiveBrowser currentUser={currentUser} />} />
               <Route path="/foryou"                element={<ExploreGrid />} />

@@ -1,11 +1,8 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import HomeIcon from "@mui/icons-material/Home";
-import SearchIcon from "@mui/icons-material/Search";
-import VideoCallIcon from "@mui/icons-material/VideoCall";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import NewspaperIcon from "@mui/icons-material/Newspaper";
 
 const BottomNav = ({ currentUser }) => {
   const location = useLocation();
@@ -18,6 +15,15 @@ const BottomNav = ({ currentUser }) => {
   // piece of chrome instead of two different themes. ──
   const activeColor = "#ffffff";
   const inactiveColor = "rgba(255, 233, 226, 0.65)";
+
+  // FIX: Upload ("/videoUpload") and Posts ("/feed") used to be separate
+  // items here. Both are now folded into the single "Home" tab — Posts
+  // as an in-page sub-tab (see HomeHub.jsx, ?tab=posts) and Upload as a
+  // button inside that same tab bar. Removing them here means Home is
+  // the one, single entry point for all three, matching the merged-tab
+  // request. "/" is considered active for any /?tab=... variant too, so
+  // the Home icon still highlights while browsing the Posts sub-tab.
+  const isHomeActive = location.pathname === "/";
 
   return (
     <>
@@ -106,29 +112,17 @@ const BottomNav = ({ currentUser }) => {
       `}</style>
 
       <nav className="bottom-nav">
-        {/* Home */}
+        {/* Home — now the single entry point for Home feed, Posts
+            (in-page sub-tab), and Upload (button inside that tab bar) */}
         <Link
           to="/"
-          className={`bottom-nav-item${isActive("/") ? " active-item" : ""}`}
+          className={`bottom-nav-item${isHomeActive ? " active-item" : ""}`}
         >
           <div className="bottom-nav-icon-wrap">
-            <HomeIcon sx={{ fontSize: "22px", color: isActive("/") ? activeColor : inactiveColor }} />
+            <HomeIcon sx={{ fontSize: "22px", color: isHomeActive ? activeColor : inactiveColor }} />
           </div>
-          <span className="bottom-nav-label" style={{ color: isActive("/") ? activeColor : inactiveColor }}>
+          <span className="bottom-nav-label" style={{ color: isHomeActive ? activeColor : inactiveColor }}>
             Home
-          </span>
-        </Link>
-
-        {/* Upload — fixed path to match router */}
-        <Link
-          to="/videoUpload"
-          className={`bottom-nav-item${isActive("/videoUpload") ? " active-item" : ""}`}
-        >
-          <div className="bottom-nav-icon-wrap">
-            <VideoCallIcon sx={{ fontSize: "22px", color: isActive("/videoUpload") ? activeColor : inactiveColor }} />
-          </div>
-          <span className="bottom-nav-label" style={{ color: isActive("/videoUpload") ? activeColor : inactiveColor }}>
-            Upload
           </span>
         </Link>
 
@@ -142,19 +136,6 @@ const BottomNav = ({ currentUser }) => {
           </div>
           <span className="bottom-nav-label" style={{ color: isActive("/local-player") ? activeColor : inactiveColor }}>
             Player
-          </span>
-        </Link>
-
-        {/* Posts */}
-        <Link
-          to="/feed"
-          className={`bottom-nav-item${isActive("/feed") ? " active-item" : ""}`}
-        >
-          <div className="bottom-nav-icon-wrap">
-            <NewspaperIcon sx={{ fontSize: "22px", color: isActive("/feed") ? activeColor : inactiveColor }} />
-          </div>
-          <span className="bottom-nav-label" style={{ color: isActive("/feed") ? activeColor : inactiveColor }}>
-            Posts
           </span>
         </Link>
 

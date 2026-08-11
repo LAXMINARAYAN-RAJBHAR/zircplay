@@ -26,26 +26,10 @@ const HomeIcon = () => (
   </svg>
 );
 
-const PostsIcon = () => (
-  <svg viewBox="0 0 24 24" style={ic}>
-    <rect x="3" y="4" width="18" height="3" rx="1" {...s} />
-    <rect x="3" y="10" width="18" height="3" rx="1" {...s} />
-    <rect x="3" y="16" width="12" height="3" rx="1" {...s} />
-  </svg>
-);
-
 const ShortsIcon = () => (
   <svg viewBox="0 0 24 24" style={ic}>
     <rect x="6" y="2" width="12" height="20" rx="3" {...s} />
     <polygon points="10,8 16,12 10,16" fill="#534AB7" stroke="none" />
-  </svg>
-);
-
-const SubsIcon = () => (
-  <svg viewBox="0 0 24 24" style={ic}>
-    <rect x="2" y="7" width="20" height="13" rx="2" {...s} />
-    <path d="M16 2H8" {...s} />
-    <polygon points="10,10 10,17 17,13.5" fill="#534AB7" stroke="none" />
   </svg>
 );
 
@@ -142,6 +126,10 @@ const SideNavbar = ({ sideNavbar }) => {
     >
       {/* ── TOP SECTION ── */}
       <div className="home_sideNavbarTop">
+        {/* FIX: Posts ("/feed") used to be its own link here. It's now
+            folded into the Home tab as an in-page sub-tab (see
+            HomeHub.jsx, ?tab=posts) rather than a separate destination —
+            removed to match the single merged "Home" entry point. */}
         <Link to="/" className="home_sideNavbar_link" title={!expanded ? "Home" : undefined}>
           <div
             className="home_sideNavbarTopOption"
@@ -149,16 +137,6 @@ const SideNavbar = ({ sideNavbar }) => {
           >
             <HomeIcon />
             <Title>Home</Title>
-          </div>
-        </Link>
-
-        <Link to="/feed" className="home_sideNavbar_link" title={!expanded ? "Posts" : undefined}>
-          <div
-            className="home_sideNavbarTopOption"
-            style={isActive("/feed") ? activeStyle : {}}
-          >
-            <PostsIcon />
-            <Title>Posts</Title>
           </div>
         </Link>
 
