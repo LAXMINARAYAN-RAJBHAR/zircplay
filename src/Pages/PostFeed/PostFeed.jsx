@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { supabase } from "../../config/supabase";
 import "./PostFeed.css";
@@ -6,6 +6,11 @@ import PostComposer from "./PostComposer";
 import PostCard from "./PostCard";
 import SideNavbar from "../../Component/SideNavbar/sideNavbar";
 import AdUnit from "../../Component/Ads/AdUnit";
+// NEW: shared notification helper — see src/utils/notifications.js.
+// notifySubscribers used to be a local function defined at the bottom of
+// this file; it's now shared so video/reel uploads can use the same
+// uuid-vs-username resolution logic instead of duplicating it.
+import { notifySubscribers } from "../../utils/notifications";
 
 const PostFeed = ({ sideNavbar }) => {
   const location = useLocation();
@@ -196,62 +201,23 @@ const PostFeed = ({ sideNavbar }) => {
     }
   }, [posts, highlightedPostId]);
 
-  const notifySubscribers = async (uploaderUsername, post) => {
-    if (!uploaderUsername) return;
-
-    const { data: subRows } = await supabase
-      .from("subscriptions")
-      .select("subscriber_id")
-      .eq("subscribed_to", uploaderUsername);
-
-    if (!subRows || subRows.length === 0) return;
-
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const uuidIds = [...new Set(subRows.filter((s) => uuidRegex.test(s.subscriber_id)).map((s) => s.subscriber_id))];
-
-    let idToUsername = {};
-    if (uuidIds.length > 0) {
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, username")
-        .in("id", uuidIds);
-      profilesData?.forEach((p) => {
-        if (p.username && p.username.trim()) idToUsername[p.id] = p.username;
-      });
-    }
-
-    const recipientUsernames = [
-      ...new Set(
-        subRows
-          .map((s) =>
-            uuidRegex.test(s.subscriber_id)
-              ? idToUsername[s.subscriber_id]
-              : s.subscriber_id
-          )
-          .filter(Boolean)
-      ),
-    ];
-
-    if (recipientUsernames.length === 0) return;
-
-    const notifications = recipientUsernames.map((recipient) => ({
-      recipient_username: recipient,
-      sender_username: uploaderUsername,
-      type: "upload",
-      message: `${uploaderUsername} made a new post: "${post.text?.slice(0, 60) || "Check it out"}"`,
-      is_read: false,
-      content_id: post.id,
-      content_type: "post",
-    }));
-
-    await supabase.from("notifications").insert(notifications);
-  };
-
+  // FIX: notifySubscribers used to be a local function defined at the
+  // bottom of this file (with a silent `await supabase...insert(...)`
+  // and no error handling). It now delegates to the shared helper in
+  // src/utils/notifications.js, which logs any Supabase error instead of
+  // swallowing it — so if this insert is ever failing (e.g. an RLS
+  // policy blocking it), it'll show up in the console instead of just
+  // "nothing happens."
   const handleNewPost = async (post) => {
     setPosts((prev) => [post, ...prev]);
 
     const uploaderUsername = localStorage.getItem("username");
-    await notifySubscribers(uploaderUsername, post);
+    await notifySubscribers(uploaderUsername, {
+      type: "upload",
+      message: `${uploaderUsername} made a new post: "${post.text?.slice(0, 60) || "Check it out"}"`,
+      contentId: post.id,
+      contentType: "post",
+    });
   };
 
   const handleReaction = async (postId, reactionType) => {

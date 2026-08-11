@@ -14,6 +14,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import { createPortal } from "react-dom";
 import LiveBrowser from "../Live/LiveViewer";
 import AdUnit from "../../Component/Ads/AdUnit";
+// NEW: shared notification helper — see src/utils/notifications.js
+import { notifyUser } from "../../utils/notifications";
 
 const API_KEYS = [
   process.env.REACT_APP_YOUTUBE_KEY_1,
@@ -3282,6 +3284,21 @@ const HomePage = ({ sideNavbar }) => {
             v.id === videoId ? { ...v, likes: (v.likes || 0) + 1 } : v,
           ),
         );
+        // NEW: notify the video owner about the like. dbVideos already
+        // carries `username` per row (set in fetchDbVideos above), so we
+        // look the video up from current state rather than adding a new
+        // fetch just for this.
+        const likedVideo = dbVideos.find((v) => v.id === videoId);
+        if (likedVideo) {
+          notifyUser({
+            recipientUsername: likedVideo.username,
+            senderUsername: loggedInUsername,
+            type: "like",
+            message: `${loggedInUsername} liked your video "${likedVideo.title || ""}"`,
+            contentId: videoId,
+            contentType: "video",
+          });
+        }
       }
     } catch (_) {}
   };

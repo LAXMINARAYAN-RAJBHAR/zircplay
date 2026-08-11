@@ -20,6 +20,8 @@ import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ExpandableText from "../ExpandableText/ExpandableText";
 import AdUnit from "../../Component/Ads/AdUnit";
+// NEW: shared notification helper — see src/utils/notifications.js
+import { notifyUser } from "../../utils/notifications";
 
 // ── Only uploaded reels (from Supabase) are used anywhere in this file now.
 //    The hardcoded demo `reelsData` array has been removed — reels shown in
@@ -339,7 +341,16 @@ const ReelItem = ({ reel, allReels }) => {
       setSubscribed(false);
     } else {
       const { error } = await supabase.from("subscriptions").insert({ subscriber_id: userId, subscriber_username: localStorage.getItem("username"), subscribed_to: reel.username });
-      if (!error) setSubscribed(true);
+      if (!error) {
+        setSubscribed(true);
+        // NEW: notify the reel owner about the new subscriber.
+        notifyUser({
+          recipientUsername: reel.username,
+          senderUsername: loggedInUser,
+          type: "subscriber",
+          message: `${loggedInUser} subscribed to your channel`,
+        });
+      }
     }
   };
 
@@ -350,6 +361,15 @@ const ReelItem = ({ reel, allReels }) => {
     const { data, error } = await supabase.from("comments").insert({ user_id: userId, username: loggedInUser, content_id: String(reel.id), content_type: "reel", text: commentText }).select().single();
     if (!error && data) {
       setComments((prev) => [{ id: data.id, user: data.username, text: data.text, date: data.created_at?.slice(0, 10) }, ...prev]);
+      // NEW: notify the reel owner about the comment.
+      notifyUser({
+        recipientUsername: reel.username,
+        senderUsername: loggedInUser,
+        type: "comment",
+        message: `${loggedInUser} commented on your reel: "${commentText.slice(0, 60)}"`,
+        contentId: reel.id,
+        contentType: "reel",
+      });
     }
     setCommentText("");
   };
@@ -547,6 +567,15 @@ const ReelItem = ({ reel, allReels }) => {
       setLiked(true);
       setLikeCount(await fetchCount(reel.id, "reel", "like"));
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));
+      // NEW: notify the reel owner about the like (double-tap path).
+      notifyUser({
+        recipientUsername: reel.username,
+        senderUsername: loggedInUser,
+        type: "like",
+        message: `${loggedInUser} liked your reel "${reel.title || ""}"`,
+        contentId: reel.id,
+        contentType: "reel",
+      });
     } finally { setIsActing(false); }
   };
 
@@ -609,6 +638,15 @@ const ReelItem = ({ reel, allReels }) => {
         }
         await supabase.from("likes").upsert({ user_id: userId, content_id: String(reel.id), content_type: "reel", reaction_type: "like" }, { onConflict: "user_id,content_id,content_type,reaction_type" });
         setLiked(true);
+        // NEW: notify the reel owner about the like (button path).
+        notifyUser({
+          recipientUsername: reel.username,
+          senderUsername: loggedInUser,
+          type: "like",
+          message: `${loggedInUser} liked your reel "${reel.title || ""}"`,
+          contentId: reel.id,
+          contentType: "reel",
+        });
       }
       setLikeCount(await fetchCount(reel.id, "reel", "like"));
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));

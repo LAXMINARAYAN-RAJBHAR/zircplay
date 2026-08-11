@@ -346,7 +346,14 @@ const Navbar = ({
   // ── Admin check: only true when the logged-in account's stored email
   //    matches ADMIN_EMAILS. Drives whether the "Admin Panel" link shows
   //    up in the profile dropdown below — same rule AdminPanel.jsx uses,
-  //    so this link only ever appears for someone who can actually get in. ──
+  //    so this link only ever appears for someone who can actually get in.
+  //
+  //    NOTE: this depends on localStorage.email being set after login.
+  //    Login.jsx's password flow sets it correctly. If the admin account
+  //    signs in via "Continue with Google" instead, make sure whatever
+  //    handles the OAuth redirect (e.g. an onAuthStateChange listener in
+  //    App.js) also does localStorage.setItem("email", session.user.email)
+  //    — otherwise this check silently stays false for that account. ──
   const isAdmin =
     !!currentUser &&
     ADMIN_EMAILS.includes(
@@ -439,7 +446,14 @@ const Navbar = ({
         .eq("recipient_username", currentUser)
         .order("created_at", { ascending: false })
         .limit(30);
-      if (!error && data) {
+      if (error) {
+        // FIX: previously swallowed silently — log so RLS/schema issues
+        // are actually visible in the console instead of just "nothing
+        // shows up."
+        console.error("[navbar] Failed to load notifications:", error);
+        return;
+      }
+      if (data) {
         setNotifications(
           data.map((n) => ({
             id: n.id,
@@ -456,8 +470,14 @@ const Navbar = ({
     };
     loadNotifications();
 
+    // FIX: channel name is now scoped per-user (was a single shared
+    // "notifications-channel" string for every logged-in user on every
+    // mount). A static channel name risks silent duplicate-subscription
+    // issues, especially under React 18 StrictMode's double-invoked
+    // effects in dev — scoping it avoids that entirely, matching the
+    // pattern already used for the DM badge channel below.
     const channel = supabase
-      .channel("notifications-channel")
+      .channel(`notifications-channel-${currentUser}`)
       .on(
         "postgres_changes",
         {

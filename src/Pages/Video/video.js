@@ -15,6 +15,8 @@ import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ReportModal from "../../Component/Moderation/ReportModal";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
 import AdSlot from "../../Component/Ads/AdSlot";
+// NEW: shared notification helper — see src/utils/notifications.js
+import { notifyUser } from "../../utils/notifications";
 
 const timeAgo = (dateStr) => {
   if (!dateStr) return "";
@@ -403,7 +405,16 @@ const Video = ({ sideNavbar }) => {
       const { error } = await supabase
         .from("subscriptions")
         .insert({ subscriber_id: userId, subscribed_to: channelUsername });
-      if (!error) setIsSubscribed(true);
+      if (!error) {
+        setIsSubscribed(true);
+        // NEW: notify the channel owner that they got a new subscriber.
+        notifyUser({
+          recipientUsername: channelUsername,
+          senderUsername: loggedInUser,
+          type: "subscriber",
+          message: `${loggedInUser} subscribed to your channel`,
+        });
+      }
     }
   };
 
@@ -447,6 +458,16 @@ const Video = ({ sideNavbar }) => {
       setLiked(true);
       setLikeCount((c) => c + 1);
       if (disliked) setDisliked(false);
+      // NEW: notify the video owner about the like (not on unlike).
+      const channelUsername = video?.username || video?.channel?.toLowerCase();
+      notifyUser({
+        recipientUsername: channelUsername,
+        senderUsername: loggedInUser,
+        type: "like",
+        message: `${loggedInUser} liked your video "${video?.title || ""}"`,
+        contentId: id,
+        contentType: "video",
+      });
     }
   };
 
@@ -513,6 +534,16 @@ const Video = ({ sideNavbar }) => {
         },
         ...prev,
       ]);
+      // NEW: notify the video owner about the comment.
+      const channelUsername = video?.username || video?.channel?.toLowerCase();
+      notifyUser({
+        recipientUsername: channelUsername,
+        senderUsername: loggedInUser,
+        type: "comment",
+        message: `${loggedInUser} commented on your video: "${message.slice(0, 60)}"`,
+        contentId: id,
+        contentType: "video",
+      });
     }
     setMessage("");
   };
@@ -545,6 +576,16 @@ const Video = ({ sideNavbar }) => {
       setLiked(true);
       setLikeCount((c) => c + 1);
       if (disliked) setDisliked(false);
+      // NEW: notify the video owner about the double-tap like.
+      const channelUsername = video?.username || video?.channel?.toLowerCase();
+      notifyUser({
+        recipientUsername: channelUsername,
+        senderUsername: loggedInUser,
+        type: "like",
+        message: `${loggedInUser} liked your video "${video?.title || ""}"`,
+        contentId: id,
+        contentType: "video",
+      });
     }
   };
 
