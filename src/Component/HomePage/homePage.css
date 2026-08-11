@@ -523,7 +523,7 @@
 
 .homePage_postsGrid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr); /* matches ROW_SIZES_DESKTOP.post */
   gap: 14px;
 }
 
@@ -671,18 +671,33 @@
     box-sizing: border-box !important;
   }
 
-  /* Hide desktop content on mobile.
-     ✅ CHANGED: added :not(.zx-dramatic-trending):not(.homePage_postsSection)
-     so the dramatic trending carousel AND the new Posts section (both of
-     which now render on both mobile and desktop from one component)
-     stay visible on mobile too, instead of being caught by this "hide
-     everything except these mobile-only classes" rule. */
-  .home_mainPage > *:not(.mobile-trending-strip):not(.mobile-tab-bar):not(.mobile-tab-content):not(.search-results-panel):not(.zx-dramatic-trending):not(.homePage_postsSection) {
-    display: none !important;
-  }
+  /* ✅ CHANGED: the old rule here hid every direct child of
+     .home_mainPage except a hardcoded allowlist, back when mobile used
+     a separate tabbed browsing UI (Shorts/Videos/Movies/Live tabs)
+     instead of the same content flow as desktop. That tab system is
+     gone — mobile now renders the exact same component tree as desktop
+     (Trending -> Live -> interleaved Post/Reel/Video rows), just with
+     smaller per-row card counts via ROW_SIZES_MOBILE and the grid
+     column overrides below. Nothing needs to be hidden anymore. */
 
-  .homePage_postsGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .homePage_postsGrid { grid-template-columns: repeat(1, 1fr); gap: 10px; } /* ROW_SIZES_MOBILE.post = 1 */
   .homePage_postsSection { padding: 0 8px; }
+
+  /* ROW_SIZES_MOBILE.reel = 2 */
+  .homePage_shortsRow {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    padding: 0 8px !important;
+  }
+  .homePage_shortsSection { padding: 0; }
+
+  /* ROW_SIZES_MOBILE.video = 1 */
+  .youtube_VideoGrid {
+    grid-template-columns: repeat(1, 1fr) !important;
+    gap: 12px !important;
+    padding: 0 8px !important;
+    box-sizing: border-box;
+  }
 
   /* ── Trending Strip (legacy — unused by HomePage now, kept for safety) ── */
   .mobile-trending-strip {

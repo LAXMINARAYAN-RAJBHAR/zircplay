@@ -257,37 +257,6 @@ const usePostPreview = (isMobile, canPreview) => {
   };
 };
 
-const MOBILE_TABS = [
-  { id: "shorts", label: "Shorts", icon: "📱" },
-  { id: "videos", label: "Videos", icon: "🎬" },
-  { id: "movies", label: "Movies", icon: "🎥" },
-  { id: "live", label: "Live", icon: "🔴" },
-];
-
-const useSwipeTabs = (
-  onSwipeLeft,
-  onSwipeRight,
-  threshold = 50,
-  verticalLimit = 80,
-) => {
-  const touchStart = useRef(null);
-  const onTouchStart = (e) => {
-    const t = e.touches[0];
-    touchStart.current = { x: t.clientX, y: t.clientY };
-  };
-  const onTouchEnd = (e) => {
-    if (!touchStart.current) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touchStart.current.x;
-    const dy = Math.abs(t.clientY - touchStart.current.y);
-    touchStart.current = null;
-    if (dy > verticalLimit) return;
-    if (dx < -threshold) onSwipeLeft();
-    if (dx > threshold) onSwipeRight();
-  };
-  return { onTouchStart, onTouchEnd };
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ShortCard
 // ─────────────────────────────────────────────────────────────────────────────
@@ -510,7 +479,7 @@ const ShortsRow = ({
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PostCard / PostsSection — mirrors the ExploreGrid post-card behaviour:
+// PostCard / PostsRow — mirrors the ExploreGrid post-card behaviour:
 // shows the post's image if it has one; if not (a video-only post), the
 // thumbnail becomes hover-previewable on desktop and auto-previews on
 // mobile once scrolled into view, same as usePostPreview above.
@@ -561,29 +530,55 @@ const PostCard = ({ post, isMobile }) => {
   );
 };
 
-const PostsSection = ({ posts, isMobile }) => {
-  if (!posts || posts.length === 0) return null;
-  const visible = posts.slice(0, isMobile ? 8 : 10);
-
-  return (
-    <div className="homePage_postsSection">
-      <div className="homePage_postsSectionHeader">
-        <span className="homePage_postsSectionTitle">
-          <span className="homePage_postsZBadge">Z</span>
-          Posts
-        </span>
-        <Link to="/feed" className="homePage_postsViewAll">
-          View All →
-        </Link>
-      </div>
-      <div className="homePage_postsGrid">
-        {visible.map((post) => (
-          <PostCard key={post.id} post={post} isMobile={isMobile} />
-        ))}
-      </div>
+// One row of Post cards — same visual pattern as ShortsRow (small "Z"
+// label + grid), used repeatedly by buildContentRows below rather than
+// as a single top spotlight.
+const PostsRow = ({ data, title, isMobile }) => (
+  <div className="homePage_postsSection">
+    <div className="homePage_postsSectionHeader">
+      <span className="homePage_postsSectionTitle">
+        <span className="homePage_postsZBadge">Z</span>
+        {title}
+      </span>
     </div>
-  );
-};
+    <div className="homePage_postsGrid">
+      {data.map((post) => (
+        <PostCard key={post.id} post={post} isMobile={isMobile} />
+      ))}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildContentRows — interleaves Posts / Reels / Videos into repeating
+// same-type rows: a Post row, then a Reel row, then a Video row, then
+// back to Posts, etc., until every bucket is drained. `sizesByType`
+// controls how many cards land in each row per content type (desktop
+// and mobile pass different sizes; see ROW_SIZES_DESKTOP/MOBILE below).
+// ─────────────────────────────────────────────────────────────────────────────
+const CONTENT_ROW_ORDER = ["post", "reel", "video"];
+const ROW_SIZES_DESKTOP = { post: 4, reel: 9, video: 4 };
+const ROW_SIZES_MOBILE = { post: 1, reel: 2, video: 1 };
+
+function buildContentRows(buckets, sizesByType) {
+  const cursor = { post: 0, reel: 0, video: 0 };
+  const rows = [];
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const type of CONTENT_ROW_ORDER) {
+      const bucket = buckets[type] || [];
+      const size = sizesByType[type];
+      const start = cursor[type];
+      if (start >= bucket.length) continue;
+      const chunk = bucket.slice(start, start + size);
+      cursor[type] += chunk.length;
+      rows.push({ type, key: `${type}-${start}`, items: chunk });
+      progressed = true;
+    }
+  }
+  return rows;
+}
 
 const VideoCard = ({
   video,
@@ -2744,24 +2739,8 @@ const HomePage = ({ sideNavbar }) => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const [selectedOption, setSelectedOption] = useState("All");
-  const [mobileTab, setMobileTab] = useState("shorts");
 
   const liveBrowserRef = useRef(null);
-
-  const TAB_IDS = MOBILE_TABS.map((t) => t.id);
-  const goNextTab = () => {
-    setMobileTab((cur) => {
-      const idx = TAB_IDS.indexOf(cur);
-      return idx < TAB_IDS.length - 1 ? TAB_IDS[idx + 1] : cur;
-    });
-  };
-  const goPrevTab = () => {
-    setMobileTab((cur) => {
-      const idx = TAB_IDS.indexOf(cur);
-      return idx > 0 ? TAB_IDS[idx - 1] : cur;
-    });
-  };
-  const swipeHandlers = useSwipeTabs(goNextTab, goPrevTab);
 
   const searchQuery = (() => {
     const params = new URLSearchParams(location.search);
@@ -3341,118 +3320,19 @@ const HomePage = ({ sideNavbar }) => {
     watchedContentIds,
   };
 
-  const movieTags = [
-    "Hindi Movies",
-    "Hollywood Movies",
-    "Dubbed Hollywood Movies",
-    "Pakistani Movies",
-    "Bhojpuri Cinema",
-    "Film Criticisms",
-    "Superhero Movies",
-    "Indian Movies",
-  ];
-  const movieVideos = allVideos.filter((v) =>
-    v.tags?.some((t) => movieTags.includes(t)),
-  );
-  const liveVideos = allVideos.filter((v) => v.tags?.includes("Live"));
-
-  const renderMobileTabContent = () => {
-    switch (mobileTab) {
-      case "shorts":
-        return (
-          <div className="mobile-tab-content" {...swipeHandlers}>
-            {allReels.length === 0 ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "40px 0",
-                  color: "#8b84c4",
-                }}
-              >
-                <div style={{ fontSize: "36px", marginBottom: "10px" }}>📱</div>
-                <p style={{ margin: 0, fontWeight: "600" }}>No shorts yet</p>
-              </div>
-            ) : (
-              <>
-                <div className="mobile-tab-section-head">
-                  All Shorts ({allReels.length})
-                </div>
-                <div className="homePage_shortsRow">
-                  {allReels.map((short) => (
-                    <ShortCard key={short.id} short={short} {...shortCardProps} />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        );
-      case "videos":
-        return (
-          <div className="mobile-tab-content" {...swipeHandlers}>
-            <div className="mobile-tab-section-head">
-              Uploaded Videos ({dbVideos.length})
-            </div>
-            <div className="youtube_VideoGrid">
-              {dbLoading &&
-                [...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
-              {dbVideos.map((v) => (
-                <VideoCard key={v.id} video={v} isUploaded={true} {...videoCardProps} />
-              ))}
-            </div>
-            {!dbLoading && dbVideos.length === 0 && (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "40px 0",
-                  color: "#8b84c4",
-                }}
-              >
-                <div style={{ fontSize: "36px", marginBottom: "10px" }}>🎬</div>
-                <p style={{ margin: 0, fontWeight: "600" }}>
-                  No videos uploaded yet
-                </p>
-              </div>
-            )}
-          </div>
-        );
-      case "movies":
-        return (
-          <div className="mobile-tab-content" {...swipeHandlers}>
-            <div className="mobile-tab-section-head">
-              Movies ({movieVideos.length})
-            </div>
-            {movieVideos.length > 0 ? (
-              <div className="youtube_VideoGrid">
-                {movieVideos.map((v) => (
-                  <VideoCard key={v.id} video={v} isUploaded={true} {...videoCardProps} />
-                ))}
-              </div>
-            ) : (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "40px 0",
-                  color: "#8b84c4",
-                }}
-              >
-                <div style={{ fontSize: "36px", marginBottom: "10px" }}>🎥</div>
-                <p style={{ margin: 0, fontWeight: "600" }}>
-                  No movies uploaded yet
-                </p>
-              </div>
-            )}
-          </div>
-        );
-      case "live":
-        return (
-          <div className="mobile-tab-content" {...swipeHandlers}>
-            <LiveBrowser currentUser={loggedInUsername} />
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
+  // ── Interleaved Posts / Reels / Videos rows for the "All" feed ──
+  // Order is always Post row -> Reel row -> Video row -> repeat, same on
+  // both breakpoints; only how many cards land in each row differs
+  // (ROW_SIZES_DESKTOP vs ROW_SIZES_MOBILE, see buildContentRows above).
+  const contentRows = React.useMemo(() => {
+    const sizes = isMobile ? ROW_SIZES_MOBILE : ROW_SIZES_DESKTOP;
+    const buckets = {
+      post: dbPosts,
+      reel: allReels,
+      video: dbVideos.map((v) => ({ ...v, isUploaded: true })),
+    };
+    return buildContentRows(buckets, sizes);
+  }, [dbPosts, allReels, dbVideos, isMobile]);
 
   return (
     <div className="homePage">
@@ -3497,14 +3377,10 @@ const HomePage = ({ sideNavbar }) => {
           <div
             className="homePage_option"
             onClick={() => {
-              if (isMobile) {
-                setMobileTab("live");
-              } else {
-                liveBrowserRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                });
-              }
+              liveBrowserRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
             }}
             style={{
               cursor: "pointer",
@@ -3582,86 +3458,69 @@ const HomePage = ({ sideNavbar }) => {
         )}
 
         {!searchActive && (
-          <PostsSection posts={dbPosts} isMobile={isMobile} />
-        )}
-
-        {!searchActive && !isMobile && (
           <div ref={liveBrowserRef} style={{ marginBottom: "28px" }}>
             <LiveBrowser currentUser={loggedInUsername} />
           </div>
         )}
 
-        {!searchActive && (
-          <div className="mobile-tab-bar">
-            {MOBILE_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                className={
-                  "mobile-tab-btn" + (mobileTab === tab.id ? " active" : "")
-                }
-                onClick={() => setMobileTab(tab.id)}
-              >
-                <span className="mobile-tab-icon">{tab.icon}</span>
-                <span className="mobile-tab-label">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {!searchActive && renderMobileTabContent()}
-
         {!searchActive &&
           (selectedOption === "All" ? (
             <>
-              {(() => {
-                const allVids = dbVideos.map((v) => ({
-                  ...v,
-                  isUploaded: true,
-                }));
-                const rows = [];
-                const totalRows = Math.ceil(allVids.length / 12);
-                if (totalRows === 0) {
-                  return (
-                    <div
-                      style={{
-                        textAlign: "center",
-                        marginTop: "60px",
-                        color: "#8b84c4",
-                      }}
-                    >
-                      <div style={{ fontSize: "48px", marginBottom: "16px" }}>
-                        📭
-                      </div>
-                      <p style={{ fontSize: "16px", fontWeight: "600" }}>
-                        No videos uploaded yet
-                      </p>
-                      <p style={{ fontSize: "13px", marginTop: "8px" }}>
-                        Upload your first video to see it here
-                      </p>
-                    </div>
-                  );
-                }
-                for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
-                  const rowReels = allReels.slice(
-                    rowIndex * 9,
-                    rowIndex * 9 + 9,
-                  );
-                  rows.push(
-                    <React.Fragment key={rowIndex}>
-                      {rowReels.length > 0 && (
+              {dbLoading && contentRows.length === 0 && (
+                <div className="youtube_VideoGrid">
+                  {[...Array(4)].map((_, i) => (
+                    <SkeletonCard key={i} />
+                  ))}
+                </div>
+              )}
+              {!dbLoading && contentRows.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: "center",
+                    marginTop: "60px",
+                    color: "#8b84c4",
+                  }}
+                >
+                  <div style={{ fontSize: "48px", marginBottom: "16px" }}>
+                    📭
+                  </div>
+                  <p style={{ fontSize: "16px", fontWeight: "600" }}>
+                    No content yet
+                  </p>
+                  <p style={{ fontSize: "13px", marginTop: "8px" }}>
+                    Upload your first video, reel, or post to see it here
+                  </p>
+                </div>
+              ) : (
+                (() => {
+                  let videoRowCount = 0;
+                  return contentRows.map((row) => {
+                    if (row.type === "post") {
+                      return (
+                        <PostsRow
+                          key={row.key}
+                          data={row.items}
+                          title="Posts"
+                          isMobile={isMobile}
+                        />
+                      );
+                    }
+                    if (row.type === "reel") {
+                      return (
                         <ShortsRow
-                          data={rowReels}
-                          title={rowIndex === 0 ? "Shorts" : "More Shorts"}
+                          key={row.key}
+                          data={row.items}
+                          title="Shorts"
                           {...shortCardProps}
                         />
-                      )}
-                      <div className="youtube_VideoGrid">
-                        {rowIndex === 0 &&
-                          dbLoading &&
-                          [...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
-                        {allVids
-                          .slice(rowIndex * 12, rowIndex * 12 + 12)
-                          .map((v) => (
+                      );
+                    }
+                    // video row
+                    videoRowCount += 1;
+                    return (
+                      <React.Fragment key={row.key}>
+                        <div className="youtube_VideoGrid">
+                          {row.items.map((v) => (
                             <VideoCard
                               key={v.id}
                               video={v}
@@ -3669,18 +3528,18 @@ const HomePage = ({ sideNavbar }) => {
                               {...videoCardProps}
                             />
                           ))}
-                      </div>
-                      {/* Google AdSense — one banner unit between every
-                          video grid row (skipped on the very first row so
-                          the page doesn't open with an ad above the fold) */}
-                      {rowIndex > 0 && (
-                        <AdUnit slot="3820561974" />
-                      )}
-                    </React.Fragment>,
-                  );
-                }
-                return rows;
-              })()}
+                        </div>
+                        {/* Google AdSense — one banner unit every other
+                            video row (skipped on the very first so the
+                            page doesn't open with an ad above the fold) */}
+                        {videoRowCount > 1 && videoRowCount % 2 === 0 && (
+                          <AdUnit slot="3820561974" />
+                        )}
+                      </React.Fragment>
+                    );
+                  });
+                })()
+              )}
             </>
           ) : (
             <div style={{ padding: "16px 0" }}>
