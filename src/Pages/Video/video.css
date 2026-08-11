@@ -905,3 +905,20 @@
 .expandable-text-toggle:hover {
   text-decoration: underline;
 }
+
+/* ══════════════════════════════════════
+   MOBILE  ≤ 768px
+══════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* ...unchanged rules above... */
+
+  /* CHANGED: was `bottom: 0`, which covered the ENTIRE video including
+     the native controls bar — blocking the native fullscreen button,
+     seek bar, and volume control on mobile. Leaves a safe strip at the
+     bottom clickable, matching desktop's approach. Fullscreen itself no
+     longer depends on this gap (see the dedicated Fullscreen button in
+     .video_frame_actions), but native scrubbing/volume still need it. */
+  .video_tap_overlay { bottom: 40px; }
+
+  .video_heart_burst { font-size: 48px; }
+}

@@ -4,6 +4,8 @@ import ThumbUpOutlinedIcon from "@mui/icons-material/ThumbUpOutlined";
 import ThumbDownAltOutlinedIcon from "@mui/icons-material/ThumbDownAltOutlined";
 import ReplyIcon from "@mui/icons-material/Reply";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import FullscreenIcon from "@mui/icons-material/Fullscreen";
+import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../../config/supabase";
 import useViewTracker from "../../Component/Reels/useViewTracker";
@@ -96,6 +98,36 @@ const getFallbackAvatar = (name) =>
     name || "U"
   )}&background=7c3aed&color=fff&size=42`;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fullscreen API helpers — cross-browser (standard + webkit/moz/ms prefixes),
+// plus the iOS Safari fallback (webkitEnterFullscreen/webkitExitFullscreen,
+// which live on the <video> element itself rather than requestFullscreen on
+// a wrapper, since iOS Safari doesn't support fullscreening arbitrary
+// elements — only the video element's own native player chrome).
+// ─────────────────────────────────────────────────────────────────────────────
+const getFullscreenElement = () =>
+  document.fullscreenElement ||
+  document.webkitFullscreenElement ||
+  document.mozFullScreenElement ||
+  document.msFullscreenElement ||
+  null;
+
+const requestFullscreenOn = (el) => {
+  if (!el) return;
+  if (el.requestFullscreen) el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else if (el.webkitEnterFullscreen) el.webkitEnterFullscreen(); // iOS Safari <video>
+  else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+  else if (el.msRequestFullscreen) el.msRequestFullscreen();
+};
+
+const exitFullscreen = () => {
+  if (document.exitFullscreen) document.exitFullscreen();
+  else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+  else if (document.msExitFullscreen) document.msExitFullscreen();
+};
+
 const Video = ({ sideNavbar }) => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -126,6 +158,7 @@ const Video = ({ sideNavbar }) => {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [videoMeta, setVideoMeta] = useState(null);
   const [channelAvatar, setChannelAvatar] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -197,6 +230,37 @@ const Video = ({ sideNavbar }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // ── Track fullscreen state across all vendor-prefixed events, so the
+  //    button icon (Fullscreen / FullscreenExit) always reflects reality —
+  //    including when the user exits via Esc or the native video chrome
+  //    instead of our button.
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!getFullscreenElement());
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, []);
+
+  const handleFullscreenToggle = (e) => {
+    e.stopPropagation();
+    const vid = videoRef.current;
+    if (!vid) return;
+    if (getFullscreenElement()) {
+      exitFullscreen();
+    } else {
+      requestFullscreenOn(vid);
+    }
+  };
 
   useEffect(() => {
     const fetchDbVideos = async () => {
@@ -847,6 +911,18 @@ const Video = ({ sideNavbar }) => {
             >
               <ReplyIcon fontSize="small" style={{ transform: "scaleX(-1)" }} />
               <span>Share</span>
+            </div>
+
+            <div
+              className={`video_frame_btn ${isFullscreen ? "active" : ""}`}
+              onClick={handleFullscreenToggle}
+              title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            >
+              {isFullscreen ? (
+                <FullscreenExitIcon fontSize="small" />
+              ) : (
+                <FullscreenIcon fontSize="small" />
+              )}
             </div>
 
             <div
