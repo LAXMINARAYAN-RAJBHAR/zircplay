@@ -22,6 +22,14 @@ import PostFeed from "../PostFeed/PostFeed";
 // Supabase queries/realtime subscriptions, so keeping both mounted at
 // once would double up on network calls and background video playback
 // for no benefit.
+//
+// STACKING ORDER: HomePageContent renders its own fixed category-chip
+// bar (.homePage_options, in homePage.css) only when the Home sub-tab
+// is active — Posts has no equivalent bar. Home/Posts/Upload should
+// always render BELOW that chip row when it's present, but flush under
+// the Navbar when it's not (i.e. on the Posts tab). Since only this
+// component knows which tab is active, it passes that down as a class
+// so homeHub.css can pick the right `top` offset for .hh-tabbar.
 const HomeHub = ({ sideNavbar, currentUser }) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,7 +52,15 @@ const HomeHub = ({ sideNavbar, currentUser }) => {
 
   return (
     <div className="hh-wrap">
-      <div className={"hh-tabbar" + (sideNavbar ? " sidebar-open" : "")}>
+      <div
+        className={
+          "hh-tabbar" +
+          (sideNavbar ? " sidebar-open" : "") +
+          // Home tab renders homePage_options above this bar — push down.
+          // Posts tab has no chip row — sit right under the Navbar.
+          (activeTab === "home" ? " hh-tabbar-below-options" : "")
+        }
+      >
         <button
           className={"hh-tab-btn" + (activeTab === "home" ? " hh-tab-active" : "")}
           onClick={() => setTab("home")}

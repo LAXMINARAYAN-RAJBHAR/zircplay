@@ -59,13 +59,18 @@
    VIEWPORT, not to any parent's margin-left. That means it must carry
    its OWN left offset that mirrors the sidebar's current width — it does
    NOT get this "for free" from the App.js content wrapper's margin-left,
-   because fixed elements ignore ancestor margins entirely. */
+   because fixed elements ignore ancestor margins entirely.
+
+   STACKING ORDER: sits directly under the Navbar, ABOVE HomeHub's
+   Home/Posts/Upload bar (.hh-tabbar reads var(--zx-options-h) from
+   homeHub.css to push itself below this). Only rendered on the Home
+   sub-tab, since Posts (PostFeed) doesn't mount this component. */
 .homePage_options {
   position: fixed;
-  top: 56px;
+  top: var(--zx-navbar-h, 56px);
   left: 72px;   /* collapsed sidebar width (icon-only strip) */
   right: 0;
-  z-index: 100;
+  z-index: 95;  /* above .hh-tabbar's z-index:90, since this bar sits first */
   overflow: hidden;
   background: #ffffff;
   padding: 0;

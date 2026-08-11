@@ -5,7 +5,10 @@
   width: 100%;
   min-height: 100vh;
   background-color: #f0f4ff;
-  overflow-x: hidden;
+  /* overflow-x: hidden;  ← REMOVED — moved to .hh-tab-content in homeHub.css,
+     since this was an ancestor of the sticky .hh-tabbar and silently
+     forced this element into a scroll container, breaking sticky's
+     "top" resolution against the viewport. */
 }
 @media (max-width: 768px) {
   .zx-content-shift {

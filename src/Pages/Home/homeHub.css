@@ -6,6 +6,17 @@
   --zx-primary2:  #c81e34;
   --zx-text:      #1e1315;
   --zx-text3:     #9c7a7c;
+
+  /* ── Shared header-stack heights ──
+     .homePage_options (homePage.css) and .home_mainPage both read these
+     to line up correctly against this file's bars. Keep all three files
+     in sync from here.
+
+     STACKING ORDER (top to bottom): Navbar -> homePage_options (Home tab
+     only) -> hh-tabbar -> page content. */
+  --zx-navbar-h:  56px;  /* Navbar's fixed height (navbar.css) */
+  --zx-tabbar-h:  56px;  /* This file's .hh-tabbar height */
+  --zx-options-h: 40px;  /* homePage.css's .homePage_options chip row height */
 }
 
 .hh-wrap {
@@ -16,14 +27,16 @@
   background: var(--zx-bg);
 }
 
-/* ── Tab bar — sits directly under the fixed Navbar (56px tall).
-   Sticky rather than fixed so it scrolls out naturally with the page
-   instead of needing its own left-offset math like homePage_options
-   does; it's already inside the .zx-content-shift wrapper in App.js,
-   which handles the sidebar's left margin for us. ── */
+/* ── Tab bar ──
+   Default: sits directly under the fixed Navbar (Posts tab — no chip
+   row above it). Sticky rather than fixed so it scrolls out naturally
+   with the page; it's already inside the .zx-content-shift wrapper in
+   App.js, which handles the sidebar's left margin for us. */
 .hh-tabbar {
   position: sticky;
-  top: 56px;
+  top: var(--zx-navbar-h);
+  height: var(--zx-tabbar-h);
+  box-sizing: border-box;
   z-index: 90;
   display: flex;
   align-items: center;
@@ -32,6 +45,11 @@
   background: var(--zx-surface);
   border-bottom: 2px solid var(--zx-border);
   box-shadow: 0 2px 12px rgba(158, 18, 38, 0.06);
+}
+
+/* Home tab: homePage_options renders above this bar — push down below it. */
+.hh-tabbar.hh-tabbar-below-options {
+  top: calc(var(--zx-navbar-h) + var(--zx-options-h));
 }
 
 .hh-tab-btn {
@@ -85,11 +103,17 @@
 
 .hh-tab-content {
   flex: 1;
+  overflow-x: hidden; /* moved here from App.js's .App — an ancestor-safe
+                          location that won't break sticky positioning
+                          above it (see App.css) */
 }
 
 @media (max-width: 768px) {
-  .hh-tabbar {
-    top: 56px;
+  /* Mobile hides .homePage_options entirely (see homePage.css), so the
+     tab bar always sits right under the Navbar here regardless of tab. */
+  .hh-tabbar,
+  .hh-tabbar.hh-tabbar-below-options {
+    top: var(--zx-navbar-h);
     padding: 8px 10px;
     gap: 6px;
   }
