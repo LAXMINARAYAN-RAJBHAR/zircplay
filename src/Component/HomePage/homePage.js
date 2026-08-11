@@ -143,6 +143,20 @@ const useIsMobile = () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// mergeRefs — combine multiple refs (a component's own ref + a hook's ref)
+// onto a single DOM node. Needed wherever a card already owns a ref (e.g.
+// ShortCard's view-count IntersectionObserver) but also needs to hand that
+// same node to usePostPreview's wrapRef.
+// ─────────────────────────────────────────────────────────────────────────────
+const mergeRefs = (...refs) => (node) => {
+  refs.forEach((ref) => {
+    if (!ref) return;
+    if (typeof ref === "function") ref(node);
+    else ref.current = node;
+  });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // useHoverPreview — after a short delay, swap the thumbnail image for a
 // muted, looping <video> of the actual clip. Mirrors the YouTube/Instagram
 // "hover to preview" behaviour. Callers pass `canPreview` (e.g. false on
@@ -189,7 +203,8 @@ const useHoverPreview = (canPreview) => {
 // and mobile: desktop still hovers-to-preview after HOVER_PREVIEW_DELAY;
 // mobile has no hover, so a card previews automatically once ~60% of it is
 // scrolled into view (and pauses again the instant it scrolls back out).
-// This mirrors the preview behaviour built for the Explore homepage grid.
+// This is now the shared preview hook for Posts, Reels, and Videos so all
+// three get the same scroll-to-preview behaviour on mobile.
 // ─────────────────────────────────────────────────────────────────────────────
 const usePostPreview = (isMobile, canPreview) => {
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -271,10 +286,13 @@ const ShortCard = ({
   const cardRef = useRef(null);
   const firedRef = useRef(false);
 
-  // ── Hover-preview setup ──
+  // ── Preview setup: hover on desktop, scroll-into-view on mobile ──
   const isMobile = useIsMobile();
-  const canPreview = !isMobile && !!short.src;
-  const { isPreviewing, videoRef, onMouseEnter, onMouseLeave } = useHoverPreview(canPreview);
+  const canPreview = !!short.src;
+  const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
+    isMobile,
+    canPreview,
+  );
 
   const [showNew, setShowNew] = useState(() => {
     if (!short.dbId) return false;
@@ -338,7 +356,7 @@ const ShortCard = ({
 
   return (
     <div
-      ref={cardRef}
+      ref={mergeRefs(cardRef, wrapRef)}
       className="homePage_shortCard"
       style={{ cursor: "pointer", position: "relative" }}
       onClick={() => {
@@ -353,8 +371,7 @@ const ShortCard = ({
         }
         navigate("/reels/" + short.id, { state: { clickedReel: short } });
       }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      {...hoverHandlers}
     >
       <div className="homePage_shortThumbnail">
         <img
@@ -596,17 +613,20 @@ const VideoCard = ({
     isUploaded && !isWatched("video", video.id, watchedContentIds);
   const isSaved = watchLaterIds.has(String(video.id));
 
-  // ── Hover-preview setup ──
+  // ── Preview setup: hover on desktop, scroll-into-view on mobile ──
   const isMobile = useIsMobile();
-  const canPreview = isUploaded && !isMobile && !!video.src;
-  const { isPreviewing, videoRef, onMouseEnter, onMouseLeave } = useHoverPreview(canPreview);
+  const canPreview = isUploaded && !!video.src;
+  const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
+    isMobile,
+    canPreview,
+  );
 
   return (
     <div
       className="youtube_thumbnailBox"
       style={{ position: "relative" }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      ref={wrapRef}
+      {...hoverHandlers}
     >
       {/* Three-dots menu with full dropdown — only for uploaded videos */}
       {isUploaded && (
@@ -1332,9 +1352,18 @@ const TrendingCard = ({
   onActivate,
   onJump,
 }) => {
-  const canPreview = isActive && !isMobile && !!item.src;
-  const { isPreviewing, videoRef, onMouseEnter, onMouseLeave } =
-    useHoverPreview(canPreview);
+  // ── Preview setup ──
+  // Desktop: hover-to-preview, only on the active (centered) card.
+  // Mobile: no hover exists, and the active card is already the one
+  // the user is "on" — so it previews automatically as soon as it
+  // becomes active, mirroring the scroll-into-view behaviour used by
+  // usePostPreview elsewhere on the page.
+  const canPreview = !!item.src;
+  const desktopHover = useHoverPreview(isActive && !isMobile && canPreview);
+  const isPreviewing = isMobile
+    ? isActive && canPreview
+    : desktopHover.isPreviewing;
+  const { videoRef, onMouseEnter, onMouseLeave } = desktopHover;
 
   const abs = Math.abs(offset);
   const translateX = offset * cardOffset;
