@@ -6,10 +6,6 @@ import PostComposer from "./PostComposer";
 import PostCard from "./PostCard";
 import SideNavbar from "../../Component/SideNavbar/sideNavbar";
 import AdUnit from "../../Component/Ads/AdUnit";
-// NEW: shared notification helper — see src/utils/notifications.js.
-// notifySubscribers used to be a local function defined at the bottom of
-// this file; it's now shared so video/reel uploads can use the same
-// uuid-vs-username resolution logic instead of duplicating it.
 import { notifySubscribers } from "../../utils/notifications";
 
 const PostFeed = ({ sideNavbar }) => {
@@ -25,24 +21,30 @@ const PostFeed = ({ sideNavbar }) => {
   const offsetRef = useRef(0);
   const currentUser = localStorage.getItem("username") || "anonymous";
 
-  // ── Infinite scroll sentinel ──
-  // A near-invisible div placed after the last post. When it scrolls
-  // into the viewport, loadMore() fires automatically — same
-  // IntersectionObserver pattern used for Reels autoplay detection.
-  //
-  // FIX: this used to be a plain useRef(), but the component returns an
-  // early "loading skeleton" render while `loading` is true — meaning
-  // the sentinel div doesn't exist in the DOM yet on first mount. The
-  // observer effect ran once against a null ref and never retried once
-  // the real content (with the sentinel) rendered, so infinite scroll
-  // silently never fired. Using a state-backed callback ref means the
-  // effect re-runs the moment the sentinel actually mounts.
   const [sentinelNode, setSentinelNode] = useState(null);
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(true);
 
   useEffect(() => { loadingMoreRef.current = loadingMore; }, [loadingMore]);
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+
+  const enrichPost = useCallback(
+    (p) => ({
+      ...p,
+      myReaction:
+        p.post_reactions?.find((r) => r.username === currentUser)?.type ||
+        null,
+      reactionCounts: p.post_reactions?.reduce((acc, r) => {
+        acc[r.type] = (acc[r.type] || 0) + 1;
+        return acc;
+      }, {}),
+      comments: (p.post_comments || []).sort(
+        (a, b) => new Date(a.created_at) - new Date(b.created_at)
+      ),
+      showComments: false,
+    }),
+    [currentUser]
+  );
 
   const fetchPosts = useCallback(async (reset = false) => {
     try {
@@ -61,20 +63,7 @@ const PostFeed = ({ sideNavbar }) => {
 
       if (fetchErr) throw fetchErr;
 
-      const enriched = (data || []).map((p) => ({
-        ...p,
-        myReaction:
-          p.post_reactions?.find((r) => r.username === currentUser)?.type ||
-          null,
-        reactionCounts: p.post_reactions?.reduce((acc, r) => {
-          acc[r.type] = (acc[r.type] || 0) + 1;
-          return acc;
-        }, {}),
-        comments: (p.post_comments || []).sort(
-          (a, b) => new Date(a.created_at) - new Date(b.created_at)
-        ),
-        showComments: false,
-      }));
+      const enriched = (data || []).map(enrichPost);
 
       if (reset) {
         setPosts(enriched);
@@ -91,13 +80,56 @@ const PostFeed = ({ sideNavbar }) => {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [currentUser]);
+  }, [enrichPost]);
 
   const loadMore = useCallback(() => {
     if (loadingMoreRef.current || !hasMoreRef.current) return;
     setLoadingMore(true);
     fetchPosts(false);
   }, [fetchPosts]);
+
+  // ── Fetch a single newly-inserted post and prepend it ──
+  // Replaces the old approach of calling fetchPosts(true) on every
+  // INSERT event, which nuked and rebuilt the entire `posts` array
+  // (new object identities for every post) any time ANYONE created a
+  // post. That caused every PostCard to remount, which reset in-progress
+  // comment input state and made posts visibly jump/shift while typing.
+  // Now we only fetch the one new row and prepend it, leaving every
+  // other post's object reference untouched.
+  const handleRealtimeInsert = useCallback(
+    async (payload) => {
+      const newId = payload.new?.id;
+      if (!newId) return;
+
+      // Already have it locally (e.g. it's the post we just created
+      // ourselves via handleNewPost) — skip.
+      setPosts((prev) => {
+        if (prev.some((p) => p.id === newId)) return prev;
+        return prev;
+      });
+
+      const { data, error: fetchErr } = await supabase
+        .from("posts")
+        .select(`
+          *,
+          post_reactions ( type, username ),
+          post_comments ( id, text, username, created_at )
+        `)
+        .eq("id", newId)
+        .maybeSingle();
+
+      if (fetchErr || !data) return;
+
+      const enrichedPost = enrichPost(data);
+
+      setPosts((prev) => {
+        if (prev.some((p) => p.id === newId)) return prev;
+        return [enrichedPost, ...prev];
+      });
+      offsetRef.current += 1;
+    },
+    [enrichPost]
+  );
 
   useEffect(() => {
     fetchPosts(true);
@@ -107,7 +139,7 @@ const PostFeed = ({ sideNavbar }) => {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "posts" },
-        () => fetchPosts(true)
+        handleRealtimeInsert
       )
       .on(
         "postgres_changes",
@@ -123,13 +155,9 @@ const PostFeed = ({ sideNavbar }) => {
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [fetchPosts]);
+  }, [fetchPosts, handleRealtimeInsert]);
 
   // ── Infinite scroll observer ──
-  // Re-runs whenever `sentinelNode` changes — i.e. the moment the
-  // sentinel div mounts (once loading finishes) or unmounts/remounts
-  // (e.g. if hasMore toggles). This is what the old ref-based version
-  // was missing.
   useEffect(() => {
     if (!sentinelNode) return;
 
@@ -139,7 +167,7 @@ const PostFeed = ({ sideNavbar }) => {
           loadMore();
         }
       },
-      { rootMargin: "600px" } // start loading well before the sentinel is actually visible
+      { rootMargin: "600px" }
     );
 
     observer.observe(sentinelNode);
@@ -169,29 +197,12 @@ const PostFeed = ({ sideNavbar }) => {
         .maybeSingle();
 
       if (fetchErr || !data) {
-        // FIX: previously just `return` here — if the post was deleted,
-        // or the id in the URL didn't match anything (e.g. a stale
-        // notification), the user landed on the top of the general feed
-        // with zero indication their specific post link didn't resolve.
         setPostNotFound(true);
         return;
       }
       setPostNotFound(false);
 
-      const enrichedPost = {
-        ...data,
-        myReaction:
-          data.post_reactions?.find((r) => r.username === currentUser)?.type ||
-          null,
-        reactionCounts: data.post_reactions?.reduce((acc, r) => {
-          acc[r.type] = (acc[r.type] || 0) + 1;
-          return acc;
-        }, {}),
-        comments: (data.post_comments || []).sort(
-          (a, b) => new Date(a.created_at) - new Date(b.created_at)
-        ),
-        showComments: false,
-      };
+      const enrichedPost = enrichPost(data);
 
       setPosts((current) => {
         if (current.some((p) => p.id === sharedPostId)) return current;
@@ -200,7 +211,7 @@ const PostFeed = ({ sideNavbar }) => {
     };
 
     ensurePostLoaded();
-  }, [location.search, currentUser]);
+  }, [location.search, currentUser, enrichPost]);
 
   useEffect(() => {
     if (!highlightedPostId) return;
@@ -213,15 +224,9 @@ const PostFeed = ({ sideNavbar }) => {
     }
   }, [posts, highlightedPostId]);
 
-  // FIX: notifySubscribers used to be a local function defined at the
-  // bottom of this file (with a silent `await supabase...insert(...)`
-  // and no error handling). It now delegates to the shared helper in
-  // src/utils/notifications.js, which logs any Supabase error instead of
-  // swallowing it — so if this insert is ever failing (e.g. an RLS
-  // policy blocking it), it'll show up in the console instead of just
-  // "nothing happens."
   const handleNewPost = async (post) => {
     setPosts((prev) => [post, ...prev]);
+    offsetRef.current += 1;
 
     const uploaderUsername = localStorage.getItem("username");
     await notifySubscribers(uploaderUsername, {
@@ -339,6 +344,7 @@ const PostFeed = ({ sideNavbar }) => {
         },
         ...prev,
       ]);
+      offsetRef.current += 1;
     } catch (err) {
       console.error("Share to feed failed:", err);
       setError(
@@ -482,12 +488,6 @@ const PostFeed = ({ sideNavbar }) => {
           </React.Fragment>
         ))}
 
-        {/* ── Infinite scroll sentinel + status row ──
-            FIX: replaced the manual "Load more posts" button with this
-            sentinel div. IntersectionObserver above watches it and calls
-            loadMore() automatically once it scrolls near the viewport
-            (rootMargin: 600px means it fires a bit early, before the
-            user actually hits the bottom, so there's no visible pause). */}
         {hasMore && (
           <div ref={setSentinelNode} className="pf-scroll-sentinel">
             {loadingMore && <span className="pf-scroll-loading">Loading more posts…</span>}
