@@ -9,6 +9,7 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import { supabase } from "../../config/supabase";
 import RecordModal from "../RecordModal/RecordModal";
 import { checkContent } from "../../Component/Moderation/useModerationFilter";
+import { notifySubscribers } from "../../utils/notifications";
 
 const INITIAL_FIELDS = {
   title: "",
@@ -310,73 +311,13 @@ const VideoUpload = () => {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FIXED: notifySubscribers
-  //
-  // Two bugs fixed here:
-  //
-  // 1. The old query selected "subscriber_username" from "subscriptions",
-  //    but that column doesn't exist — the real columns are "subscriber_id"
-  //    and "subscribed_to". "subscriber_id" can hold either a UUID (current
-  //    accounts) or a legacy plain username (older rows), so we resolve
-  //    UUIDs to usernames via the "profiles" table before building
-  //    notification rows, same pattern already used in PostFeed.jsx.
-  //
-  // 2. content_id / content_type were never included on the inserted
-  //    notification rows, so every notification created here had those
-  //    columns as NULL — which is why clicking a notification in the
-  //    navbar/notifications page silently did nothing (handleNotificationClick
-  //    bails out early when contentId/contentType are missing). Both are
-  //    now required params and get written on every notification.
+  // Subscriber notifications on upload now go through the SHARED helper
+  // (src/utils/notifications.js) instead of a locally duplicated copy —
+  // see notifySubscribers(...) calls inside handleSubmit below. This keeps
+  // the UUID-vs-username subscriber resolution logic in exactly one place
+  // so future fixes (RLS issues, resolution edge cases, etc.) don't have
+  // to be made twice and can't silently drift apart between call sites.
   // ─────────────────────────────────────────────────────────────────────────
-  const notifySubscribers = async (title, type, contentId) => {
-    const uploaderUsername = localStorage.getItem("username");
-    if (!uploaderUsername) return;
-
-    const { data: subRows } = await supabase
-      .from("subscriptions")
-      .select("subscriber_id")
-      .eq("subscribed_to", uploaderUsername);
-
-    if (!subRows || subRows.length === 0) return;
-
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const uuidIds = [
-      ...new Set(subRows.filter((s) => uuidRegex.test(s.subscriber_id)).map((s) => s.subscriber_id)),
-    ];
-
-    let idToUsername = {};
-    if (uuidIds.length > 0) {
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, username")
-        .in("id", uuidIds);
-      profilesData?.forEach((p) => {
-        if (p.username && p.username.trim()) idToUsername[p.id] = p.username;
-      });
-    }
-
-    const recipientUsernames = [
-      ...new Set(
-        subRows
-          .map((s) => (uuidRegex.test(s.subscriber_id) ? idToUsername[s.subscriber_id] : s.subscriber_id))
-          .filter(Boolean) // drops UUIDs that still couldn't be resolved
-      ),
-    ];
-
-    if (recipientUsernames.length === 0) return;
-
-    const notifications = recipientUsernames.map((recipient) => ({
-      recipient_username: recipient,
-      sender_username:    uploaderUsername,
-      type:                "upload",
-      message:             `${uploaderUsername} uploaded a new ${type}: "${title}"`,
-      is_read:             false,
-      content_id:          contentId, // ✅ now included
-      content_type:        type,      // ✅ "reel" or "video"
-    }));
-
-    if (notifications.length > 0) await supabase.from("notifications").insert(notifications);
-  };
 
   const notifyRemixedCreator = async (title, contentId) => {
     if (!remixData) return;
@@ -444,6 +385,8 @@ const VideoUpload = () => {
     // ── End moderation check ─────────────────────────────────────────────────
 
     try {
+      const uploaderUsername = localStorage.getItem("username") || "anonymous";
+
       if (uploadMode === "video" && !isFeatureMode) {
         // ── Plain video upload ──
         // FIX: added .select().single() so we get the new row's id back —
@@ -457,14 +400,19 @@ const VideoUpload = () => {
             thumbnail_url: inputField.thumbnail,
             category:      inputField.videoType,
             channel:       localStorage.getItem("username") || "Anonymous",
-            username:      localStorage.getItem("username") || "anonymous",
+            username:      uploaderUsername,
             duration:      durationRef.current,
           }])
           .select()
           .single();
         if (videoError) throw new Error(videoError.message);
 
-        await notifySubscribers(inputField.title, "video", newVideo.id);
+        await notifySubscribers(uploaderUsername, {
+          type: "video",
+          message: `${uploaderUsername} uploaded a new video: "${inputField.title}"`,
+          contentId: newVideo.id,
+          contentType: "video",
+        });
       } else {
         // ── Reel / feature upload ──
         const reelPayload = {
@@ -473,7 +421,7 @@ const VideoUpload = () => {
           video_url:   inputField.videoLink,
           thumbnail:   inputField.thumbnail,
           uploaded_by: localStorage.getItem("username") || "Anonymous",
-          username:    (localStorage.getItem("username") || "anonymous").toLowerCase().replace(/\s+/g, ""),
+          username:    uploaderUsername.toLowerCase().replace(/\s+/g, ""),
           duration:    durationRef.current,
           likes:       0,
           comments:    0,
@@ -497,7 +445,12 @@ const VideoUpload = () => {
         if (featureMode === "remix") await notifyRemixedCreator(inputField.title, newReel.id);
         else if (featureMode)        await notifyFeatureCreator(inputField.title, newReel.id);
 
-        await notifySubscribers(inputField.title, "reel", newReel.id);
+        await notifySubscribers(uploaderUsername, {
+          type: "reel",
+          message: `${uploaderUsername} uploaded a new reel: "${inputField.title}"`,
+          contentId: newReel.id,
+          contentType: "reel",
+        });
       }
 
       setSaving(false);
