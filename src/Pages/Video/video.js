@@ -123,6 +123,20 @@ const requestFullscreenOn = (el) => {
   else if (el.msRequestFullscreen) el.msRequestFullscreen();
 };
 
+// NEW: checks whether an element actually supports being the fullscreen
+// target (arbitrary-element fullscreen isn't available everywhere — e.g.
+// iOS Safari only supports it on <video> itself), so we know whether to
+// fullscreen our wrapper <div> (keeps our custom overlay controls visible)
+// or fall back to fullscreening the bare <video> (native controls only).
+const supportsElementFullscreen = (el) =>
+  !!(
+    el &&
+    (el.requestFullscreen ||
+      el.webkitRequestFullscreen ||
+      el.mozRequestFullScreen ||
+      el.msRequestFullscreen)
+  );
+
 const exitFullscreen = () => {
   if (document.exitFullscreen) document.exitFullscreen();
   else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
@@ -216,6 +230,12 @@ const Video = ({ sideNavbar }) => {
   const loggedInUser = localStorage.getItem("username") || "Guest";
   const controlsTimer = useRef(null);
   const videoRef = useRef(null);
+  // NEW: ref on the wrapper that contains BOTH the <video> and all of our
+  // custom overlay controls (Prev/Autoplay/Next bar, Like/Dislike/Share/
+  // Fullscreen/More stack). Fullscreening THIS element instead of the bare
+  // <video> is what keeps our custom controls visible once fullscreen —
+  // fullscreening the <video> alone only shows the video and native chrome.
+  const playerWrapperRef = useRef(null);
 
   useViewTracker({
     contentId: id,
@@ -253,14 +273,24 @@ const Video = ({ sideNavbar }) => {
     };
   }, []);
 
+  // CHANGED: fullscreens the wrapper <div> (playerWrapperRef) instead of the
+  // bare <video> element, so our custom overlay controls (Prev/Autoplay/
+  // Next + Like/Dislike/Share/Fullscreen/More) stay mounted and visible in
+  // fullscreen — see video.css ":fullscreen" rules for the horizontal
+  // layout applied while in this state. Falls back to fullscreening the
+  // <video> itself only on browsers (iOS Safari) that don't support
+  // arbitrary-element fullscreen at all.
   const handleFullscreenToggle = (e) => {
     e.stopPropagation();
-    const vid = videoRef.current;
-    if (!vid) return;
     if (getFullscreenElement()) {
       exitFullscreen();
-    } else {
-      requestFullscreenOn(vid);
+      return;
+    }
+    const wrapper = playerWrapperRef.current;
+    if (supportsElementFullscreen(wrapper)) {
+      requestFullscreenOn(wrapper);
+    } else if (videoRef.current) {
+      requestFullscreenOn(videoRef.current);
     }
   };
 
@@ -770,6 +800,7 @@ const Video = ({ sideNavbar }) => {
       <div className="videoPostSection">
         <div
           className="video_player_wrapper"
+          ref={playerWrapperRef}
           onMouseMove={handleMouseMove}
           onMouseEnter={handleMouseMove}
           onTouchStart={handleVideoAreaTap}

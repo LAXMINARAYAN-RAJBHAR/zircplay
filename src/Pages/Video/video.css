@@ -36,6 +36,11 @@
   to   { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);    }
 }
 
+@keyframes floatInBottom {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1);    }
+}
+
 /* ══════════════════════════════════════
    PAGE WRAPPER
 ══════════════════════════════════════ */
@@ -921,4 +926,172 @@
   .video_tap_overlay { bottom: 40px; }
 
   .video_heart_burst { font-size: 48px; }
+}
+
+/* ══════════════════════════════════════
+   FULLSCREEN MODE
+   Video.jsx now fullscreens .video_player_wrapper (not the bare <video>),
+   so this whole overlay tree — the top Prev/Autoplay/Next pill AND the
+   Like/Dislike/Share/Fullscreen/More stack — stays mounted and visible
+   once fullscreen is entered. Here we turn the previously-vertical
+   right-side action stack into a single horizontal toolbar, to sit
+   alongside the already-horizontal Prev/Autoplay/Next bar.
+   All 4 vendor-prefixed fullscreen pseudo-classes are covered, and this
+   block is placed last in the file so it wins over the desktop AND
+   mobile rules above regardless of viewport width.
+══════════════════════════════════════ */
+.video_player_wrapper:fullscreen,
+.video_player_wrapper:-webkit-full-screen,
+.video_player_wrapper:-moz-full-screen,
+.video_player_wrapper:-ms-fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  border: none;
+  border-radius: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video_player_wrapper:fullscreen .video_youtube_video,
+.video_player_wrapper:-webkit-full-screen .video_youtube_video,
+.video_player_wrapper:-moz-full-screen .video_youtube_video,
+.video_player_wrapper:-ms-fullscreen .video_youtube_video {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+/* ── Top pill (Prev / Autoplay / Next) — already horizontal, just give it
+     more breathing room and slightly larger touch targets in fullscreen ── */
+.video_player_wrapper:fullscreen .video_controls_bar,
+.video_player_wrapper:-webkit-full-screen .video_controls_bar,
+.video_player_wrapper:-moz-full-screen .video_controls_bar,
+.video_player_wrapper:-ms-fullscreen .video_controls_bar {
+  top: 22px;
+  gap: 10px;
+  padding: 8px 14px;
+}
+
+.video_player_wrapper:fullscreen .video_nav_btn,
+.video_player_wrapper:-webkit-full-screen .video_nav_btn,
+.video_player_wrapper:-moz-full-screen .video_nav_btn,
+.video_player_wrapper:-ms-fullscreen .video_nav_btn {
+  padding: 7px 18px;
+  font-size: 12px;
+}
+
+/* ── Like / Dislike / Share / Fullscreen / More — switched from a
+     vertical right-edge stack to a single horizontal toolbar, centred
+     along the bottom, always visible (no more hover-to-reveal) ── */
+.video_player_wrapper:fullscreen .video_frame_actions,
+.video_player_wrapper:-webkit-full-screen .video_frame_actions,
+.video_player_wrapper:-moz-full-screen .video_frame_actions,
+.video_player_wrapper:-ms-fullscreen .video_frame_actions {
+  flex-direction: row;
+  align-items: center;
+  right: auto;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  gap: 10px;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  background: rgba(12, 8, 35, 0.68);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 999px;
+  padding: 8px 14px;
+  box-shadow:
+    0 6px 28px rgba(0,0,0,0.45),
+    0 0 0 1px rgba(124,58,237,0.22),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  animation: floatInBottom 0.25s ease both;
+}
+
+/* Individual buttons: strip their own card chrome since the row itself
+   is now the pill — buttons become plain icon+label pairs inside it. */
+.video_player_wrapper:fullscreen .video_frame_btn,
+.video_player_wrapper:-webkit-full-screen .video_frame_btn,
+.video_player_wrapper:-moz-full-screen .video_frame_btn,
+.video_player_wrapper:-ms-fullscreen .video_frame_btn {
+  flex-direction: row;
+  width: auto;
+  height: auto;
+  min-width: 40px;
+  padding: 6px 10px;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+}
+
+.video_player_wrapper:fullscreen .video_frame_btn:hover,
+.video_player_wrapper:-webkit-full-screen .video_frame_btn:hover,
+.video_player_wrapper:-moz-full-screen .video_frame_btn:hover,
+.video_player_wrapper:-ms-fullscreen .video_frame_btn:hover {
+  background: rgba(124,58,237,0.55);
+  transform: scale(1.05);
+}
+
+.video_player_wrapper:fullscreen .video_frame_btn.active,
+.video_player_wrapper:fullscreen .video_frame_btn.video_liked,
+.video_player_wrapper:-webkit-full-screen .video_frame_btn.active,
+.video_player_wrapper:-webkit-full-screen .video_frame_btn.video_liked,
+.video_player_wrapper:-moz-full-screen .video_frame_btn.active,
+.video_player_wrapper:-moz-full-screen .video_frame_btn.video_liked,
+.video_player_wrapper:-ms-fullscreen .video_frame_btn.active,
+.video_player_wrapper:-ms-fullscreen .video_frame_btn.video_liked {
+  background: rgba(124,58,237,0.65);
+  box-shadow: 0 0 16px rgba(124,58,237,0.55);
+}
+
+.video_player_wrapper:fullscreen .video_frame_btn .MuiSvgIcon-root,
+.video_player_wrapper:-webkit-full-screen .video_frame_btn .MuiSvgIcon-root,
+.video_player_wrapper:-moz-full-screen .video_frame_btn .MuiSvgIcon-root,
+.video_player_wrapper:-ms-fullscreen .video_frame_btn .MuiSvgIcon-root {
+  font-size: 20px !important;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.video_player_wrapper:fullscreen .video_frame_btn span,
+.video_player_wrapper:-webkit-full-screen .video_frame_btn span,
+.video_player_wrapper:-moz-full-screen .video_frame_btn span,
+.video_player_wrapper:-ms-fullscreen .video_frame_btn span {
+  font-size: 12px;
+  margin-top: 0;
+}
+
+/* Like button keeps its icon+count side-by-side instead of stacked */
+.video_player_wrapper:fullscreen .video_like_inner,
+.video_player_wrapper:-webkit-full-screen .video_like_inner,
+.video_player_wrapper:-moz-full-screen .video_like_inner,
+.video_player_wrapper:-ms-fullscreen .video_like_inner {
+  flex-direction: row;
+  gap: 6px;
+}
+
+/* More (⋮) dropdown opens upward now that the bar lives at the bottom */
+.video_player_wrapper:fullscreen .video_more_dropdown,
+.video_player_wrapper:-webkit-full-screen .video_more_dropdown,
+.video_player_wrapper:-moz-full-screen .video_more_dropdown,
+.video_player_wrapper:-ms-fullscreen .video_more_dropdown {
+  top: auto;
+  bottom: 110%;
+  right: 50%;
+  transform: translateX(50%);
+}
+
+/* Give the tap-to-like layer room above the horizontal toolbar so it
+   doesn't swallow taps meant for it */
+.video_player_wrapper:fullscreen .video_tap_overlay,
+.video_player_wrapper:-webkit-full-screen .video_tap_overlay,
+.video_player_wrapper:-moz-full-screen .video_tap_overlay,
+.video_player_wrapper:-ms-fullscreen .video_tap_overlay {
+  bottom: 64px;
 }
