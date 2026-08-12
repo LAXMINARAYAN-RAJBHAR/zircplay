@@ -6,17 +6,6 @@
   --zx-primary2:  #c81e34;
   --zx-text:      #1e1315;
   --zx-text3:     #9c7a7c;
-
-  /* ── Shared header-stack heights ──
-     .homePage_options (homePage.css) and .home_mainPage both read these
-     to line up correctly against this file's bars. Keep all three files
-     in sync from here.
-
-     STACKING ORDER (top to bottom): Navbar -> homePage_options (Home tab
-     only) -> hh-tabbar -> page content. */
-  --zx-navbar-h:  56px;  /* Navbar's fixed height (navbar.css) */
-  --zx-tabbar-h:  56px;  /* This file's .hh-tabbar height */
-  --zx-options-h: 40px;  /* homePage.css's .homePage_options chip row height */
 }
 
 .hh-wrap {
@@ -28,28 +17,39 @@
 }
 
 /* ── Tab bar ──
-   Default: sits directly under the fixed Navbar (Posts tab — no chip
-   row above it). Sticky rather than fixed so it scrolls out naturally
-   with the page; it's already inside the .zx-content-shift wrapper in
-   App.js, which handles the sidebar's left margin for us. */
+   FIX: this was previously `position: sticky`, which put it in normal
+   document flow right after the (position:fixed) Navbar — meaning it
+   rendered at the very top of the page, directly BEHIND the Navbar
+   (which is 56px tall with z-index 9999), so it was invisible.
+   Worse, the Home tab's own category-filter bar (.homePage_options in
+   homePage.css) is ALSO position:fixed at top:56px with z-index:100,
+   which sat on top of and covered our tab bar even once it did scroll
+   into its sticky position.
+   Fix: make this fixed too, same pattern as .homePage_options (same
+   left-offset logic keyed off the sidebar state), give it a HIGHER
+   z-index so it stacks above that bar, and use a fixed, known height
+   (52px) so the overrides below can push everything else down by an
+   exact, predictable amount. ── */
 .hh-tabbar {
-  position: sticky;
-  top: var(--zx-navbar-h);
-  height: var(--zx-tabbar-h);
-  box-sizing: border-box;
-  z-index: 90;
+  position: fixed;
+  top: 56px;
+  left: 72px;   /* matches homePage_options' collapsed-sidebar default */
+  right: 0;
+  height: 52px;
+  z-index: 150; /* above .homePage_options (100) and other fixed bars */
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 0 16px;
   background: var(--zx-surface);
   border-bottom: 2px solid var(--zx-border);
   box-shadow: 0 2px 12px rgba(158, 18, 38, 0.06);
+  box-sizing: border-box;
+  transition: left 0.3s ease;
 }
 
-/* Home tab: homePage_options renders above this bar — push down below it. */
-.hh-tabbar.hh-tabbar-below-options {
-  top: calc(var(--zx-navbar-h) + var(--zx-options-h));
+.hh-tabbar.sidebar-open {
+  left: 275px;
 }
 
 .hh-tab-btn {
@@ -78,44 +78,39 @@
   color: var(--zx-primary);
 }
 
-.hh-upload-btn {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, var(--zx-primary), var(--zx-primary2));
-  color: #ffffff;
-  border: none;
-  font-family: 'Nunito', sans-serif;
-  font-size: 13px;
-  font-weight: 800;
-  padding: 8px 18px;
-  border-radius: 20px;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(158, 18, 38, 0.3);
-  transition: opacity 0.15s, box-shadow 0.15s;
-}
-
-.hh-upload-btn:hover {
-  opacity: 0.92;
-  box-shadow: 0 6px 20px rgba(158, 18, 38, 0.42);
-}
-
 .hh-tab-content {
   flex: 1;
-  overflow-x: hidden; /* moved here from App.js's .App — an ancestor-safe
-                          location that won't break sticky positioning
-                          above it (see App.css) */
+}
+
+/* ── Push page content down by the tab bar's height (52px) so nothing
+   renders underneath it. Scoped to `.hh-wrap` so these overrides only
+   apply here, not anywhere else HomePage/PostFeed might be reused.
+   `!important` is needed because the target rules are equally-specific
+   single classes defined later in each page's own stylesheet, and
+   CSS load order between homePage.css / PostFeed.css / this file isn't
+   guaranteed by the bundler. ── */
+.hh-wrap .homePage_options {
+  top: 108px !important; /* 56 (navbar) + 52 (our tab bar) */
+}
+
+.hh-wrap .home_mainPage {
+  padding-top: 108px !important;
+}
+
+.hh-wrap .pf-feed {
+  padding-top: 122px !important; /* 70 (original) + 52 (our tab bar) */
 }
 
 @media (max-width: 768px) {
-  /* Mobile hides .homePage_options entirely (see homePage.css), so the
-     tab bar always sits right under the Navbar here regardless of tab. */
-  .hh-tabbar,
-  .hh-tabbar.hh-tabbar-below-options {
-    top: var(--zx-navbar-h);
-    padding: 8px 10px;
+  .hh-tabbar {
+    top: 56px;
+    left: 0;
+    height: 44px;
+    padding: 0 10px;
     gap: 6px;
+  }
+  .hh-tabbar.sidebar-open {
+    left: 0; /* sidebar is hidden entirely on mobile */
   }
   .hh-tab-btn span {
     display: none;
@@ -123,10 +118,15 @@
   .hh-tab-btn {
     padding: 8px 12px;
   }
-  .hh-upload-btn span {
-    display: none;
+
+  /* .homePage_options is already display:none on mobile (see
+     homePage.css), so no override needed there. home_mainPage's mobile
+     rule has no top padding at all by default — add just enough to
+     clear our now-fixed tab bar. */
+  .hh-wrap .home_mainPage {
+    padding-top: 44px !important;
   }
-  .hh-upload-btn {
-    padding: 8px 12px;
+  .hh-wrap .pf-feed {
+    padding-top: 114px !important; /* 70 (original mobile) + 44 (our tab bar) */
   }
 }

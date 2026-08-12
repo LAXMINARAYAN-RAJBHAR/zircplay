@@ -50,6 +50,22 @@ import useRequireUsernameSetup from "./hooks/useRequireUsernameSetup";
 import UsernameSetupModal from "./Component/Auth/UsernameSetupModal";
 import ExploreGrid from "./Pages/Explore/ExploreGrid";
 
+// ── FeedRedirect ──────────────────────────────────────────────────────────
+// FIX: old links to /feed?post=<id> — from the navbar's post-notification
+// click handler, and from the Home tab's own post-preview cards in
+// homePage.jsx — carry a `post` query param so the destination knows
+// which post to scroll to and highlight. A bare `<Navigate to="/?tab=posts" />`
+// silently dropped that param, so clicking a specific post landed you on
+// the top of the Posts tab instead of that post. This preserves whatever
+// query string was already on /feed (post=..., or anything else) and just
+// forces `tab=posts` onto it.
+const FeedRedirect = () => {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set("tab", "posts");
+  return <Navigate to={`/?${params.toString()}`} replace />;
+};
+
 // ── Google Identity Services (One Tap) config ──────────────────────────────
 // TODO: replace with the SAME OAuth Client ID configured under
 // Supabase → Authentication → Providers → Google → "Client ID".
@@ -680,7 +696,7 @@ function App() {
                   Posts as in-page sub-tabs (?tab=home / ?tab=posts), with
                   Upload as a button inside that tab bar rather than its
                   own nav entry. See src/Pages/Home/HomeHub.jsx. */}
-              <Route path="/"               element={<HomeHub sideNavbar={sideNavbar} currentUser={currentUser} />} />
+              <Route path="/"               element={<HomeHub sideNavbar={sideNavbar} />} />
               <Route path="/video/:id"      element={<Video sideNavbar={sideNavbar} />} />
               <Route path="/user/:username" element={<Profile sideNavbar={sideNavbar} />} />
               <Route path="/videoUpload"    element={<VideoUpload />} />
@@ -715,7 +731,7 @@ function App() {
                   sub-tab. Old bookmarks/shared links to /feed still work
                   — they're redirected straight to /?tab=posts instead of
                   rendering a separate standalone page. */}
-              <Route path="/feed"                  element={<Navigate to="/?tab=posts" replace />} />
+              <Route path="/feed"                  element={<FeedRedirect />} />
               <Route path="/admin"                 element={<AdminPanel />} />
               <Route path="/live"                  element={<LiveBrowser currentUser={currentUser} />} />
               <Route path="/foryou"                element={<ExploreGrid />} />
