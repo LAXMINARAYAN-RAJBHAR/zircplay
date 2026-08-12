@@ -4,7 +4,6 @@ import ListIcon from "@mui/icons-material/List";
 import PublicIcon from "@mui/icons-material/Public";
 import SearchIcon from "@mui/icons-material/Search";
 import KeyboardVoiceIcon from "@mui/icons-material/KeyboardVoice";
-import VideoCallIcon from "@mui/icons-material/VideoCall";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import ForumOutlinedIcon from "@mui/icons-material/ForumOutlined";
 import ForumIcon from "@mui/icons-material/Forum";
@@ -1126,18 +1125,6 @@ const Navbar = ({
             Install App
           </span>
         )}
-
-        <span
-          className="navbar-upload-btn"
-          onClick={() => {
-            if (!currentUser) { setLogin(true); return; }
-            navigate("/763/upload");
-          }}
-          style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
-          title="Upload Video / Short"
-        >
-          <VideoCallIcon sx={{ fontSize: "30px", color: "white" }} />
-        </span>
 
         {/* Messages — envelope icon; switches to the filled variant
             whenever there's at least one unread DM, so the icon itself

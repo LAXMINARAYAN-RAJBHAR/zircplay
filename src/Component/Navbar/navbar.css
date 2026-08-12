@@ -313,13 +313,6 @@
   opacity: 0.85;
 }
 
-/* ── Upload button — hidden on mobile ── */
-.navbar-upload-btn {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-
 /* ══════════════════════════════════════
    MOBILE RESPONSIVE — max 768px
 ══════════════════════════════════════ */
@@ -386,11 +379,6 @@
   .navbar-right-logo {
     width: 28px;
     height: 28px;
-  }
-
-  /* Hide upload button on mobile — bottom nav handles it */
-  .navbar-upload-btn {
-    display: none !important;
   }
 
   /* Hide local player on mobile */
