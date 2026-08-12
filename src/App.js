@@ -695,8 +695,12 @@ function App() {
               {/* FIX: "/" now renders the merged HomeHub — Home feed and
                   Posts as in-page sub-tabs (?tab=home / ?tab=posts), with
                   Upload as a button inside that tab bar rather than its
-                  own nav entry. See src/Pages/Home/HomeHub.jsx. */}
-              <Route path="/"               element={<HomeHub sideNavbar={sideNavbar} />} />
+                  own nav entry. See src/Pages/Home/HomeHub.jsx.
+                  currentUser is now passed through so Posts (and its
+                  Upload/comment/react actions) uses the SAME auth state
+                  as the rest of the app instead of reading localStorage
+                  independently. */}
+              <Route path="/"               element={<HomeHub sideNavbar={sideNavbar} currentUser={currentUser} />} />
               <Route path="/video/:id"      element={<Video sideNavbar={sideNavbar} />} />
               <Route path="/user/:username" element={<Profile sideNavbar={sideNavbar} />} />
               <Route path="/videoUpload"    element={<VideoUpload />} />

@@ -8,7 +8,12 @@ import SideNavbar from "../../Component/SideNavbar/sideNavbar";
 import AdUnit from "../../Component/Ads/AdUnit";
 import { notifySubscribers } from "../../utils/notifications";
 
-const PostFeed = ({ sideNavbar }) => {
+// currentUser now comes from App.js via HomeHub — the same auth state
+// that drives the Navbar's Upload button, BottomNav, etc — instead of
+// being read independently from localStorage here. That mismatch was
+// why the feed could show you as logged in while Upload still asked you
+// to log in: two different, occasionally-out-of-sync sources of truth.
+const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
   const location = useLocation();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,7 +24,12 @@ const PostFeed = ({ sideNavbar }) => {
   const [postNotFound, setPostNotFound] = useState(false);
   const PAGE_SIZE = 10;
   const offsetRef = useRef(0);
-  const currentUser = localStorage.getItem("username") || "anonymous";
+
+  // Normalized so every existing `currentUser === "anonymous"` /
+  // `!currentUser || currentUser === "anonymous"` check below keeps
+  // working unchanged — App.js's currentUser state is `null` when
+  // logged out, this file's convention is the string "anonymous".
+  const currentUser = currentUserProp || "anonymous";
 
   const [sentinelNode, setSentinelNode] = useState(null);
   const loadingMoreRef = useRef(false);
@@ -89,24 +99,14 @@ const PostFeed = ({ sideNavbar }) => {
   }, [fetchPosts]);
 
   // ── Fetch a single newly-inserted post and prepend it ──
-  // Replaces the old approach of calling fetchPosts(true) on every
-  // INSERT event, which nuked and rebuilt the entire `posts` array
-  // (new object identities for every post) any time ANYONE created a
-  // post. That caused every PostCard to remount, which reset in-progress
-  // comment input state and made posts visibly jump/shift while typing.
-  // Now we only fetch the one new row and prepend it, leaving every
-  // other post's object reference untouched.
+  // Fetches only the one new row and prepends it, leaving every other
+  // post's object reference untouched — avoids remounting every PostCard
+  // (and resetting in-progress comment input) whenever ANYONE creates a
+  // post, which is what a full fetchPosts(true) reset used to do.
   const handleRealtimeInsert = useCallback(
     async (payload) => {
       const newId = payload.new?.id;
       if (!newId) return;
-
-      // Already have it locally (e.g. it's the post we just created
-      // ourselves via handleNewPost) — skip.
-      setPosts((prev) => {
-        if (prev.some((p) => p.id === newId)) return prev;
-        return prev;
-      });
 
       const { data, error: fetchErr } = await supabase
         .from("posts")
@@ -126,7 +126,6 @@ const PostFeed = ({ sideNavbar }) => {
         if (prev.some((p) => p.id === newId)) return prev;
         return [enrichedPost, ...prev];
       });
-      offsetRef.current += 1;
     },
     [enrichPost]
   );
@@ -226,9 +225,8 @@ const PostFeed = ({ sideNavbar }) => {
 
   const handleNewPost = async (post) => {
     setPosts((prev) => [post, ...prev]);
-    offsetRef.current += 1;
 
-    const uploaderUsername = localStorage.getItem("username");
+    const uploaderUsername = currentUser;
     await notifySubscribers(uploaderUsername, {
       type: "upload",
       message: `${uploaderUsername} made a new post: "${post.text?.slice(0, 60) || "Check it out"}"`,
@@ -344,7 +342,6 @@ const PostFeed = ({ sideNavbar }) => {
         },
         ...prev,
       ]);
-      offsetRef.current += 1;
     } catch (err) {
       console.error("Share to feed failed:", err);
       setError(

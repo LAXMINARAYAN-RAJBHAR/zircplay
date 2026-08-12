@@ -23,6 +23,13 @@ import PostFeed from "../PostFeed/PostFeed";
 // once would double up on network calls and background video playback
 // for no benefit.
 //
+// currentUser is passed down from App.js (the single source of truth for
+// auth state, kept in sync with the real Supabase session) and forwarded
+// to PostFeed below, rather than PostFeed reading localStorage on its
+// own — that split used to let the Posts tab and the rest of the app
+// (e.g. the navbar's Upload button) disagree about whether you were
+// logged in.
+//
 // STACKING ORDER: HomePageContent renders its own fixed category-chip
 // bar (.homePage_options, in homePage.css) only when the Home sub-tab
 // is active — Posts has no equivalent bar. Home/Posts/Upload should
@@ -85,7 +92,7 @@ const HomeHub = ({ sideNavbar, currentUser }) => {
         {activeTab === "home" ? (
           <HomePageContent sideNavbar={sideNavbar} />
         ) : (
-          <PostFeed sideNavbar={sideNavbar} />
+          <PostFeed sideNavbar={sideNavbar} currentUser={currentUser} />
         )}
       </div>
     </div>
