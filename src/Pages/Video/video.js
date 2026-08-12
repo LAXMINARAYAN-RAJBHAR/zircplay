@@ -273,12 +273,13 @@ const Video = ({ sideNavbar }) => {
       // (e.g. certain manufacturer overrides) — video.css has a CSS-only
       // rotation fallback for that case (see ":fullscreen" +
       // "orientation: portrait" rules at the end of the file).
-      if (screen.orientation && typeof screen.orientation.lock === "function") {
+      const screenOrientation = window.screen && window.screen.orientation;
+      if (screenOrientation && typeof screenOrientation.lock === "function") {
         if (fsActive && isMobile) {
-          screen.orientation.lock("landscape").catch(() => {});
+          screenOrientation.lock("landscape").catch(() => {});
         } else if (!fsActive) {
           try {
-            screen.orientation.unlock();
+            screenOrientation.unlock();
           } catch {}
         }
       }
