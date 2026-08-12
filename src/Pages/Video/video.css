@@ -1095,3 +1095,32 @@
 .video_player_wrapper:-ms-fullscreen .video_tap_overlay {
   bottom: 64px;
 }
+
+/* ══════════════════════════════════════
+   FULLSCREEN — FORCE LANDSCAPE ON MOBILE (CSS fallback)
+   Primary fix is the screen.orientation.lock("landscape") call in
+   Video.jsx, which physically rotates the device's rendering on browsers
+   that support it (Chrome/Android etc). That API isn't implemented in
+   Safari/iOS at all, and some Android browsers can reject the lock call
+   outright — for those cases, if we're fullscreen AND the viewport is
+   STILL reporting portrait (i.e. the JS lock didn't take effect), this
+   visually rotates the whole player 90° so it fills the screen the same
+   way an actually-landscape video would. On browsers where the JS lock
+   succeeds, the device itself switches to a landscape viewport, this
+   media query no longer matches, and this block never applies — so the
+   two fixes never fight each other.
+══════════════════════════════════════ */
+@media (max-width: 768px) and (orientation: portrait) {
+  .video_player_wrapper:fullscreen,
+  .video_player_wrapper:-webkit-full-screen,
+  .video_player_wrapper:-moz-full-screen,
+  .video_player_wrapper:-ms-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 100%;
+    width: 100vh;
+    height: 100vw;
+    transform-origin: top left;
+    transform: rotate(90deg);
+  }
+}

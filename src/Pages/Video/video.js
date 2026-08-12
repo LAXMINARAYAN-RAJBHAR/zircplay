@@ -259,7 +259,29 @@ const Video = ({ sideNavbar }) => {
   //    instead of our button.
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!getFullscreenElement());
+      const fsActive = !!getFullscreenElement();
+      setIsFullscreen(fsActive);
+
+      // NEW: force landscape while fullscreen on mobile — without this,
+      // the browser's Fullscreen API just fills the screen in whatever
+      // orientation the phone already is (usually portrait), instead of
+      // rotating to widescreen like a native video player would.
+      // Safari/iOS doesn't implement the Screen Orientation Lock API at
+      // all (guarded below, so this simply no-ops there) — on iOS the
+      // native fullscreen video player already rotates with the device
+      // on its own. Some Android browsers can also reject the lock call
+      // (e.g. certain manufacturer overrides) — video.css has a CSS-only
+      // rotation fallback for that case (see ":fullscreen" +
+      // "orientation: portrait" rules at the end of the file).
+      if (screen.orientation && typeof screen.orientation.lock === "function") {
+        if (fsActive && isMobile) {
+          screen.orientation.lock("landscape").catch(() => {});
+        } else if (!fsActive) {
+          try {
+            screen.orientation.unlock();
+          } catch {}
+        }
+      }
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
@@ -271,7 +293,8 @@ const Video = ({ sideNavbar }) => {
       document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
       document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
 
   // CHANGED: fullscreens the wrapper <div> (playerWrapperRef) instead of the
   // bare <video> element, so our custom overlay controls (Prev/Autoplay/
