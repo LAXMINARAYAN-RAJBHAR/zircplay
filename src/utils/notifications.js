@@ -28,13 +28,24 @@ export const notifyUser = async ({
   if (!recipientUsername) return;
   if (recipientUsername === senderUsername) return;
 
+  // FIX: different call sites passed contentId as different types —
+  // video.jsx/reels.jsx pass it as a string (from useParams / reel.id),
+  // homePage.jsx was passing the raw (sometimes numeric) `id` straight
+  // from Supabase. Stored inconsistently, this can make the destination
+  // page's `String(v.id) === String(id)` match fail unpredictably,
+  // which is exactly the "opens the wrong content" symptom. Coercing
+  // once here, at the single place every notification gets written,
+  // guarantees every content_id in the table is a plain string from now
+  // on regardless of what the caller passed in.
+  const normalizedContentId = contentId == null ? null : String(contentId);
+
   const { error } = await supabase.from("notifications").insert({
     recipient_username: recipientUsername,
     sender_username: senderUsername,
     type,
     message,
     is_read: false,
-    content_id: contentId,
+    content_id: normalizedContentId,
     content_type: contentType,
   });
 
@@ -101,13 +112,15 @@ export const notifySubscribers = async (
 
   if (recipientUsernames.length === 0) return;
 
+  const normalizedContentId = contentId == null ? null : String(contentId);
+
   const notifications = recipientUsernames.map((recipient) => ({
     recipient_username: recipient,
     sender_username: uploaderUsername,
     type,
     message,
     is_read: false,
-    content_id: contentId,
+    content_id: normalizedContentId,
     content_type: contentType,
   }));
 

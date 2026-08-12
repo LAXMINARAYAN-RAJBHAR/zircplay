@@ -1,0 +1,95 @@
+.zx-notifications-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 80px;
+}
+
+.zx-notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.zx-notifications-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.zx-notifications-markall {
+  background: none;
+  border: none;
+  color: #cc0000;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zx-notifications-status,
+.zx-notifications-empty {
+  text-align: center;
+  color: #888;
+  padding: 32px 0;
+  font-size: 14px;
+}
+
+.zx-notifications-error {
+  color: #cc0000;
+}
+
+.zx-notifications-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.zx-notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.zx-notification-item:hover {
+  background: #f0f4ff;
+}
+
+.zx-notification-unread {
+  background: #f7f9ff;
+}
+
+.zx-notification-icon {
+  font-size: 18px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.zx-notification-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.zx-notification-message {
+  margin: 0;
+  font-size: 14px;
+  color: #222;
+  word-break: break-word;
+}
+
+.zx-notification-time {
+  font-size: 12px;
+  color: #999;
+}
+
+.zx-notification-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cc0000;
+  margin-top: 6px;
+  flex-shrink: 0;
+}

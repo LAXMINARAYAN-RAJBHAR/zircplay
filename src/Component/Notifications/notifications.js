@@ -1,131 +1,156 @@
-// src/utils/notifications.js
+// src/Component/Notifications/notifications.js
 //
-// Shared helper for writing rows into the `notifications` table.
-// Previously only PostFeed.jsx's local `notifySubscribers()` did this —
-// likes, comments, subscribes, and video/reel uploads never wrote a
-// notification row anywhere, which is why the bell only ever showed
-// (or was supposed to show) new-post notifications and nothing else.
-//
-// Both helpers below now log any Supabase error instead of swallowing it
-// silently, so an RLS problem or bad column name shows up in the console
-// instead of just "nothing happens."
+// Notifications page — lists rows from the `notifications` table for the
+// logged-in user, lets them mark items read, and navigates to the
+// relevant content on click. Rendered at the /notifications route.
 
-import { supabase } from "../config/supabase";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../../config/supabase";
+import "./notifications.css";
+import { notifyUser, notifySubscribers } from "../../utils/notifications";
 
-/**
- * Notify a single recipient (e.g. "someone liked/commented on your video").
- * No-ops if there's no recipient, or if the recipient is the actor
- * themselves (you don't need a notification for your own like/comment).
- */
-export const notifyUser = async ({
-  recipientUsername,
-  senderUsername,
-  type, // "like" | "comment" | "subscriber" | "upload" | ...
-  message,
-  contentId = null,
-  contentType = null,
-}) => {
-  if (!recipientUsername) return;
-  if (recipientUsername === senderUsername) return;
+const TYPE_ICON = {
+  like: "❤️",
+  comment: "💬",
+  subscriber: "🔔",
+  upload: "🎬",
+};
 
-  // FIX: different call sites passed contentId as different types —
-  // video.jsx/reels.jsx pass it as a string (from useParams / reel.id),
-  // homePage.jsx was passing the raw (sometimes numeric) `id` straight
-  // from Supabase. Stored inconsistently, this can make the destination
-  // page's `String(v.id) === String(id)` match fail unpredictably,
-  // which is exactly the "opens the wrong content" symptom. Coercing
-  // once here, at the single place every notification gets written,
-  // guarantees every content_id in the table is a plain string from now
-  // on regardless of what the caller passed in.
-  const normalizedContentId = contentId == null ? null : String(contentId);
+const timeAgo = (iso) => {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+};
 
-  const { error } = await supabase.from("notifications").insert({
-    recipient_username: recipientUsername,
-    sender_username: senderUsername,
-    type,
-    message,
-    is_read: false,
-    content_id: normalizedContentId,
-    content_type: contentType,
-  });
-
-  if (error) {
-    console.error(`[notifications] Failed to insert "${type}" notification:`, error);
+const destinationFor = (n) => {
+  switch (n.content_type) {
+    case "video":
+      return `/video/${n.content_id}`;
+    case "reel":
+      return `/reels/${n.content_id}`;
+    case "post":
+      return `/?tab=posts&post=${n.content_id}`;
+    default:
+      return null;
   }
 };
 
-/**
- * Notify every subscriber of `uploaderUsername` (e.g. "X uploaded a new
- * video/reel/post"). Mirrors the uuid-vs-username resolution that used to
- * live only inside PostFeed.jsx, now shared so video/reel uploads and
- * posts all use the same logic.
- */
-export const notifySubscribers = async (
-  uploaderUsername,
-  { type, message, contentId = null, contentType = null },
-) => {
-  if (!uploaderUsername) return;
+export default function Notifications({ currentUser }) {
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
-  const { data: subRows, error: subErr } = await supabase
-    .from("subscriptions")
-    .select("subscriber_id")
-    .eq("subscribed_to", uploaderUsername);
-
-  if (subErr) {
-    console.error("[notifications] Failed to load subscribers:", subErr);
-    return;
-  }
-  if (!subRows || subRows.length === 0) return;
-
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const uuidIds = [
-    ...new Set(
-      subRows.filter((s) => uuidRegex.test(s.subscriber_id)).map((s) => s.subscriber_id),
-    ),
-  ];
-
-  let idToUsername = {};
-  if (uuidIds.length > 0) {
-    const { data: profilesData, error: profErr } = await supabase
-      .from("profiles")
-      .select("id, username")
-      .in("id", uuidIds);
-    if (profErr) {
-      console.error("[notifications] Failed to resolve subscriber usernames:", profErr);
+  const fetchNotifications = useCallback(async () => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
     }
-    profilesData?.forEach((p) => {
-      if (p.username && p.username.trim()) idToUsername[p.id] = p.username;
-    });
+    setLoading(true);
+    const { data, error: fetchErr } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("recipient_username", currentUser)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (fetchErr) {
+      console.error("[Notifications] Failed to load notifications:", fetchErr);
+      setError("Couldn't load notifications. Please try again.");
+    } else {
+      setNotifications(data || []);
+      setError(null);
+    }
+    setLoading(false);
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  const markAsRead = async (id) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
+    );
+    const { error: updateErr } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", id);
+    if (updateErr) {
+      console.error("[Notifications] Failed to mark as read:", updateErr);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    const { error: updateErr } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .in("id", unreadIds);
+    if (updateErr) {
+      console.error("[Notifications] Failed to mark all as read:", updateErr);
+    }
+  };
+
+  const handleClick = (n) => {
+    if (!n.is_read) markAsRead(n.id);
+    const dest = destinationFor(n);
+    if (dest) navigate(dest);
+  };
+
+  if (!currentUser) {
+    return (
+      <div className="zx-notifications-page">
+        <p className="zx-notifications-empty">Log in to see your notifications.</p>
+      </div>
+    );
   }
 
-  const recipientUsernames = [
-    ...new Set(
-      subRows
-        .map((s) =>
-          uuidRegex.test(s.subscriber_id) ? idToUsername[s.subscriber_id] : s.subscriber_id,
-        )
-        .filter(Boolean)
-        .filter((u) => u !== uploaderUsername),
-    ),
-  ];
+  return (
+    <div className="zx-notifications-page">
+      <div className="zx-notifications-header">
+        <h2>Notifications</h2>
+        {notifications.some((n) => !n.is_read) && (
+          <button className="zx-notifications-markall" onClick={markAllAsRead}>
+            Mark all as read
+          </button>
+        )}
+      </div>
 
-  if (recipientUsernames.length === 0) return;
+      {loading && <p className="zx-notifications-status">Loading…</p>}
+      {error && <p className="zx-notifications-status zx-notifications-error">{error}</p>}
+      {!loading && !error && notifications.length === 0 && (
+        <p className="zx-notifications-empty">You're all caught up — no notifications yet.</p>
+      )}
 
-  const normalizedContentId = contentId == null ? null : String(contentId);
-
-  const notifications = recipientUsernames.map((recipient) => ({
-    recipient_username: recipient,
-    sender_username: uploaderUsername,
-    type,
-    message,
-    is_read: false,
-    content_id: normalizedContentId,
-    content_type: contentType,
-  }));
-
-  const { error } = await supabase.from("notifications").insert(notifications);
-  if (error) {
-    console.error(`[notifications] Failed to notify subscribers ("${type}"):`, error);
-  }
-};
+      <ul className="zx-notifications-list">
+        {notifications.map((n) => (
+          <li
+            key={n.id}
+            className={`zx-notification-item${n.is_read ? "" : " zx-notification-unread"}`}
+            onClick={() => handleClick(n)}
+          >
+            <span className="zx-notification-icon">{TYPE_ICON[n.type] || "🔔"}</span>
+            <div className="zx-notification-body">
+              <p className="zx-notification-message">
+                <strong>{n.sender_username}</strong> {n.message}
+              </p>
+              <span className="zx-notification-time">{timeAgo(n.created_at)}</span>
+            </div>
+            {!n.is_read && <span className="zx-notification-dot" />}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
