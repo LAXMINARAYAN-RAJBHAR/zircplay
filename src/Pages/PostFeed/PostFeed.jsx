@@ -20,6 +20,7 @@ const PostFeed = ({ sideNavbar }) => {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState("");
   const [highlightedPostId, setHighlightedPostId] = useState(null);
+  const [postNotFound, setPostNotFound] = useState(false);
   const PAGE_SIZE = 10;
   const offsetRef = useRef(0);
   const currentUser = localStorage.getItem("username") || "anonymous";
@@ -149,7 +150,10 @@ const PostFeed = ({ sideNavbar }) => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const sharedPostId = params.get("post");
-    if (!sharedPostId) return;
+    if (!sharedPostId) {
+      setPostNotFound(false);
+      return;
+    }
 
     setHighlightedPostId(sharedPostId);
 
@@ -164,7 +168,15 @@ const PostFeed = ({ sideNavbar }) => {
         .eq("id", sharedPostId)
         .maybeSingle();
 
-      if (fetchErr || !data) return;
+      if (fetchErr || !data) {
+        // FIX: previously just `return` here — if the post was deleted,
+        // or the id in the URL didn't match anything (e.g. a stale
+        // notification), the user landed on the top of the general feed
+        // with zero indication their specific post link didn't resolve.
+        setPostNotFound(true);
+        return;
+      }
+      setPostNotFound(false);
 
       const enrichedPost = {
         ...data,
@@ -436,6 +448,11 @@ const PostFeed = ({ sideNavbar }) => {
         )}
 
         {error && <p className="pf-error">{error}</p>}
+        {postNotFound && (
+          <p className="pf-error">
+            That post isn't available anymore — it may have been deleted, or the link is incorrect.
+          </p>
+        )}
 
         {posts.length === 0 && !loading && (
           <div className="pf-empty">

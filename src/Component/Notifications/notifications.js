@@ -1,235 +1,131 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../../config/supabase";
+// src/utils/notifications.js
+//
+// Shared helper for writing rows into the `notifications` table.
+// Previously only PostFeed.jsx's local `notifySubscribers()` did this —
+// likes, comments, subscribes, and video/reel uploads never wrote a
+// notification row anywhere, which is why the bell only ever showed
+// (or was supposed to show) new-post notifications and nothing else.
+//
+// Both helpers below now log any Supabase error instead of swallowing it
+// silently, so an RLS problem or bad column name shows up in the console
+// instead of just "nothing happens."
 
-// ── ZIXPLON light theme palette (matches PostFeed.css :root) ──
-const THEME = {
-  bg: "#f0f4ff",
-  surface: "#ffffff",
-  surface2: "#f7f0ff",
-  border: "#e0d4ff",
-  primary: "#7c3aed",
-  primary2: "#a855f7",
-  text: "#1e1b4b",
-  text2: "#4c4589",
-  text3: "#8b84c4",
-};
+import { supabase } from "../config/supabase";
 
-const getNotifStyle = (type) => {
-  switch (type) {
-    case "upload":     return { color: "#ef4444", icon: "🎬" };
-    case "like":       return { color: "#f97316", icon: "❤️" };
-    case "comment":    return { color: "#3b82f6", icon: "💬" };
-    case "subscriber": return { color: "#10b981", icon: "🔔" };
-    case "post":       return { color: "#a78bfa", icon: "📝" };
-    default:           return { color: THEME.text3, icon: "📢" };
+/**
+ * Notify a single recipient (e.g. "someone liked/commented on your video").
+ * No-ops if there's no recipient, or if the recipient is the actor
+ * themselves (you don't need a notification for your own like/comment).
+ */
+export const notifyUser = async ({
+  recipientUsername,
+  senderUsername,
+  type, // "like" | "comment" | "subscriber" | "upload" | ...
+  message,
+  contentId = null,
+  contentType = null,
+}) => {
+  if (!recipientUsername) return;
+  if (recipientUsername === senderUsername) return;
+
+  // FIX: different call sites passed contentId as different types —
+  // video.jsx/reels.jsx pass it as a string (from useParams / reel.id),
+  // homePage.jsx was passing the raw (sometimes numeric) `id` straight
+  // from Supabase. Stored inconsistently, this can make the destination
+  // page's `String(v.id) === String(id)` match fail unpredictably,
+  // which is exactly the "opens the wrong content" symptom. Coercing
+  // once here, at the single place every notification gets written,
+  // guarantees every content_id in the table is a plain string from now
+  // on regardless of what the caller passed in.
+  const normalizedContentId = contentId == null ? null : String(contentId);
+
+  const { error } = await supabase.from("notifications").insert({
+    recipient_username: recipientUsername,
+    sender_username: senderUsername,
+    type,
+    message,
+    is_read: false,
+    content_id: normalizedContentId,
+    content_type: contentType,
+  });
+
+  if (error) {
+    console.error(`[notifications] Failed to insert "${type}" notification:`, error);
   }
 };
 
-const timeAgo = (timestamp) => {
-  const diff = Math.floor((Date.now() - new Date(timestamp)) / 1000);
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-};
+/**
+ * Notify every subscriber of `uploaderUsername` (e.g. "X uploaded a new
+ * video/reel/post"). Mirrors the uuid-vs-username resolution that used to
+ * live only inside PostFeed.jsx, now shared so video/reel uploads and
+ * posts all use the same logic.
+ */
+export const notifySubscribers = async (
+  uploaderUsername,
+  { type, message, contentId = null, contentType = null },
+) => {
+  if (!uploaderUsername) return;
 
-const PAGE_SIZE = 25;
+  const { data: subRows, error: subErr } = await supabase
+    .from("subscriptions")
+    .select("subscriber_id")
+    .eq("subscribed_to", uploaderUsername);
 
-const Notifications = ({ currentUser }) => {
-  const navigate = useNavigate();
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  if (subErr) {
+    console.error("[notifications] Failed to load subscribers:", subErr);
+    return;
+  }
+  if (!subRows || subRows.length === 0) return;
 
-  const mapRow = (n) => ({
-    id: n.id,
-    type: n.type,
-    message: n.message,
-    avatar: n.sender_username?.[0]?.toUpperCase() || "?",
-    time: timeAgo(n.created_at),
-    read: n.is_read,
-    contentId: n.content_id ?? null,
-    contentType: n.content_type ?? null,
-  });
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuidIds = [
+    ...new Set(
+      subRows.filter((s) => uuidRegex.test(s.subscriber_id)).map((s) => s.subscriber_id),
+    ),
+  ];
 
-  // ── Initial load ──
-  useEffect(() => {
-    if (!currentUser) {
-      setNotifications([]);
-      setLoading(false);
-      return;
+  let idToUsername = {};
+  if (uuidIds.length > 0) {
+    const { data: profilesData, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, username")
+      .in("id", uuidIds);
+    if (profErr) {
+      console.error("[notifications] Failed to resolve subscriber usernames:", profErr);
     }
+    profilesData?.forEach((p) => {
+      if (p.username && p.username.trim()) idToUsername[p.id] = p.username;
+    });
+  }
 
-    setLoading(true);
-    supabase
-      .from("notifications")
-      .select("*")
-      .eq("recipient_username", currentUser)
-      .order("created_at", { ascending: false })
-      .range(0, PAGE_SIZE - 1)
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setNotifications(data.map(mapRow));
-          setHasMore(data.length === PAGE_SIZE);
-        }
-        setLoading(false);
-      });
+  const recipientUsernames = [
+    ...new Set(
+      subRows
+        .map((s) =>
+          uuidRegex.test(s.subscriber_id) ? idToUsername[s.subscriber_id] : s.subscriber_id,
+        )
+        .filter(Boolean)
+        .filter((u) => u !== uploaderUsername),
+    ),
+  ];
 
-    // ── Realtime: new notifications land at the top instantly ──
-    const channel = supabase
-      .channel("notifications-page-channel")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `recipient_username=eq.${currentUser}`,
-        },
-        (payload) => {
-          setNotifications((prev) => [mapRow(payload.new), ...prev]);
-        },
-      )
-      .subscribe();
+  if (recipientUsernames.length === 0) return;
 
-    return () => supabase.removeChannel(channel);
-  }, [currentUser]);
+  const normalizedContentId = contentId == null ? null : String(contentId);
 
-  const loadMore = async () => {
-    if (!currentUser || loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("recipient_username", currentUser)
-      .order("created_at", { ascending: false })
-      .range(notifications.length, notifications.length + PAGE_SIZE - 1);
-    if (!error && data) {
-      setNotifications((prev) => [...prev, ...data.map(mapRow)]);
-      setHasMore(data.length === PAGE_SIZE);
-    }
-    setLoadingMore(false);
-  };
+  const notifications = recipientUsernames.map((recipient) => ({
+    recipient_username: recipient,
+    sender_username: uploaderUsername,
+    type,
+    message,
+    is_read: false,
+    content_id: normalizedContentId,
+    content_type: contentType,
+  }));
 
-  const markOneRead = async (id) => {
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
-  };
-
-  const markAllRead = async () => {
-    if (!currentUser) return;
-    await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("recipient_username", currentUser)
-      .eq("is_read", false);
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
-
-  const handleNotifClick = (n) => {
-    markOneRead(n.id);
-    if (!n.contentId || !n.contentType) return;
-    if (n.contentType === "reel") navigate(`/reels/${n.contentId}`);
-    else if (n.contentType === "video") navigate(`/video/${n.contentId}`);
-    else if (n.contentType === "post") navigate(`/feed?post=${n.contentId}`);
-  };
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  return (
-    <div
-      style={{
-        paddingTop: "80px",
-        maxWidth: "700px",
-        margin: "0 auto",
-        padding: "80px 24px 24px",
-        background: THEME.bg,
-        minHeight: "100vh",
-        fontFamily: "'Outfit', sans-serif",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
-        <h2 style={{ color: THEME.text, margin: 0 }}>All Notifications</h2>
-        {unreadCount > 0 && (
-          <span
-            onClick={markAllRead}
-            style={{ color: THEME.primary, fontSize: "14px", cursor: "pointer", fontWeight: "600" }}
-          >
-            Mark all as read
-          </span>
-        )}
-      </div>
-
-      {!currentUser ? (
-        <p style={{ color: THEME.text3 }}>Log in to see your notifications.</p>
-      ) : loading ? (
-        <p style={{ color: THEME.text3 }}>Loading...</p>
-      ) : notifications.length === 0 ? (
-        <p style={{ color: THEME.text3 }}>No notifications yet.</p>
-      ) : (
-        <>
-          {notifications.map((n) => {
-            const { color, icon } = getNotifStyle(n.type);
-            return (
-              <div
-                key={n.id}
-                onClick={() => handleNotifClick(n)}
-                style={{
-                  display: "flex", alignItems: "flex-start", gap: "14px",
-                  padding: "14px 16px", marginBottom: "8px",
-                  background: n.read ? THEME.surface : THEME.surface2,
-                  borderRadius: "10px",
-                  border: n.read ? `2px solid ${THEME.border}` : `2px solid ${THEME.primary2}`,
-                  cursor: "pointer",
-                  boxShadow: n.read ? "none" : "0 2px 12px rgba(124,58,237,0.08)",
-                  transition: "border-color 0.15s, box-shadow 0.15s",
-                }}
-              >
-                <div style={{
-                  width: "44px", height: "44px", borderRadius: "50%",
-                  background: color, display: "flex", alignItems: "center",
-                  justifyContent: "center", fontWeight: "700",
-                  fontSize: "16px", color: "white", flexShrink: 0,
-                }}>
-                  {n.avatar}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, color: n.read ? THEME.text2 : THEME.text, fontSize: "14px", lineHeight: "1.5", fontWeight: n.read ? 400 : 600 }}>
-                    <span style={{ marginRight: "6px" }}>{icon}</span>
-                    {n.message}
-                  </p>
-                  <span style={{ color: THEME.text3, fontSize: "12px" }}>{n.time}</span>
-                </div>
-                {!n.read && (
-                  <div style={{ width: "9px", height: "9px", borderRadius: "50%", background: THEME.primary, flexShrink: 0, marginTop: "6px" }} />
-                )}
-              </div>
-            );
-          })}
-
-          {hasMore && (
-            <div style={{ textAlign: "center", marginTop: "16px" }}>
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                style={{
-                  padding: "8px 20px", borderRadius: "20px", border: `2px solid ${THEME.border}`,
-                  background: THEME.surface, color: THEME.primary, cursor: "pointer", fontSize: "13px",
-                  fontWeight: 700, fontFamily: "'Outfit', sans-serif",
-                }}
-              >
-                {loadingMore ? "Loading..." : "Load more"}
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+  const { error } = await supabase.from("notifications").insert(notifications);
+  if (error) {
+    console.error(`[notifications] Failed to notify subscribers ("${type}"):`, error);
+  }
 };
-
-export default Notifications;

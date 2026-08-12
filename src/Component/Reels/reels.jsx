@@ -1008,6 +1008,13 @@ const Reels = () => {
     if (id) {
       const target = pool.find((r) => String(r.id) === String(id));
       if (target) return [target, ...pool.filter((r) => String(r.id) !== String(id))];
+      // FIX: previously fell through to `return pool` here — meaning a
+      // link/notification pointing at a reel that isn't in this pool
+      // (deleted, or a content_id/type mismatch) silently showed
+      // whatever reel happened to be first instead of any indication
+      // something was wrong. Now handled explicitly below via
+      // `requestedReelMissing`, so the UI can show a clear "not found"
+      // state instead of quietly substituting different content.
     }
     const clickedReel = location.state?.clickedReel;
     if (clickedReel) {
@@ -1016,6 +1023,16 @@ const Reels = () => {
     }
     return pool;
   }, [baseReels, id, location.state, fromTrending, trendingIds]);
+
+  // FIX: a specific reel was requested via the URL (deep link, share
+  // link, or a notification's navigate("/reels/:id")) but it isn't
+  // anywhere in the current pool. Distinguishing this from "there are
+  // no reels at all" lets the empty-state UI below tell the user what
+  // actually happened instead of them just landing on an unrelated reel.
+  const requestedReelMissing =
+    Boolean(id) &&
+    !location.state?.clickedReel &&
+    !baseReels.some((r) => String(r.id) === String(id));
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [id]);
 
@@ -1047,6 +1064,40 @@ const Reels = () => {
         <p style={{ color: "#aaa", fontSize: "14px" }}>Loading reels...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
+    );
+  }
+
+  // FIX: show an explicit "this reel isn't available" state when a
+  // specific reel was requested but doesn't exist in the pool, rather
+  // than falling through to the generic empty-state message (which
+  // implies there are no reels at all) or, worse, silently rendering
+  // whatever reel happened to be first.
+  if (requestedReelMissing) {
+    return (
+      <>
+        <button className="reels_back_btn" onClick={handleBack} aria-label="Go back">
+          <ArrowBackIosNewIcon style={{ fontSize: 18 }} />
+        </button>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "60vh",
+            color: "#8b84c4",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div style={{ fontSize: "40px" }}>🚫</div>
+          <p style={{ fontSize: "15px", fontWeight: "600" }}>
+            This reel isn't available
+          </p>
+          <p style={{ fontSize: "13px", color: "#c4bfdf" }}>
+            It may have been deleted, or the link is incorrect.
+          </p>
+        </div>
+      </>
     );
   }
 
