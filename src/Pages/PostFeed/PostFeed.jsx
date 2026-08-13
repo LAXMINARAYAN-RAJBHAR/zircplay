@@ -352,13 +352,26 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
   };
 
   // ── Report a post ──
+  // FIX: previously inserted into a "post_reports" table that AdminPanel
+  // never queries (AdminPanel reads only from "reports"). Reports were
+  // being saved but were invisible to admins. Now writes to the same
+  // "reports" table used by video/reel reporting, with the same shape
+  // AdminPanel expects (content_type, content_id, content_title,
+  // content_owner, reporter_username, reason, details, status).
   const handleReportPost = async (postId, reason, details) => {
-    const { error: err } = await supabase.from("post_reports").insert({
-      post_id: postId,
+    const post = posts.find((p) => p.id === postId);
+
+    const { error: err } = await supabase.from("reports").insert({
+      content_type: "post",
+      content_id: postId,
+      content_title: post?.text?.slice(0, 80) || "Post",
+      content_owner: post?.username || "unknown",
       reporter_username: currentUser,
       reason,
       details: details || null,
+      status: "pending",
     });
+
     if (err) throw err;
   };
 
