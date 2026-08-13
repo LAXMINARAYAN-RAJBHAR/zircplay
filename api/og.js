@@ -75,7 +75,7 @@ function fallbackHtml(type, url) {
 export default async function handler(req) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type");
-  const id = searchParams.get("id"); // for video/reel this is now the short_id (alphanumeric)
+  const id = searchParams.get("id");
 
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -85,8 +85,7 @@ export default async function handler(req) {
     "cache-control": "public, max-age=3600, s-maxage=3600",
   };
 
-  // Generic fallback redirect target — we don't know the real numeric id
-  // yet at this point, so this only gets used if lookup fails entirely.
+  // Generic fallback redirect target — used only if lookup fails entirely.
   const genericFallbackUrl = "https://zixplon.in";
 
   if (!id || !type) {
@@ -97,9 +96,9 @@ export default async function handler(req) {
     let title, description, image, url;
 
     if (type === "post") {
-      // Posts are unaffected — they already use real uuid ids, unchanged.
+      // Posts use real uuid ids — unchanged.
       const res = await fetchWithTimeout(
-        `${SUPABASE_URL}/rest/v1/posts?id=eq.${id}&select=*`,
+        `${SUPABASE_URL}/rest/v1/posts?id=eq.${encodeURIComponent(id)}&select=*`,
         {
           headers: {
             apikey: SUPABASE_ANON_KEY,
@@ -126,14 +125,12 @@ export default async function handler(req) {
         "https://zixplon.in/logo192.png";
       url = `https://zixplon.in/feed?post=${id}`;
     } else {
-      // FIX: video/reel are now looked up by `short_id` (the alphanumeric
-      // alias) instead of the real numeric `id` — this is the only thing
-      // that changed. The redirect target `url` still uses the real
-      // internal `item.id` (or the reel's `db_<id>` form), so nothing
-      // about internal routing, likes, comments, or views changes at all.
+      // Video/reel: match on EITHER the real internal id or short_id,
+      // since our live URLs (/video/:id, /reels/db_:id) use the real
+      // id, but some rows may only have short_id populated.
       const table = type === "reel" ? "reels" : "videos";
       const res = await fetchWithTimeout(
-        `${SUPABASE_URL}/rest/v1/${table}?short_id=eq.${id}&select=*`,
+        `${SUPABASE_URL}/rest/v1/${table}?or=(id.eq.${encodeURIComponent(id)},short_id.eq.${encodeURIComponent(id)})&select=*`,
         {
           headers: {
             apikey: SUPABASE_ANON_KEY,
@@ -160,9 +157,7 @@ export default async function handler(req) {
         "https://zixplon.in/logo192.png";
 
       // Internal route still uses the REAL id — reels keep their existing
-      // `db_<id>` convention, videos keep their plain numeric id. This is
-      // exactly what the app already expects, so nothing downstream needs
-      // to change.
+      // `db_<id>` convention, videos keep their plain numeric id.
       url =
         type === "reel"
           ? `https://zixplon.in/reels/db_${item.id}`
