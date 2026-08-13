@@ -503,10 +503,10 @@ const ShortsRow = ({
 // thumbnail becomes hover-previewable on desktop and auto-previews on
 // mobile once scrolled into view, same as usePostPreview above.
 //
-// CHANGED: now also shows each post's OWN like/comment counts (sourced
-// from the post_reactions/post_comments joined in fetchDbPosts below) —
-// not a site-wide total. This lives in the card footer alongside the
-// username, exactly where per-post stats belong.
+// Shows each post's OWN like/comment counts (sourced from the
+// post_reactions/post_comments joined in fetchDbPosts below) — not a
+// site-wide total. This is the layout VideoCard below now mirrors:
+// description/caption first, stats row underneath.
 // ─────────────────────────────────────────────────────────────────────────────
 const PostCard = ({ post, isMobile }) => {
   const media = post.image_urls?.[0] || post.image_url || null;
@@ -617,6 +617,13 @@ function buildContentRows(buckets, sizesByType) {
   return rows;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VideoCard — CHANGED: now matches the Posts card layout. Title/
+// description sits at the top, and a single meta row underneath carries
+// the channel/username, view count, like count, and upload age together
+// — instead of the old stacked layout (avatar row on top, title below,
+// views/likes on their own line, date on another line).
+// ─────────────────────────────────────────────────────────────────────────────
 const VideoCard = ({
   video,
   isUploaded = false,
@@ -710,67 +717,37 @@ const VideoCard = ({
           <div className="youtube_playButton">▶</div>
         </div>
       </Link>
+
+      {/* Description/title on top, username + views + likes + age below */}
       <div className="youtubeTitleBox">
-        <div className="youtubeBoxProfile">
-          <img
-            src={
-              "https://api.dicebear.com/7.x/initials/svg?seed=" +
-              video.channel
-            }
-            alt={video.channel}
-            className="youtube_thumbnail_Profile"
-          />
-          <Link
-            to={"/user/" + (video.username || video.channel.toLowerCase())}
-            style={{ textDecoration: "none", color: "inherit" }}
-          >
-            <p className="youtube_ChannelName">{video.channel}</p>
-          </Link>
-        </div>
-        <div className="youtubeVideoInfo">
-          <p className="youtube_videoTitle">{video.title}</p>
-          <p
-            className="youtubeVideo_Views"
-            style={{ display: "flex", gap: "10px", alignItems: "center" }}
-          >
-            {isUploaded && (
-              <>
-                <span>
-                  👁 {formatViews(viewCounts["video_" + video.id] ?? 0)}
-                </span>
-                <span style={{ color: "#d1d5db", fontSize: "11px" }}>•</span>
-                <button
-                  onClick={(e) => handleLikeVideo(e, video.id)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#8b84c4",
-                    cursor: "pointer",
-                    fontSize: "inherit",
-                    padding: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "3px",
-                    fontWeight: "600",
-                  }}
-                >
-                  👍 {video.likes ?? 0} Likes
-                </button>
-              </>
-            )}
-          </p>
-          {isUploaded && video.created_at && (
-            <p
-              className="youtubeVideo_UploadDate"
-              style={{
-                color: "#a8a3d6",
-                fontSize: "12px",
-                margin: "3px 0 0",
-                fontWeight: "500",
-              }}
+        <p className="youtube_videoTitle">{video.title}</p>
+        <div className="youtube_videoMetaRow">
+          <div className="youtubeBoxProfile">
+            <img
+              src={
+                "https://api.dicebear.com/7.x/initials/svg?seed=" +
+                video.channel
+              }
+              alt={video.channel}
+              className="youtube_thumbnail_Profile"
+            />
+            <Link
+              to={"/user/" + (video.username || video.channel.toLowerCase())}
+              style={{ textDecoration: "none", color: "inherit" }}
             >
-              {formatTimeAgo(video.created_at)}
-            </p>
+              <p className="youtube_ChannelName">{video.channel}</p>
+            </Link>
+          </div>
+          {isUploaded && (
+            <div className="youtube_videoStats">
+              <span>👁 {formatViews(viewCounts["video_" + video.id] ?? 0)}</span>
+              <button onClick={(e) => handleLikeVideo(e, video.id)}>
+                👍 {video.likes ?? 0}
+              </button>
+              {video.created_at && (
+                <span>{formatTimeAgo(video.created_at)}</span>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -778,6 +755,11 @@ const VideoCard = ({
   );
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// YouTubeVideoCard — same title-on-top / meta-row-below layout as
+// VideoCard, for visual consistency. No views/likes exist for external
+// YouTube results, so its meta row just shows channel + publish date.
+// ─────────────────────────────────────────────────────────────────────────────
 const YouTubeVideoCard = ({ item, onSelect }) => (
   <div
     className="youtube_thumbnailBox"
@@ -816,27 +798,27 @@ const YouTubeVideoCard = ({ item, onSelect }) => (
       </div>
     </div>
     <div className="youtubeTitleBox">
-      <div className="youtubeBoxProfile">
-        <img
-          src={
-            "https://ui-avatars.com/api/?name=" +
-            encodeURIComponent(item.snippet.channelTitle) +
-            "&background=random&size=36"
-          }
-          alt={item.snippet.channelTitle}
-          className="youtube_thumbnail_Profile"
-        />
-        <p className="youtube_ChannelName">{item.snippet.channelTitle}</p>
-      </div>
-      <div className="youtubeVideoInfo">
-        <p className="youtube_videoTitle">{item.snippet.title}</p>
-        <p className="youtubeVideo_Views">
+      <p className="youtube_videoTitle">{item.snippet.title}</p>
+      <div className="youtube_videoMetaRow">
+        <div className="youtubeBoxProfile">
+          <img
+            src={
+              "https://ui-avatars.com/api/?name=" +
+              encodeURIComponent(item.snippet.channelTitle) +
+              "&background=random&size=36"
+            }
+            alt={item.snippet.channelTitle}
+            className="youtube_thumbnail_Profile"
+          />
+          <p className="youtube_ChannelName">{item.snippet.channelTitle}</p>
+        </div>
+        <span className="youtube_videoDate">
           {new Date(item.snippet.publishedAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
           })}
-        </p>
+        </span>
       </div>
     </div>
   </div>
@@ -3101,9 +3083,8 @@ const HomePage = ({ sideNavbar }) => {
   // ── Posts (for the Posts section, previewable exactly like the
   // Explore homepage grid: hover on desktop, scroll-into-view on mobile) ──
   //
-  // CHANGED: now also joins post_reactions/post_comments so each post
-  // card can show its OWN like/comment counts (see PostCard above),
-  // instead of no counts at all.
+  // Joins post_reactions/post_comments so each post card can show its
+  // OWN like/comment counts (see PostCard above).
   useEffect(() => {
     const fetchDbPosts = async () => {
       const { data, error } = await supabase
@@ -3313,7 +3294,7 @@ const HomePage = ({ sideNavbar }) => {
             v.id === videoId ? { ...v, likes: (v.likes || 0) + 1 } : v,
           ),
         );
-        // NEW: notify the video owner about the like. dbVideos already
+        // Notify the video owner about the like. dbVideos already
         // carries `username` per row (set in fetchDbVideos above), so we
         // look the video up from current state rather than adding a new
         // fetch just for this.
