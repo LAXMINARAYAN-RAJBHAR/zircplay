@@ -618,11 +618,37 @@
   overflow: hidden;
   line-height: 1.4;
 }
+
+/* ── Per-post like/comment counts row ──
+   NEW: sits under the caption, alongside the username, showing THIS
+   post's own reaction/comment counts (from post_reactions/post_comments
+   joined in fetchDbPosts) — never a site-wide total. */
+.homePage_postFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .homePage_postUser {
   font-size: 12px;
   color: var(--zx-primary2);
   margin: 0;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.homePage_postStats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--zx-text3);
+  font-family: 'Nunito', sans-serif;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ── Skeleton loading ── */

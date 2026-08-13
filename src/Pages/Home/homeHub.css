@@ -78,42 +78,13 @@
   color: var(--zx-primary);
 }
 
-/* ── Like/Comment stat badge on the Posts tab ──
-   Small pill of two icon+count pairs sitting right after the "Posts"
-   label. Kept visually quiet (muted colors, smaller font) so it reads
-   as supporting info rather than competing with the tab label itself —
-   it brightens along with the rest of the button on hover/active,
-   matching .hh-tab-btn's own color transition. */
-.hh-tab-stats {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 2px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: rgba(158, 18, 38, 0.06);
-}
-
-.hh-tab-stat {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10px;
-  font-weight: 800;
-  color: inherit;
-  opacity: 0.75;
-  white-space: nowrap;
-}
-
-.hh-tab-btn:hover .hh-tab-stats,
-.hh-tab-btn.hh-tab-active .hh-tab-stats {
-  background: rgba(158, 18, 38, 0.14);
-}
-
-.hh-tab-btn:hover .hh-tab-stat,
-.hh-tab-btn.hh-tab-active .hh-tab-stat {
-  opacity: 1;
-}
+/* ── NOTE: per-post like/comment counts live on each post card itself,
+   inside the Home tab's Posts row (see .homePage_postFooter /
+   .homePage_postStats in homePage.css) and inside the full Posts tab's
+   PostCard (.pf-reaction-summary in PostFeed.css) — not as a
+   site-wide aggregate badge on this tab button. A dead
+   .hh-tab-stats/.hh-tab-stat block used to live here for that purpose;
+   it was never rendered by HomeHub.jsx and has been removed. */
 
 .hh-upload-btn {
   margin-left: auto;
@@ -154,24 +125,14 @@
     padding: 8px 10px;
     gap: 6px;
   }
-  /* CHANGED: was a bare `.hh-tab-btn span` selector, which also caught
-     .hh-tab-stats/.hh-tab-stat (both <span>s) and hid the like/comment
-     badge along with the "Home"/"Posts" text labels. Now scoped to just
-     the text-label span so the count badge stays visible on mobile,
-     giving the icon-only tab a bit of context. */
+  /* Scoped to just the text-label span so nothing else in the tab
+     button (e.g. any future badge) is accidentally hidden along with
+     the "Home"/"Posts" text labels on mobile. */
   .hh-tab-label {
     display: none;
   }
   .hh-tab-btn {
     padding: 8px 12px;
-  }
-  .hh-tab-stats {
-    margin-left: 0;
-    padding: 2px 6px;
-    gap: 6px;
-  }
-  .hh-tab-stat {
-    font-size: 9px;
   }
   .hh-upload-btn span {
     display: none;

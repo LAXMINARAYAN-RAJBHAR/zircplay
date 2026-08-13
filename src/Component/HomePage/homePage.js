@@ -502,6 +502,11 @@ const ShortsRow = ({
 // shows the post's image if it has one; if not (a video-only post), the
 // thumbnail becomes hover-previewable on desktop and auto-previews on
 // mobile once scrolled into view, same as usePostPreview above.
+//
+// CHANGED: now also shows each post's OWN like/comment counts (sourced
+// from the post_reactions/post_comments joined in fetchDbPosts below) —
+// not a site-wide total. This lives in the card footer alongside the
+// username, exactly where per-post stats belong.
 // ─────────────────────────────────────────────────────────────────────────────
 const PostCard = ({ post, isMobile }) => {
   const media = post.image_urls?.[0] || post.image_url || null;
@@ -511,6 +516,13 @@ const PostCard = ({ post, isMobile }) => {
     !!previewSrc,
   );
   const showPreview = isPreviewing && !!previewSrc;
+
+  // Per-post counts — NOT a site-wide total. Sourced from the
+  // post_reactions/post_comments joined onto each post row in
+  // fetchDbPosts (and defaulted to [] for freshly realtime-inserted
+  // posts, which arrive without the joined arrays).
+  const likesCount = post.post_reactions?.length || 0;
+  const commentsCount = post.post_comments?.length || 0;
 
   return (
     <Link to={`/feed?post=${post.id}`} className="homePage_postCard">
@@ -543,7 +555,13 @@ const PostCard = ({ post, isMobile }) => {
       </div>
       <div className="homePage_postMeta">
         <p className="homePage_postCaption">{post.text || "View post"}</p>
-        <p className="homePage_postUser">@{post.username}</p>
+        <div className="homePage_postFooter">
+          <p className="homePage_postUser">@{post.username}</p>
+          <span className="homePage_postStats">
+            <span>👍 {likesCount}</span>
+            <span>💬 {commentsCount}</span>
+          </span>
+        </div>
       </div>
     </Link>
   );
@@ -3082,11 +3100,15 @@ const HomePage = ({ sideNavbar }) => {
 
   // ── Posts (for the Posts section, previewable exactly like the
   // Explore homepage grid: hover on desktop, scroll-into-view on mobile) ──
+  //
+  // CHANGED: now also joins post_reactions/post_comments so each post
+  // card can show its OWN like/comment counts (see PostCard above),
+  // instead of no counts at all.
   useEffect(() => {
     const fetchDbPosts = async () => {
       const { data, error } = await supabase
         .from("posts")
-        .select("*")
+        .select("*, post_reactions(type), post_comments(id)")
         .order("created_at", { ascending: false })
         .limit(30);
       if (!error && data) setDbPosts(data);
@@ -3099,7 +3121,14 @@ const HomePage = ({ sideNavbar }) => {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "posts" },
         (payload) => {
-          setDbPosts((prev) => [payload.new, ...prev]);
+          // payload.new has no joined post_reactions/post_comments arrays
+          // (those only come back from a select() with joins) — default
+          // them so PostCard's likesCount/commentsCount don't blow up on
+          // a freshly-created post before anyone's reacted/commented.
+          setDbPosts((prev) => [
+            { ...payload.new, post_reactions: [], post_comments: [] },
+            ...prev,
+          ]);
         },
       )
       .on(
