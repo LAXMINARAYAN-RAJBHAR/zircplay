@@ -180,6 +180,13 @@ const Video = ({ sideNavbar }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const moreMenuRef = useRef(null);
 
+  // NEW: lets the person hide the Like/Dislike/Share/Fullscreen row while
+  // in fullscreen (toggled from the ⋮ "More" menu), so the video isn't
+  // partly covered. The "More" button itself always stays visible so they
+  // can bring the row back. Only meaningful in fullscreen — reset below
+  // whenever fullscreen is exited so it doesn't carry over.
+  const [fullscreenActionsHidden, setFullscreenActionsHidden] = useState(false);
+
   const quality = useNetworkQuality();
 
   const [isMobile, setIsMobile] = useState(false);
@@ -261,6 +268,7 @@ const Video = ({ sideNavbar }) => {
     const handleFullscreenChange = () => {
       const fsActive = !!getFullscreenElement();
       setIsFullscreen(fsActive);
+      if (!fsActive) setFullscreenActionsHidden(false);
 
       // NEW: force landscape while fullscreen on mobile — without this,
       // the browser's Fullscreen API just fills the screen in whatever
@@ -975,52 +983,61 @@ const Video = ({ sideNavbar }) => {
           )}
 
           <div
-            className={`video_frame_actions${isMobile ? " mobile-visible" : ""}`}
+            className={`video_frame_actions${isMobile ? " mobile-visible" : ""}${
+              isFullscreen && fullscreenActionsHidden ? " actions-hidden" : ""
+            }`}
           >
-            <div
-              className={`video_frame_btn video_like_btn ${liked ? "video_liked" : ""}`}
-              onClick={handleLike}
-              title="Like"
-            >
-              <span className="video_like_inner">
-                <ThumbUpOutlinedIcon
-                  fontSize="small"
-                  style={{ color: liked ? "#ff0000" : "white" }}
-                />
-                <span>{likeCount}</span>
-              </span>
-              <span className="video_like_emoji">😊</span>
-            </div>
+            {!(isFullscreen && fullscreenActionsHidden) && (
+              <>
+                <div
+                  className={`video_frame_btn video_like_btn ${liked ? "video_liked" : ""}`}
+                  onClick={handleLike}
+                  title="Like"
+                >
+                  <span className="video_like_inner">
+                    <ThumbUpOutlinedIcon
+                      fontSize="small"
+                      style={{ color: liked ? "#ff0000" : "white" }}
+                    />
+                    <span>{likeCount}</span>
+                  </span>
+                  <span className="video_like_emoji">😊</span>
+                </div>
 
-            <div
-              className={`video_frame_btn ${disliked ? "active" : ""}`}
-              onClick={handleDislike}
-              title="Dislike"
-            >
-              <ThumbDownAltOutlinedIcon fontSize="small" />
-            </div>
+                <div
+                  className={`video_frame_btn ${disliked ? "active" : ""}`}
+                  onClick={handleDislike}
+                  title="Dislike"
+                >
+                  <ThumbDownAltOutlinedIcon fontSize="small" />
+                </div>
 
-            <div
-              className="video_frame_btn"
-              onClick={handleShare}
-              title="Share"
-            >
-              <ReplyIcon fontSize="small" style={{ transform: "scaleX(-1)" }} />
-              <span>Share</span>
-            </div>
+                <div
+                  className="video_frame_btn"
+                  onClick={handleShare}
+                  title="Share"
+                >
+                  <ReplyIcon fontSize="small" style={{ transform: "scaleX(-1)" }} />
+                  <span>Share</span>
+                </div>
 
-            <div
-              className={`video_frame_btn ${isFullscreen ? "active" : ""}`}
-              onClick={handleFullscreenToggle}
-              title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            >
-              {isFullscreen ? (
-                <FullscreenExitIcon fontSize="small" />
-              ) : (
-                <FullscreenIcon fontSize="small" />
-              )}
-            </div>
+                <div
+                  className={`video_frame_btn ${isFullscreen ? "active" : ""}`}
+                  onClick={handleFullscreenToggle}
+                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <FullscreenExitIcon fontSize="small" />
+                  ) : (
+                    <FullscreenIcon fontSize="small" />
+                  )}
+                </div>
+              </>
+            )}
 
+            {/* The "More" (⋮) button always stays visible — even when the
+                rest of the row is hidden in fullscreen — so there's always
+                a way to bring the row back. */}
             <div
               className="video_frame_more_wrap"
               ref={moreMenuRef}
@@ -1036,6 +1053,21 @@ const Video = ({ sideNavbar }) => {
 
               {showMoreMenu && (
                 <div className="video_more_dropdown">
+                  {/* NEW: only offered in fullscreen — lets the person hide
+                      the whole Like/Dislike/Share/Fullscreen row so it
+                      doesn't sit over the video, keeping only this ⋮ button
+                      around to bring it back. */}
+                  {isFullscreen && (
+                    <div
+                      className="video_more_dropdown_item"
+                      onClick={() => {
+                        setFullscreenActionsHidden((v) => !v);
+                        setShowMoreMenu(false);
+                      }}
+                    >
+                      {fullscreenActionsHidden ? "👁 Show controls" : "🙈 Hide controls"}
+                    </div>
+                  )}
                   <div
                     className="video_more_dropdown_item"
                     onClick={() => {

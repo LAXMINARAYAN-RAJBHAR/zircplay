@@ -1012,10 +1012,29 @@
   animation: floatInBottom 0.25s ease both;
 }
 
+/* NEW: collapsed state — when the person hides the row via the ⋮ "More"
+   menu (isFullscreen && fullscreenActionsHidden in Video.jsx), only the
+   More button itself renders inside .video_frame_actions. Trim the pill's
+   padding down so it hugs that single button instead of leaving space
+   sized for the full row, and dim it slightly so it reads as tucked away
+   without disappearing entirely. */
+.video_player_wrapper:fullscreen .video_frame_actions.actions-hidden,
+.video_player_wrapper:-webkit-full-screen .video_frame_actions.actions-hidden,
+.video_player_wrapper:-moz-full-screen .video_frame_actions.actions-hidden,
+.video_player_wrapper:-ms-fullscreen .video_frame_actions.actions-hidden {
+  padding: 6px 8px;
+  opacity: 0.65 !important;
+}
+.video_player_wrapper:fullscreen .video_frame_actions.actions-hidden:hover,
+.video_player_wrapper:-webkit-full-screen .video_frame_actions.actions-hidden:hover,
+.video_player_wrapper:-moz-full-screen .video_frame_actions.actions-hidden:hover,
+.video_player_wrapper:-ms-fullscreen .video_frame_actions.actions-hidden:hover {
+  opacity: 1 !important;
+}
+
 /* Individual buttons: strip their own card chrome since the row itself
    is now the pill — buttons become plain icon+label pairs inside it. */
-.video_player_wrapper:fullscreen .video_frame_btn,
-.video_player_wrapper:-webkit-full-screen .video_frame_btn,
+.video_player_wrapper:fullscreen .video_frame_btn,.video_player_wrapper:-webkit-full-screen .video_frame_btn,
 .video_player_wrapper:-moz-full-screen .video_frame_btn,
 .video_player_wrapper:-ms-fullscreen .video_frame_btn {
   flex-direction: row;
