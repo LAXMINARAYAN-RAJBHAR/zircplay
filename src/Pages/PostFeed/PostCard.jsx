@@ -612,6 +612,7 @@ const PostCard = ({
     (a, b) => a + b,
     0,
   );
+  const totalComments = post.comments?.length || 0;
   const myReact = REACTIONS.find((r) => r.key === post.myReaction);
 
   // Fire the like-burst + icon pop only when going from "no reaction" to
@@ -971,28 +972,36 @@ const PostCard = ({
           </div>
         )}
 
-        {/* ── Reaction summary ── */}
-        {!isEditing && totalReactions > 0 && (
+        {/* ── Reaction summary ──
+            CHANGED: this row used to be wrapped in `totalReactions > 0`,
+            which meant the comment-count button (on the same row) also
+            disappeared whenever a post had comments but zero likes — the
+            two counts were accidentally coupled together. Now the row
+            always renders per post, and the like-count/comment-count
+            each show independently — a post can display "0 Likes" next
+            to "3 comments" (or vice versa) instead of hiding one because
+            the other is zero. */}
+        {!isEditing && (
           <div className="pf-reaction-summary">
             <div className="pf-reaction-emojis">
-              {Object.entries(post.reactionCounts || {})
-                .filter(([, v]) => v > 0)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 3)
-                .map(([k]) => {
-                  const r = REACTIONS.find((x) => x.key === k);
-                  return r ? <span key={k}>{r.emoji}</span> : null;
-                })}
+              {totalReactions > 0 &&
+                Object.entries(post.reactionCounts || {})
+                  .filter(([, v]) => v > 0)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 3)
+                  .map(([k]) => {
+                    const r = REACTIONS.find((x) => x.key === k);
+                    return r ? <span key={k}>{r.emoji}</span> : null;
+                  })}
               <span className="pf-reaction-count pf-count-pop" key={countPopKey}>
-                {totalReactions}
+                {totalReactions} {totalReactions === 1 ? "Like" : "Likes"}
               </span>
             </div>
             <button
               className="pf-text-btn"
               onClick={() => onToggleComments(post.id)}
             >
-              {post.comments?.length || 0} comment
-              {post.comments?.length !== 1 ? "s" : ""}
+              {totalComments} comment{totalComments !== 1 ? "s" : ""}
             </button>
           </div>
         )}
