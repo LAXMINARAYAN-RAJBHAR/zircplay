@@ -1327,6 +1327,13 @@ const SaveMenuButton = ({
 };
 
 const DRAMATIC_AUTOPLAY_MS = 4200;
+// How far (in px) a drag must travel before it counts as a swipe to the
+// next/previous slide, rather than snapping back to the current one.
+const DRAG_SWIPE_THRESHOLD = 50;
+// How much a drag can visually move the stage past a true 1:1 tracking of
+// the finger/pointer — keeps the drag feeling responsive without letting
+// a huge swipe fling the deck several cards at once.
+const DRAG_MAX_VISUAL_PX = 260;
 
 const MOVIE_TAG_LIST = [
   "Hindi Movies",
@@ -1353,6 +1360,7 @@ const TrendingCard = ({
   isMobile,
   onActivate,
   onJump,
+  dragDeltaX = 0,
 }) => {
   // ── Preview setup ──
   // Desktop: hover-to-preview, only on the active (centered) card.
@@ -1368,7 +1376,11 @@ const TrendingCard = ({
   const { videoRef, onMouseEnter, onMouseLeave } = desktopHover;
 
   const abs = Math.abs(offset);
-  const translateX = offset * cardOffset;
+  // dragDeltaX moves every visible card together in real time while the
+  // user is dragging — the same clamp is applied to every card so the
+  // whole deck tracks the finger/pointer at once instead of just the
+  // active card.
+  const translateX = offset * cardOffset + dragDeltaX;
   const scale = isActive ? 1 : Math.max(0.62, 1 - abs * 0.16);
   const rotateY = offset * -16;
   const zIndex = 10 - abs;
@@ -1413,6 +1425,7 @@ const TrendingCard = ({
             opacity: canPreview && isPreviewing ? 0 : 1,
             transition: "opacity 0.25s",
           }}
+          draggable={false}
         />
         {canPreview && isPreviewing && (
           <video
@@ -1455,6 +1468,15 @@ const DramaticTrendingCarousel = ({
   const resumeTimeoutRef = useRef(null);
   const autoplayTimeoutRef = useRef(null);
 
+  // ── Manual drag/swipe state (touch + mouse pointer) ──
+  // dragDeltaX is applied live to every card's transform (see
+  // TrendingCard) so the deck visually tracks the finger/pointer while
+  // dragging. On release, a big-enough drag advances to the next/prev
+  // slide; a small one just snaps back in place.
+  const [dragDeltaX, setDragDeltaX] = useState(0);
+  const dragStateRef = useRef({ dragging: false, startX: 0 });
+  const suppressClickRef = useRef(false);
+
   const items = React.useMemo(() => {
     const videoLimit = isMobile ? 6 : 8;
     const reelLimit = isMobile ? 5 : 6;
@@ -1492,6 +1514,7 @@ const DramaticTrendingCarousel = ({
   };
   const resume = (delay = 0) => {
     const doResume = () => setIsPaused(false);
+    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
     if (delay > 0) resumeTimeoutRef.current = setTimeout(doResume, delay);
     else doResume();
   };
@@ -1511,9 +1534,78 @@ const DramaticTrendingCarousel = ({
     };
   }, []);
 
+  // ── Drag/swipe handlers ──
+  const clampDrag = (px) =>
+    Math.max(-DRAG_MAX_VISUAL_PX, Math.min(DRAG_MAX_VISUAL_PX, px));
+
+  const startDrag = (clientX) => {
+    dragStateRef.current = { dragging: true, startX: clientX };
+    pause();
+    setDragDeltaX(0);
+  };
+
+  const moveDrag = (clientX) => {
+    if (!dragStateRef.current.dragging) return;
+    setDragDeltaX(clampDrag(clientX - dragStateRef.current.startX));
+  };
+
+  const endDrag = () => {
+    if (!dragStateRef.current.dragging) return;
+    dragStateRef.current.dragging = false;
+
+    setDragDeltaX((currentDelta) => {
+      if (Math.abs(currentDelta) > 4) {
+        // A real drag happened — swallow the click that browsers fire
+        // right after mouseup/touchend so it doesn't also "activate"
+        // the card underneath the pointer.
+        suppressClickRef.current = true;
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+      }
+
+      // A drag to the left (negative delta) means "show the next card";
+      // a drag to the right means "show the previous card" — matching
+      // how swiping a physical deck of cards works.
+      if (currentDelta <= -DRAG_SWIPE_THRESHOLD) {
+        goNext();
+      } else if (currentDelta >= DRAG_SWIPE_THRESHOLD) {
+        goPrev();
+      }
+      return 0;
+    });
+
+    resume(1500);
+  };
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    startDrag(e.clientX);
+
+    const onMove = (ev) => moveDrag(ev.clientX);
+    const onUp = () => {
+      endDrag();
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const handleTouchStart = (e) => {
+    startDrag(e.touches[0].clientX);
+  };
+  const handleTouchMove = (e) => {
+    moveDrag(e.touches[0].clientX);
+  };
+  const handleTouchEnd = () => {
+    endDrag();
+  };
+
   if (total === 0) return null;
 
   const handleSelect = (item) => {
+    if (suppressClickRef.current) return;
     if (item._type === "reel") onReelClick && onReelClick(item, items);
     else onVideoClick && onVideoClick(item, items);
   };
@@ -1525,8 +1617,6 @@ const DramaticTrendingCarousel = ({
       className="zx-dramatic-trending"
       onMouseEnter={pause}
       onMouseLeave={() => resume(0)}
-      onTouchStart={pause}
-      onTouchEnd={() => resume(900)}
     >
       <div className="zx-dramatic-trending-label">
         <span className="zx-dramatic-z-badge">Z</span>
@@ -1541,10 +1631,25 @@ const DramaticTrendingCarousel = ({
       <div
         className="zx-dramatic-stage"
         role="region"
-        aria-label="Trending now — use left and right arrow keys to browse, Enter to open"
+        aria-label="Trending now — drag, swipe, or use left and right arrow keys to browse, Enter to open"
         tabIndex={0}
         onFocus={pause}
         onBlur={() => resume(0)}
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onClickCapture={(e) => {
+          if (suppressClickRef.current) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        }}
+        style={{
+          cursor: dragStateRef.current.dragging ? "grabbing" : "grab",
+          touchAction: "pan-y",
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowRight") {
             e.preventDefault();
@@ -1587,13 +1692,15 @@ const DramaticTrendingCarousel = ({
                 goTo(i);
                 resume(2500);
               }}
+              dragDeltaX={dragDeltaX}
             />
           );
         })}
 
         <button
           className="zx-dramatic-nav prev"
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             pause();
             goPrev();
             resume(2500);
@@ -1604,7 +1711,8 @@ const DramaticTrendingCarousel = ({
         </button>
         <button
           className="zx-dramatic-nav next"
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             pause();
             goNext();
             resume(2500);
