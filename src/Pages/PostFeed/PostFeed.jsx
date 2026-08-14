@@ -212,10 +212,27 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     ensurePostLoaded();
   }, [location.search, currentUser, enrichPost]);
 
+  // Scrolls to and highlights the shared post exactly once per
+  // highlightedPostId. `posts` stays a dependency because the target
+  // post may not be in the DOM yet on first render (still being fetched
+  // by ensurePostLoaded above) — but every OTHER state update that also
+  // touches `posts` (commenting/reacting on any post, realtime inserts,
+  // etc.) was re-triggering this effect too, re-scrolling and
+  // re-highlighting the same post every time, which made it feel
+  // "locked" on screen. scrolledForIdRef guards against that: once
+  // we've successfully scrolled for a given id, later `posts` changes
+  // are ignored until highlightedPostId itself changes.
+  const scrolledForIdRef = useRef(null);
   useEffect(() => {
-    if (!highlightedPostId) return;
+    if (!highlightedPostId) {
+      scrolledForIdRef.current = null;
+      return;
+    }
+    if (scrolledForIdRef.current === highlightedPostId) return;
+
     const el = document.getElementById(`post-${highlightedPostId}`);
     if (el) {
+      scrolledForIdRef.current = highlightedPostId;
       el.scrollIntoView({ behavior: "smooth", block: "start" });
       el.classList.add("pf-highlighted");
       const timer = setTimeout(() => el.classList.remove("pf-highlighted"), 3000);
