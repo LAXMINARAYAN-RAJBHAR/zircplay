@@ -6,6 +6,8 @@ import {
   markGroupRead,
   leaveGroup,
 } from "../../utils/groupChat";
+import { URL_SPLIT_REGEX, isUrlToken, extractFirstUrl, truncateUrlDisplay } from "../../utils/linkPreview";
+import LinkPreviewCard from "./LinkPreviewCard";
 import AddMembersModal from "./AddMembersModal";
 import "./GroupChatWindow.css";
 import { playSendSound, playReceiveSound } from "../../utils/soundEffects";
@@ -30,6 +32,32 @@ const uploadToCloudinary = async (file, resourceType) => {
 
 const timeShort = (dateStr) =>
   new Date(dateStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+// Splits group message text into URL / plain-text segments so links are
+// clickable, mirroring MessagesPanel's renderMessageText but without the
+// emoji-halo styling (group bubbles don't currently have that treatment).
+const renderGroupMessageText = (str, mine) => {
+  if (!str) return null;
+
+  const parts = str.split(URL_SPLIT_REGEX).filter((p) => p !== undefined && p !== "");
+
+  return parts.map((part, i) =>
+    isUrlToken(part) ? (
+      <a
+        key={i}
+        href={part.startsWith("www.") ? `https://${part}` : part}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`gcw-inline-link${mine ? " mine" : ""}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        🔗 {truncateUrlDisplay(part)}
+      </a>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    ),
+  );
+};
 
 // Formats the set of currently-typing member usernames into a readable
 // line, WhatsApp-group style: "Alice is typing…", "Alice and Bob are
@@ -481,7 +509,10 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
                           📎 {m.attachment_name || "Attachment"}
                         </a>
                       )}
-                      {m.text && <span>{m.text}</span>}
+                      {m.text && <span>{renderGroupMessageText(m.text, mine)}</span>}
+                      {m.text && extractFirstUrl(m.text) && (
+                        <LinkPreviewCard url={extractFirstUrl(m.text)} mine={mine} classPrefix="gcw" />
+                      )}
                       <span className="gcw-bubble-time">{timeShort(m.created_at)}</span>
                     </>
                   )}

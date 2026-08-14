@@ -1019,7 +1019,7 @@
 .mp-new-menu div:hover { background: var(--zx-bg); }
 
 /* ══════════════════════════════════════════════════════════════════════
-   TYPING INDICATOR — append this block to the end of MessagesPanel.css
+   TYPING INDICATOR
    ══════════════════════════════════════════════════════════════════════ */
 
 /* Header status text turns accent-colored + italic while the other
@@ -1068,10 +1068,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   GROUP CHAT TYPING INDICATOR — append this block to GroupChatWindow.css
-   (I don't have your original GroupChatWindow.css contents, so these
-   rules use the gcw- prefix to match that component's existing class
-   naming convention. Adjust colors to match your palette if needed.)
+   GROUP CHAT TYPING INDICATOR (GroupChatWindow.css)
    ══════════════════════════════════════════════════════════════════════ */
 
 .gcw-typing-status {
@@ -1114,4 +1111,86 @@
     transform: translateY(-4px);
     opacity: 1;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   LINK PREVIEW CARD (1:1 chat) — used by LinkPreviewCard.jsx classPrefix="mp"
+   ══════════════════════════════════════════════════════════════════════ */
+
+.mp-link-loading {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--zx-text3);
+  padding: 4px 2px;
+}
+.mp-link-loading.mine {
+  color: rgba(255,255,255,0.75);
+}
+
+.mp-link-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border: 1.5px solid var(--zx-border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 2px;
+  max-width: 240px;
+  background: var(--zx-surface);
+  transition: border-color 0.15s;
+}
+.mp-link-card:hover {
+  border-color: var(--zx-primary);
+}
+.mp-link-card.mine {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.3);
+}
+
+.mp-link-image {
+  width: 100%;
+  max-height: 120px;
+  object-fit: cover;
+  display: block;
+}
+
+.mp-link-body {
+  padding: 6px 10px;
+}
+
+.mp-link-domain {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--zx-text3);
+  margin: 0;
+}
+.mp-link-card.mine .mp-link-domain {
+  color: rgba(255,255,255,0.7);
+}
+
+.mp-link-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 2px 0 0;
+  color: var(--zx-text);
+  line-height: 1.3;
+}
+.mp-link-card.mine .mp-link-title {
+  color: #fff;
+}
+
+.mp-link-desc {
+  font-size: 11px;
+  color: var(--zx-text3);
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.mp-link-card.mine .mp-link-desc {
+  color: rgba(255,255,255,0.75);
 }

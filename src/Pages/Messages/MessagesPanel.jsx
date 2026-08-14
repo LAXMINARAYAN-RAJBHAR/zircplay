@@ -10,6 +10,8 @@ import GroupChatWindow from "../../Component/Messages/GroupChatWindow";
 import BroadcastComposeWindow from "../../Component/Messages/BroadcastComposeWindow";
 import { playSendSound, playReceiveSound, playNotificationSound } from "../../utils/soundEffects";
 import { ensureNotificationPermission, showChatNotification } from "../../utils/chatNotifications";
+import { extractFirstUrl } from "../../utils/linkPreview";
+import LinkPreviewCard from "../../Component/Messages/LinkPreviewCard";
 
 const EMOJI_ONLY_REGEX = /^(\p{Extended_Pictographic}|\u200d|\ufe0f|\s)+$/u;
 
@@ -2002,6 +2004,16 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                           {renderMessageText(m.text, mine)}
                                         </span>
                                       ))}
+
+                                    {m.text &&
+                                      !isEmojiOnlyMessage(m.text) &&
+                                      extractFirstUrl(m.text) && (
+                                        <LinkPreviewCard
+                                          url={extractFirstUrl(m.text)}
+                                          mine={mine}
+                                          classPrefix="mp"
+                                        />
+                                      )}
 
                                     <span className="mp-bubble-footer">
                                       {m.edited_at && (
