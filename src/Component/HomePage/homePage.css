@@ -1450,3 +1450,209 @@
   .zx-dramatic-stage { height: 230px; }
   .zx-dramatic-card { width: 190px; height: 190px; }
 }
+
+/* ══════════════════════════════════════
+   ✅ NEW: THREE-DOTS MENU ON REEL / POST CARDS — ShortCard and PostCard
+   now render the same "⋮" button VideoCard already had (ThreeDotMenu /
+   ReelMenuButton / PostMenuButton in homePage.js). No new classes were
+   needed for the button/dropdown itself (it reuses .save-menu-wrapper
+   and DropdownPortal's inline styling), but the short card's root needs
+   a stacking context above its own gradient overlay so the button is
+   clickable, and the post card needs to sit above its thumbnail badge.
+══════════════════════════════════════ */
+.homePage_shortCard .save-menu-wrapper {
+  z-index: 4; /* above .homePage_shortThumbnail::after's gradient (z-index:1) and badges (z-index:2/3) */
+}
+.homePage_postCard .save-menu-wrapper {
+  z-index: 4; /* above .homePage_postBadge (z-index:2) */
+}
+
+/* ══════════════════════════════════════
+   ✅ NEW: REPORT MODAL — shared "Report this content" dialog opened from
+   any card's three-dots menu (video, reel, post). See ReportModal in
+   homePage.js.
+══════════════════════════════════════ */
+.zx-report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: rgba(30, 19, 21, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: zx-report-fade-in 0.15s ease;
+  box-sizing: border-box;
+}
+@keyframes zx-report-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.zx-report-modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--zx-surface, #ffffff);
+  border-radius: var(--zx-radius, 16px);
+  box-shadow: 0 20px 60px rgba(30, 19, 21, 0.35);
+  padding: 20px 22px 22px;
+  box-sizing: border-box;
+  font-family: 'Outfit', sans-serif;
+  animation: bounceIn 0.2s ease;
+}
+
+.zx-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.zx-report-header > span {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--zx-text, #1e1315);
+  text-transform: capitalize;
+  font-family: 'Nunito', sans-serif;
+}
+.zx-report-close {
+  background: var(--zx-surface2, #f7f0ff);
+  border: none;
+  color: var(--zx-text3, #9c7a7c);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.zx-report-close:hover {
+  background: var(--zx-border, #f3d6d2);
+  color: var(--zx-primary, #9e1226);
+}
+
+.zx-report-sub {
+  color: var(--zx-text3, #9c7a7c);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 6px 0 16px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.zx-report-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.zx-report-reason {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1.5px solid var(--zx-border, #f3d6d2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--zx-text, #1e1315);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: 'Outfit', sans-serif;
+}
+.zx-report-reason:hover {
+  border-color: var(--zx-primary, #9e1226);
+  background: rgba(158, 18, 38, 0.04);
+}
+.zx-report-reason.active {
+  border-color: var(--zx-primary, #9e1226);
+  background: rgba(158, 18, 38, 0.08);
+  font-weight: 800;
+}
+.zx-report-radio {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1.5px solid var(--zx-border, #f3d6d2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.zx-report-reason.active .zx-report-radio {
+  background: var(--zx-primary, #9e1226);
+  border-color: var(--zx-primary, #9e1226);
+}
+
+.zx-report-details {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 60px;
+  border: 1.5px solid var(--zx-border, #f3d6d2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-family: 'Outfit', sans-serif;
+  color: var(--zx-text, #1e1315);
+  outline: none;
+  transition: border-color 0.15s;
+  margin-bottom: 16px;
+}
+.zx-report-details:focus { border-color: var(--zx-primary, #9e1226); }
+.zx-report-details::placeholder { color: var(--zx-text3, #9c7a7c); }
+
+.zx-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.zx-report-cancel {
+  background: var(--zx-surface2, #f7f0ff);
+  border: 1.5px solid var(--zx-border, #f3d6d2);
+  color: var(--zx-text2, #4c4589);
+  border-radius: 20px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  transition: background 0.15s;
+}
+.zx-report-cancel:hover { background: var(--zx-border, #f3d6d2); }
+.zx-report-submit {
+  background: var(--zx-primary, #9e1226);
+  border: none;
+  color: #fff;
+  border-radius: 20px;
+  padding: 9px 20px;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  box-shadow: 0 4px 14px rgba(158, 18, 38, 0.3);
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+.zx-report-submit:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(158, 18, 38, 0.42);
+}
+.zx-report-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+@media (max-width: 480px) {
+  .zx-report-modal { padding: 16px 16px 18px; }
+  .zx-report-header > span { font-size: 15px; }
+}

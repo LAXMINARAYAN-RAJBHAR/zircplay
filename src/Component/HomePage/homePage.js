@@ -134,6 +134,38 @@ const isWatched = (contentType, contentId, watchedContentIds) => {
   return watchedContentIds.has(`${contentType}_${String(contentId)}`);
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Share + Report — shared helpers used by every three-dots menu (videos,
+// reels, posts). buildShareUrl mirrors the existing video share link
+// pattern (zixplon.in/api/og) so og:tags render correctly for whichever
+// content type is being shared.
+// ─────────────────────────────────────────────────────────────────────────────
+const buildShareUrl = (contentType, contentId) =>
+  `https://zixplon.in/api/og?type=${contentType}&id=${contentId}`;
+
+const shareContent = ({ contentType, contentId, title, text }) => {
+  const url = buildShareUrl(contentType, contentId);
+  if (navigator.share) {
+    navigator
+      .share({ title: title || "Zixplon", text: text || title || "Check this out on Zixplon", url })
+      .catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url);
+    alert("Link copied!");
+  }
+};
+
+const REPORT_REASONS = [
+  "Spam or misleading",
+  "Nudity or sexual content",
+  "Violent or graphic content",
+  "Harassment or bullying",
+  "Hate speech or symbols",
+  "False information",
+  "Copyright infringement",
+  "Something else",
+];
+
 const useIsMobile = () => {
   const [mobile, setMobile] = useState(() => window.innerWidth <= 768);
   useEffect(() => {
@@ -284,6 +316,8 @@ const ShortCard = ({
   handleDeleteReel,
   navigate,
   watchedContentIds,
+  onReport,
+  loggedInUsername,
 }) => {
   const cardRef = useRef(null);
   const firedRef = useRef(false);
@@ -375,6 +409,13 @@ const ShortCard = ({
       }}
       {...hoverHandlers}
     >
+      <ReelMenuButton
+        short={short}
+        loggedInUsername={loggedInUsername}
+        onDelete={handleDeleteReel}
+        onReport={onReport}
+        navigate={navigate}
+      />
       <div className="homePage_shortThumbnail">
         <img
           src={short.thumbnail}
@@ -454,6 +495,8 @@ const ShortsRow = ({
   handleDeleteReel,
   navigate,
   watchedContentIds,
+  onReport,
+  loggedInUsername,
 }) => (
   <div className="homePage_shortsSection">
     <div className="homePage_shortsHeader">
@@ -491,6 +534,8 @@ const ShortsRow = ({
           handleDeleteReel={handleDeleteReel}
           navigate={navigate}
           watchedContentIds={watchedContentIds}
+          onReport={onReport}
+          loggedInUsername={loggedInUsername}
         />
       ))}
     </div>
@@ -508,7 +553,7 @@ const ShortsRow = ({
 // site-wide total. This is the layout VideoCard below now mirrors:
 // description/caption first, stats row underneath.
 // ─────────────────────────────────────────────────────────────────────────────
-const PostCard = ({ post, isMobile }) => {
+const PostCard = ({ post, isMobile, onReport, loggedInUsername, onDeletePost }) => {
   const media = post.image_urls?.[0] || post.image_url || null;
   const previewSrc = media ? null : post.video_url || null;
   const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
@@ -525,7 +570,13 @@ const PostCard = ({ post, isMobile }) => {
   const commentsCount = post.post_comments?.length || 0;
 
   return (
-    <Link to={`/feed?post=${post.id}`} className="homePage_postCard">
+    <Link to={`/feed?post=${post.id}`} className="homePage_postCard" style={{ position: "relative" }}>
+      <PostMenuButton
+        post={post}
+        loggedInUsername={loggedInUsername}
+        onDelete={onDeletePost}
+        onReport={onReport}
+      />
       <div className="homePage_postThumbWrap" ref={wrapRef} {...hoverHandlers}>
         {showPreview ? (
           <video
@@ -570,7 +621,7 @@ const PostCard = ({ post, isMobile }) => {
 // One row of Post cards — same visual pattern as ShortsRow (small "Z"
 // label + grid), used repeatedly by buildContentRows below rather than
 // as a single top spotlight.
-const PostsRow = ({ data, title, isMobile }) => (
+const PostsRow = ({ data, title, isMobile, onReport, loggedInUsername, onDeletePost }) => (
   <div className="homePage_postsSection">
     <div className="homePage_postsSectionHeader">
       <span className="homePage_postsSectionTitle">
@@ -580,7 +631,14 @@ const PostsRow = ({ data, title, isMobile }) => (
     </div>
     <div className="homePage_postsGrid">
       {data.map((post) => (
-        <PostCard key={post.id} post={post} isMobile={isMobile} />
+        <PostCard
+          key={post.id}
+          post={post}
+          isMobile={isMobile}
+          onReport={onReport}
+          loggedInUsername={loggedInUsername}
+          onDeletePost={onDeletePost}
+        />
       ))}
     </div>
   </div>
@@ -635,6 +693,7 @@ const VideoCard = ({
   handleLikeVideo,
   watchedContentIds,
   incrementView,
+  onReport,
 }) => {
   const showNew =
     isUploaded && !isWatched("video", video.id, watchedContentIds);
@@ -664,6 +723,7 @@ const VideoCard = ({
           video={video}
           loggedInUsername={loggedInUsername}
           onDelete={handleDeleteVideo}
+          onReport={onReport}
         />
       )}
 
@@ -1084,18 +1144,17 @@ const DropdownPortal = ({ wrapperRef, menuRef, children }) => {
   );
 };
 
-const SaveMenuButton = ({
-  videoId,
-  isSaved,
-  onToggleWatchLater,
-  video,
-  loggedInUsername,
-  onDelete,
-}) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// ThreeDotMenu — generic "⋮" button + dropdown, shared by videos, reels,
+// and posts. Callers just build an `items` array (icon/label/onClick,
+// optional `active`/`danger` flags); this component owns the open/close
+// state, outside-click handling, and the DropdownPortal positioning that
+// used to live only inside SaveMenuButton.
+// ─────────────────────────────────────────────────────────────────────────────
+const ThreeDotMenu = ({ items }) => {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const menuRef = useRef(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
@@ -1126,93 +1185,6 @@ const SaveMenuButton = ({
       document.body.style.overflow = prev;
     };
   }, [open]);
-
-  const isOwner =
-    loggedInUsername && video?.username && video.username === loggedInUsername;
-
-  const MENU_ITEMS = [
-    {
-      id: "watch-later",
-      icon: isSaved ? (
-        <BookmarkIcon style={{ fontSize: 17, color: "#7c3aed" }} />
-      ) : (
-        <BookmarkBorderIcon style={{ fontSize: 17, color: "#7c3aed" }} />
-      ),
-      label: isSaved ? "Saved to Watch Later" : "Save to Watch Later",
-      active: isSaved,
-      onClick: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onToggleWatchLater(e, videoId);
-        setOpen(false);
-      },
-    },
-    {
-      id: "playlist",
-      icon: <PlaylistAddIcon style={{ fontSize: 17, color: "#7c3aed" }} />,
-      label: "Add to Playlist",
-      onClick: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        navigate("/playlist", { state: { addVideoId: videoId } });
-        setOpen(false);
-      },
-    },
-    {
-      id: "channel",
-      icon: <span style={{ fontSize: 15 }}>👤</span>,
-      label: "Go to Channel",
-      onClick: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const slug =
-          video?.username || video?.channel?.toLowerCase() || "unknown";
-        navigate("/user/" + slug);
-        setOpen(false);
-      },
-    },
-    {
-      id: "share",
-      icon: <span style={{ fontSize: 15 }}>🔗</span>,
-      label: "Share",
-      onClick: (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  const shareId = video?.short_id || videoId;
-  const url = `https://zixplon.in/api/og?type=video&id=${shareId}`;
-
-        if (navigator.share) {
-          navigator
-            .share({
-              title: video?.title || "Video",
-              text: `Watch "${video?.title}" on Zixplon`,
-              url,
-            })
-            .catch(() => {});
-        } else {
-          navigator.clipboard.writeText(url);
-          alert("Link copied!");
-        }
-        setOpen(false);
-      },
-    },
-    ...(isOwner
-      ? [
-          {
-            id: "delete",
-            icon: <span style={{ fontSize: 15 }}>🗑️</span>,
-            label: "Delete video",
-            danger: true,
-            onClick: (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onDelete && onDelete(e, videoId);
-              setOpen(false);
-            },
-          },
-        ]
-      : []),
-  ];
 
   return (
     <>
@@ -1258,13 +1230,16 @@ const SaveMenuButton = ({
                 animation: "ddFadeSlide 0.16s cubic-bezier(0.32,0.72,0,1)",
               }}
             >
-              {MENU_ITEMS.map((item, idx) => (
+              {items.map((item, idx) => (
                 <button
                   key={item.id}
                   onMouseDown={(e) => {
                     e.stopPropagation();
                   }}
-                  onClick={item.onClick}
+                  onClick={(e) => {
+                    item.onClick(e);
+                    setOpen(false);
+                  }}
                   style={{
                     width: "100%",
                     display: "flex",
@@ -1274,7 +1249,7 @@ const SaveMenuButton = ({
                     background: item.active ? "#f7f0ff" : "transparent",
                     border: "none",
                     borderTop:
-                      idx === MENU_ITEMS.length - 1 && item.danger
+                      idx === items.length - 1 && item.danger
                         ? "1px solid #fee2e2"
                         : idx > 0
                           ? "1px solid #f5f0ff"
@@ -1323,6 +1298,311 @@ const SaveMenuButton = ({
         }
       `}</style>
     </>
+  );
+};
+
+// Video three-dots menu — Watch Later, Add to Playlist, Go to Channel,
+// Share, Report, and (owner-only) Delete.
+const SaveMenuButton = ({
+  videoId,
+  isSaved,
+  onToggleWatchLater,
+  video,
+  loggedInUsername,
+  onDelete,
+  onReport,
+}) => {
+  const navigate = useNavigate();
+
+  const isOwner =
+    loggedInUsername && video?.username && video.username === loggedInUsername;
+
+  const items = [
+    {
+      id: "watch-later",
+      icon: isSaved ? (
+        <BookmarkIcon style={{ fontSize: 17, color: "#7c3aed" }} />
+      ) : (
+        <BookmarkBorderIcon style={{ fontSize: 17, color: "#7c3aed" }} />
+      ),
+      label: isSaved ? "Saved to Watch Later" : "Save to Watch Later",
+      active: isSaved,
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleWatchLater(e, videoId);
+      },
+    },
+    {
+      id: "playlist",
+      icon: <PlaylistAddIcon style={{ fontSize: 17, color: "#7c3aed" }} />,
+      label: "Add to Playlist",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate("/playlist", { state: { addVideoId: videoId } });
+      },
+    },
+    {
+      id: "channel",
+      icon: <span style={{ fontSize: 15 }}>👤</span>,
+      label: "Go to Channel",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const slug =
+          video?.username || video?.channel?.toLowerCase() || "unknown";
+        navigate("/user/" + slug);
+      },
+    },
+    {
+      id: "share",
+      icon: <span style={{ fontSize: 15 }}>🔗</span>,
+      label: "Share",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const shareId = video?.short_id || videoId;
+        shareContent({
+          contentType: "video",
+          contentId: shareId,
+          title: video?.title || "Video",
+          text: `Watch "${video?.title}" on Zixplon`,
+        });
+      },
+    },
+    {
+      id: "report",
+      icon: <span style={{ fontSize: 15 }}>🚩</span>,
+      label: "Report video",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReport && onReport("video", videoId, video?.title);
+      },
+    },
+    ...(isOwner
+      ? [
+          {
+            id: "delete",
+            icon: <span style={{ fontSize: 15 }}>🗑️</span>,
+            label: "Delete video",
+            danger: true,
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete && onDelete(e, videoId);
+            },
+          },
+        ]
+      : []),
+  ];
+
+  return <ThreeDotMenu items={items} />;
+};
+
+// Reel three-dots menu — Share, Go to Profile, Report, and (owner-only)
+// Delete. Reels didn't have a menu at all before; this mirrors the video
+// card's menu so all three content types behave consistently.
+const ReelMenuButton = ({ short, loggedInUsername, onDelete, onReport, navigate }) => {
+  const isOwner =
+    loggedInUsername && short?.username && short.username === loggedInUsername;
+
+  const items = [
+    {
+      id: "share",
+      icon: <span style={{ fontSize: 15 }}>🔗</span>,
+      label: "Share",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shareContent({
+          contentType: "reel",
+          contentId: short?.dbId ?? short?.id,
+          title: short?.title || "Reel",
+          text: `Watch "${short?.title}" on Zixplon`,
+        });
+      },
+    },
+    {
+      id: "profile",
+      icon: <span style={{ fontSize: 15 }}>👤</span>,
+      label: "Go to Profile",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate("/user/" + (short?.username || "unknown"));
+      },
+    },
+    {
+      id: "report",
+      icon: <span style={{ fontSize: 15 }}>🚩</span>,
+      label: "Report reel",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReport && onReport("reel", short?.dbId ?? short?.id, short?.title);
+      },
+    },
+    ...(isOwner
+      ? [
+          {
+            id: "delete",
+            icon: <span style={{ fontSize: 15 }}>🗑️</span>,
+            label: "Delete reel",
+            danger: true,
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete && short?.dbId && onDelete(e, short.dbId);
+            },
+          },
+        ]
+      : []),
+  ];
+
+  return <ThreeDotMenu items={items} />;
+};
+
+// Post three-dots menu — Share, Go to Profile, Report, and (owner-only)
+// Delete.
+const PostMenuButton = ({ post, loggedInUsername, onDelete, onReport }) => {
+  const navigate = useNavigate();
+  const isOwner =
+    loggedInUsername && post?.username && post.username === loggedInUsername;
+
+  const items = [
+    {
+      id: "share",
+      icon: <span style={{ fontSize: 15 }}>🔗</span>,
+      label: "Share",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shareContent({
+          contentType: "post",
+          contentId: post?.id,
+          title: post?.text ? post.text.slice(0, 60) : "Post",
+          text: `Check out this post by @${post?.username} on Zixplon`,
+        });
+      },
+    },
+    {
+      id: "profile",
+      icon: <span style={{ fontSize: 15 }}>👤</span>,
+      label: "Go to Profile",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate("/user/" + (post?.username || "unknown"));
+      },
+    },
+    {
+      id: "report",
+      icon: <span style={{ fontSize: 15 }}>🚩</span>,
+      label: "Report post",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReport && onReport("post", post?.id, post?.text ? post.text.slice(0, 60) : "Post");
+      },
+    },
+    ...(isOwner
+      ? [
+          {
+            id: "delete",
+            icon: <span style={{ fontSize: 15 }}>🗑️</span>,
+            label: "Delete post",
+            danger: true,
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete && onDelete(e, post?.id);
+            },
+          },
+        ]
+      : []),
+  ];
+
+  return <ThreeDotMenu items={items} />;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReportModal — single shared "Report this content" dialog, rendered once
+// at the HomePage root and opened by any card's three-dots menu (video,
+// reel, or post) via the onReport(contentType, contentId, title) callback.
+// Submits into a `reports` table in Supabase (content_id, content_type,
+// reason, details, reporter_username, created_at) — create that table if
+// it doesn't already exist in your schema.
+// ─────────────────────────────────────────────────────────────────────────────
+const ReportModal = ({ target, onClose, onSubmit, submitting }) => {
+  const [reason, setReason] = useState(null);
+  const [details, setDetails] = useState("");
+
+  useEffect(() => {
+    if (target) {
+      setReason(null);
+      setDetails("");
+    }
+  }, [target]);
+
+  if (!target) return null;
+
+  return createPortal(
+    <div
+      className="zx-report-overlay"
+      onClick={onClose}
+    >
+      <div className="zx-report-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="zx-report-header">
+          <span>Report {target.contentType}</span>
+          <button className="zx-report-close" onClick={onClose} aria-label="Close">
+            <CloseIcon style={{ fontSize: 18 }} />
+          </button>
+        </div>
+        <p className="zx-report-sub">
+          {target.title
+            ? `"${target.title}"`
+            : "Help us understand what's wrong with this content."}
+        </p>
+        <div className="zx-report-reasons">
+          {REPORT_REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={"zx-report-reason" + (reason === r ? " active" : "")}
+              onClick={() => setReason(r)}
+            >
+              <span className="zx-report-radio">
+                {reason === r && <CheckIcon style={{ fontSize: 13 }} />}
+              </span>
+              {r}
+            </button>
+          ))}
+        </div>
+        <textarea
+          className="zx-report-details"
+          placeholder="Add more details (optional)"
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          rows={3}
+        />
+        <div className="zx-report-actions">
+          <button type="button" className="zx-report-cancel" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="zx-report-submit"
+            disabled={!reason || submitting}
+            onClick={() => onSubmit(reason, details)}
+          >
+            {submitting ? "Submitting..." : "Submit report"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -2900,6 +3180,8 @@ const HomePage = ({ sideNavbar }) => {
   const [watchedContentIds, setWatchedContentIds] = useState(new Set());
   const [watchLaterIds, setWatchLaterIds] = useState(new Set());
   const [playlistsCache, setPlaylistsCache] = useState(null);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const loggedInUsername = localStorage.getItem("username") || "";
 
   const loadWatchedIds = React.useCallback(async () => {
@@ -3438,6 +3720,47 @@ const HomePage = ({ sideNavbar }) => {
     else alert("Failed to delete reel.");
   };
 
+  const handleDeletePost = async (e, postId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!postId) return;
+    if (!window.confirm("Delete this post? This cannot be undone.")) return;
+    const { error } = await supabase.from("posts").delete().eq("id", postId);
+    if (!error) setDbPosts((prev) => prev.filter((p) => p.id !== postId));
+    else alert("Failed to delete post.");
+  };
+
+  // ── Report modal — opened from any card's three-dots menu ──
+  const openReport = (contentType, contentId, title) => {
+    if (!contentId) return;
+    setReportTarget({ contentType, contentId, title });
+  };
+  const closeReport = () => {
+    if (reportSubmitting) return;
+    setReportTarget(null);
+  };
+  const submitReport = async (reason, details) => {
+    if (!reportTarget) return;
+    setReportSubmitting(true);
+    try {
+      const { error } = await supabase.from("reports").insert({
+        content_id: String(reportTarget.contentId),
+        content_type: reportTarget.contentType,
+        reason,
+        details: details || null,
+        reporter_username: loggedInUsername || null,
+        created_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      alert("Thanks — your report has been submitted for review.");
+      setReportTarget(null);
+    } catch (_) {
+      alert("Couldn't submit the report right now. Please try again.");
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
   const handleToggleWatchLater = async (e, videoId) => {
     e.preventDefault();
     e.stopPropagation();
@@ -3475,6 +3798,7 @@ const HomePage = ({ sideNavbar }) => {
     handleLikeVideo,
     watchedContentIds,
     incrementView,
+    onReport: openReport,
   };
   const shortCardProps = {
     incrementView,
@@ -3482,6 +3806,8 @@ const HomePage = ({ sideNavbar }) => {
     handleDeleteReel,
     navigate,
     watchedContentIds,
+    onReport: openReport,
+    loggedInUsername,
   };
 
   // ── Interleaved Posts / Reels / Videos rows for the "All" feed ──
@@ -3666,6 +3992,9 @@ const HomePage = ({ sideNavbar }) => {
                           data={row.items}
                           title="Posts"
                           isMobile={isMobile}
+                          onReport={openReport}
+                          loggedInUsername={loggedInUsername}
+                          onDeletePost={handleDeletePost}
                         />
                       );
                     }
@@ -3834,6 +4163,13 @@ const HomePage = ({ sideNavbar }) => {
           onIncrementView={incrementView}
         />
       )}
+
+      <ReportModal
+        target={reportTarget}
+        onClose={closeReport}
+        onSubmit={submitReport}
+        submitting={reportSubmitting}
+      />
     </div>
   );
 };
