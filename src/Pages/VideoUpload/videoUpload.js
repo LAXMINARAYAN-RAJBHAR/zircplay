@@ -205,6 +205,8 @@ const VideoUpload = () => {
     data.append("file", blob, "thumbnail.jpg");
     data.append("upload_preset", "zixplon-data");
     const res = await axios.post("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", data);
+    // ── DEBUG: confirm Cloudinary actually returned a usable image URL ──
+    console.log("[upload-debug] thumbnail Cloudinary response:", res.data);
     return res.data.secure_url;
   };
 
@@ -228,6 +230,9 @@ const VideoUpload = () => {
         videoData,
         { onUploadProgress: (e) => { setUploadProgress(Math.round((e.loaded * 100) / e.total)); updateSpeedAndETA(e.loaded, file.size); }, timeout: 0 },
       );
+      // ── DEBUG: confirm Cloudinary actually returned a usable video URL
+      // (single-request path — file under CHUNK_SIZE) ──
+      console.log("[upload-debug] single-shot video Cloudinary response:", res.data);
       return res.data.secure_url;
     }
 
@@ -254,15 +259,22 @@ const VideoUpload = () => {
         },
       );
       totalUploaded += end - start;
+      // ── DEBUG: log EVERY chunk response — if the final chunk's response
+      // doesn't include secure_url (some large-file / async-processing
+      // Cloudinary responses return it later, or return "eager" instead
+      // of "secure_url" on the last chunk), that's the smoking gun. ──
+      console.log(`[upload-debug] chunk ${chunkIndex + 1}/${totalChunks} response:`, res.data);
       if (chunkIndex === totalChunks - 1) videoUrl = res.data.secure_url;
     }
+    console.log("[upload-debug] chunked upload final videoUrl:", videoUrl);
     return videoUrl;
   };
 
   const buildCloudinaryFallbackThumbnail = (videoUrl) => {
     try {
+      if (!/\.(mp4|webm|mov|mkv|m4v)(\?.*)?$/i.test(videoUrl)) return "";
       return videoUrl
-        .replace(/\.(mp4|webm|mov|mkv|m4v)$/i, ".jpg")
+        .replace(/\.(mp4|webm|mov|mkv|m4v)(\?.*)?$/i, ".jpg")
         .replace("/video/upload/", "/video/upload/so_1,w_640,h_360,c_fill/");
     } catch (_) { return ""; }
   };
@@ -282,11 +294,16 @@ const VideoUpload = () => {
         captureThumbnail(file).catch((err) => { console.warn("Client-side thumbnail capture failed:", err.message); return null; }),
       ]);
       const videoUrl = await uploadToCloudinary(file);
+      // ── DEBUG: what did uploadToCloudinary actually hand back? ──
+      console.log("[upload-debug] videoUrl after uploadToCloudinary:", videoUrl);
       let thumbnailUrl = inputField.thumbnail;
       if (!imageUploaded) {
         if (thumbnailBlob) { thumbnailUrl = await uploadThumbnailToCloudinary(thumbnailBlob); setThumbSource("auto"); }
         else { const fallback = buildCloudinaryFallbackThumbnail(videoUrl); thumbnailUrl = fallback || thumbnailUrl; setThumbSource("auto"); }
       }
+      // ── DEBUG: what's about to be written into inputField (and, from
+      // there, into the Supabase insert payload) for both fields? ──
+      console.log("[upload-debug] about to setInputField with:", { videoUrl, thumbnailUrl });
       setInputField((prev) => ({ ...prev, videoLink: videoUrl, thumbnail: thumbnailUrl }));
       setVideoUploaded(true); setUploadProgress(100); setLoader(false); releaseWakeLock();
     } catch (err) {
@@ -391,21 +408,32 @@ const VideoUpload = () => {
         // ── Plain video upload ──
         // FIX: added .select().single() so we get the new row's id back —
         // needed to attach content_id to the upload notification below.
+        const videoPayload = {
+          title:         inputField.title,
+          description:   inputField.description,
+          video_url:     inputField.videoLink,
+          thumbnail_url: inputField.thumbnail,
+          category:      inputField.videoType,
+          channel:       localStorage.getItem("username") || "Anonymous",
+          username:      uploaderUsername,
+          duration:      durationRef.current,
+        };
+        // ── DEBUG: the EXACT payload being sent to Supabase. If
+        // video_url/thumbnail_url are empty HERE, the bug is upstream
+        // (Cloudinary response or inputField state). If they're populated
+        // HERE but empty in the DB afterward, the bug is server-side
+        // (RLS policy, a trigger, or a column-level grant on `videos`). ──
+        console.log("[upload-debug] videos insert payload:", videoPayload);
+
         const { data: newVideo, error: videoError } = await supabase
           .from("videos")
-          .insert([{
-            title:         inputField.title,
-            description:   inputField.description,
-            video_url:     inputField.videoLink,
-            thumbnail_url: inputField.thumbnail,
-            category:      inputField.videoType,
-            channel:       localStorage.getItem("username") || "Anonymous",
-            username:      uploaderUsername,
-            duration:      durationRef.current,
-          }])
+          .insert([videoPayload])
           .select()
           .single();
         if (videoError) throw new Error(videoError.message);
+
+        // ── DEBUG: what Supabase actually stored/returned for the new row ──
+        console.log("[upload-debug] videos insert result (newVideo):", newVideo);
 
         await notifySubscribers(uploaderUsername, {
           type: "video",
