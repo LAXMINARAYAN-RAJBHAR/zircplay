@@ -13,11 +13,23 @@ export const URL_SPLIT_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
 export const isUrlToken = (str) =>
   new RegExp(`^${URL_MATCH_REGEX.source}$`, "i").test(str);
 
+// ── Trailing punctuation trim ──────────────────────────────────────────
+// NEW: URL_MATCH_REGEX/URL_SPLIT_REGEX's `[^\s]+` is greedy and has no
+// concept of sentence punctuation, so a message like
+// "check this out: https://example.com/page." or
+// "see (https://example.com/page)" swallows the trailing "." or ")"
+// into the URL — breaking both the preview fetch (wrong resource / 404)
+// and the rendered link. Strip common trailing punctuation that isn't
+// meaningfully part of the URL before using it anywhere.
+const TRAILING_PUNCT_RE = /[).,!?;:'"]+$/;
+
+export const stripTrailingPunctuation = (url) => url.replace(TRAILING_PUNCT_RE, "");
+
 export const extractFirstUrl = (text) => {
   if (!text) return null;
   const match = text.match(URL_MATCH_REGEX);
   if (!match) return null;
-  const raw = match[0];
+  const raw = stripTrailingPunctuation(match[0]);
   return raw.startsWith("www.") ? `https://${raw}` : raw;
 };
 
@@ -66,11 +78,19 @@ export const fetchLinkPreview = async (url) => {
   }
 };
 
+// ── FIXED: subscribeToPreview now cleans up after itself. Previously
+// the returned unsubscribe() only ever removed the callback from the
+// url's Set, leaving an empty Set (and its `listeners` entry) behind
+// forever once the last subscriber for a given url unmounted — a slow
+// memory leak over a long session that pastes many distinct links.
 export const subscribeToPreview = (url, cb) => {
   if (!listeners.has(url)) listeners.set(url, new Set());
   listeners.get(url).add(cb);
   return () => {
-    listeners.get(url)?.delete(cb);
+    const set = listeners.get(url);
+    if (!set) return;
+    set.delete(cb);
+    if (set.size === 0) listeners.delete(url);
   };
 };
 

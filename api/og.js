@@ -31,6 +31,12 @@ async function fetchWithTimeout(url, options, timeoutMs = FETCH_TIMEOUT_MS) {
   }
 }
 
+// NEW: explicit allow-list. Previously any `type` that wasn't "post" or
+// "reel" silently fell through to the `videos` table lookup — harmless
+// today since nothing calls this with a bogus type, but it meant a typo
+// or a future new content type would fail silently instead of loudly.
+const ALLOWED_TYPES = ["post", "reel", "video"];
+
 function renderHtml({ type, title, description, image, url }) {
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
@@ -80,16 +86,39 @@ export default async function handler(req) {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
+  // Normal cache — used for genuine content hits, where the underlying
+  // row isn't expected to disappear or change identity within the hour.
   const headers = {
     "content-type": "text/html",
     "cache-control": "public, max-age=3600, s-maxage=3600",
+  };
+
+  // NEW: much shorter cache for anything that ISN'T a confirmed content
+  // hit (missing params, unknown type, row not found, lookup error).
+  // Previously these shared the same 1-hour cache as real hits, so a
+  // freshly-created/shared video whose OG request raced ahead of the
+  // DB write (or hit a transient error) could keep serving the generic
+  // fallback card for up to an hour afterwards. 60s lets it self-correct
+  // quickly while still absorbing repeat-crawler traffic.
+  const notFoundHeaders = {
+    "content-type": "text/html",
+    "cache-control": "public, max-age=60, s-maxage=60",
   };
 
   // Generic fallback redirect target — used only if lookup fails entirely.
   const genericFallbackUrl = "https://zixplon.in";
 
   if (!id || !type) {
-    return new Response(fallbackHtml(type || "post", genericFallbackUrl), { headers });
+    return new Response(fallbackHtml(type || "post", genericFallbackUrl), {
+      headers: notFoundHeaders,
+    });
+  }
+
+  if (!ALLOWED_TYPES.includes(type)) {
+    console.warn(`og handler: unknown type "${type}" for id "${id}"`);
+    return new Response(fallbackHtml("post", genericFallbackUrl), {
+      headers: notFoundHeaders,
+    });
   }
 
   try {
@@ -113,7 +142,9 @@ export default async function handler(req) {
       const item = data?.[0];
 
       if (!item) {
-        return new Response(fallbackHtml(type, `https://zixplon.in/feed`), { headers });
+        return new Response(fallbackHtml(type, `https://zixplon.in/feed`), {
+          headers: notFoundHeaders,
+        });
       }
 
       title = item?.username ? `${item.username} on ZIXPLON` : "Post on ZIXPLON";
@@ -145,7 +176,9 @@ export default async function handler(req) {
       const item = data?.[0];
 
       if (!item) {
-        return new Response(fallbackHtml(type, genericFallbackUrl), { headers });
+        return new Response(fallbackHtml(type, genericFallbackUrl), {
+          headers: notFoundHeaders,
+        });
       }
 
       title = item?.title || "Watch on ZIXPLON";
@@ -167,6 +200,8 @@ export default async function handler(req) {
     return new Response(renderHtml({ type, title, description, image, url }), { headers });
   } catch (err) {
     console.error("og handler error:", err);
-    return new Response(fallbackHtml(type, genericFallbackUrl), { headers });
+    return new Response(fallbackHtml(type, genericFallbackUrl), {
+      headers: notFoundHeaders,
+    });
   }
 }

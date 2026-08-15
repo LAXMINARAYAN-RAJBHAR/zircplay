@@ -70,6 +70,24 @@ const BROWSER_HEADERS = {
   "Accept-Language": "en-US,en;q=0.9",
 };
 
+// ── Fetch timeout wrapper ──────────────────────────────────────────────
+// NEW: neither the oEmbed calls nor the generic page fetch used to have
+// a timeout, so a slow/hanging remote host would stall this Edge
+// function until the platform's own hard limit killed it — slow for the
+// user and wasteful of execution time. Every outbound fetch below now
+// goes through this.
+const FETCH_TIMEOUT_MS = 4000;
+
+async function fetchWithTimeout(url, options, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function stripWww(hostname) {
   return hostname.replace(/^www\./, "");
 }
@@ -149,7 +167,7 @@ function findProvider(hostname) {
 
 async function tryOembed(endpointUrl) {
   try {
-    const res = await fetch(endpointUrl, { headers: BROWSER_HEADERS });
+    const res = await fetchWithTimeout(endpointUrl, { headers: BROWSER_HEADERS });
     if (!res.ok) return null;
     const data = await res.json();
     return data;
@@ -211,7 +229,7 @@ export default async function handler(req) {
 
   // ── 2) Generic fetch + OG parsing (+ oEmbed discovery) ──
   try {
-    const res = await fetch(parsed.toString(), {
+    const res = await fetchWithTimeout(parsed.toString(), {
       headers: BROWSER_HEADERS,
       redirect: "follow",
     });

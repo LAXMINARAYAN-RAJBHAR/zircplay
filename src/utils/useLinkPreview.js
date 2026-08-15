@@ -18,11 +18,19 @@ export const useLinkPreview = (url) => {
       return;
     }
 
+    // FIXED: subscribe BEFORE triggering the fetch. fetchLinkPreview()
+    // synchronously sets the cache to { status: 'loading' } and notifies
+    // listeners immediately — if we called it first (as before), the
+    // very first component anywhere in the app to request a brand-new
+    // (never-cached) URL would miss that notification, since it hadn't
+    // subscribed yet, and would stay stuck on `null` until the fetch
+    // resolved instead of showing a loading state in between.
+    const unsubscribe = subscribeToPreview(url, setEntry);
+
     const cached = getCachedPreview(url);
     if (cached) setEntry(cached);
     else fetchLinkPreview(url);
 
-    const unsubscribe = subscribeToPreview(url, setEntry);
     return unsubscribe;
   }, [url]);
 
