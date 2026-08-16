@@ -11,7 +11,17 @@ const uploadToCloudinary = async (file, resourceType) => {
   formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
   const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
   const res = await fetch(endpoint, { method: "POST", body: formData });
-  if (!res.ok) throw new Error("Upload failed");
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const errJson = await res.json();
+      detail = errJson?.error?.message || JSON.stringify(errJson);
+    } catch {
+      detail = await res.text().catch(() => "");
+    }
+    console.error(`Cloudinary upload failed (${res.status}):`, detail);
+    throw new Error(detail || `Upload failed (${res.status})`);
+  }
   const data = await res.json();
   return data.secure_url;
 };
@@ -76,7 +86,7 @@ const BroadcastComposeWindow = ({ list, currentUser, onBack, onClose }) => {
       if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
       setPendingAttachment(null);
     } catch (err) {
-      alert("Failed to send broadcast. Please try again.");
+      alert(`Failed to send broadcast: ${err?.message || "please try again."}`);
     } finally {
       setSending(false);
       setUploading(false);

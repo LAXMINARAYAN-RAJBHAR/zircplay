@@ -217,7 +217,17 @@ const uploadToCloudinary = async (file, resourceType) => {
 
   const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
   const res = await fetch(endpoint, { method: "POST", body: formData });
-  if (!res.ok) throw new Error("Upload failed");
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const errJson = await res.json();
+      detail = errJson?.error?.message || JSON.stringify(errJson);
+    } catch {
+      detail = await res.text().catch(() => "");
+    }
+    console.error(`Cloudinary upload failed (${res.status}):`, detail);
+    throw new Error(detail || `Upload failed (${res.status})`);
+  }
   const data = await res.json();
   return data.secure_url;
 };
@@ -1244,7 +1254,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       setUploading(false);
       setSending(false);
       setText(trimmed);
-      alert("Attachment upload failed. Please try again.");
+      alert(`Attachment upload failed: ${err?.message || "please try again."}`);
       return;
     }
 
