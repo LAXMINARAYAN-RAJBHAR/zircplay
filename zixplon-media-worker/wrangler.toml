@@ -3,14 +3,14 @@ main = "worker.js"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Bind the Worker to your R2 bucket. env.MEDIA_BUCKET in worker.js
-# refers to this binding.
-[[r2_buckets]]
-binding = "MEDIA_BUCKET"
-bucket_name = "zixplon"
-
 # Serve the Worker on your own subdomain instead of workers.dev.
 # Requires the zone (zixplon.in) to already be on Cloudflare.
 routes = [
   { pattern = "media.zixplon.in/*", zone_name = "zixplon.in" }
 ]
+
+# Bind the Worker to your R2 bucket. env.MEDIA_BUCKET in worker.js
+# refers to this binding.
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "zixplon"
