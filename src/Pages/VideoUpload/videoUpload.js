@@ -9,7 +9,7 @@ import { supabase } from "../../config/supabase";
 import RecordModal from "../RecordModal/RecordModal";
 import { checkContent } from "../../Component/Moderation/useModerationFilter";
 import { notifySubscribers } from "../../utils/notifications";
-import { uploadToR2, uploadVideoToR2 } from "../../utils/mediaUpload";
+import { uploadToR2, buildTransformUrl, uploadVideoToR2 } from "../../utils/mediaUpload";
 
 const INITIAL_FIELDS = {
   title: "",
