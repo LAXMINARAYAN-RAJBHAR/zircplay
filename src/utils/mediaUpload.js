@@ -6,11 +6,17 @@
  * uploadToR2() instead of calling Cloudinary directly, and use
  * buildTransformUrl() instead of Cloudinary's transformation URL
  * builder.
+ *
+ * Video files (too large to stream through a Vercel function body)
+ * go through uploadVideoToR2() instead — it fetches a presigned PUT
+ * URL from /api/upload-url, then uploads directly to R2.
  */
 
 /**
  * Uploads a File or Blob to R2 via the /api/upload endpoint.
  * Mirrors what Cloudinary's upload widget used to return.
+ * Use for small files only (images/thumbnails) — see uploadVideoToR2
+ * for video.
  *
  * @param {File|Blob} file - the image file/blob to upload
  * @param {(percent: number) => void} [onProgress] - optional progress callback (0-100)
@@ -50,6 +56,70 @@ export async function uploadToR2(file, onProgress) {
     xhr.onerror = () => reject(new Error("Network error during upload"));
     xhr.send(file);
   });
+}
+
+/**
+ * Uploads a video File directly to R2 via a presigned URL, bypassing
+ * the Vercel function body entirely (Vercel's request size limit is
+ * far smaller than typical video files).
+ *
+ * Two-step flow:
+ *   1. POST /api/upload-url with { contentType, fileSize } to get a
+ *      short-lived signed PUT URL + the eventual public URL.
+ *   2. PUT the raw file bytes straight to that signed URL.
+ *
+ * @param {File} file - the video file to upload
+ * @param {(percent: number) => void} [onProgress] - optional progress callback (0-100)
+ * @returns {Promise<{ key: string, url: string }>}
+ */
+export async function uploadVideoToR2(file, onProgress) {
+  // Step 1: get a presigned upload URL
+  const presignRes = await fetch("/api/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contentType: file.type || "video/mp4",
+      fileSize: file.size,
+    }),
+  });
+
+  if (!presignRes.ok) {
+    let message = `Failed to get upload URL (${presignRes.status})`;
+    try {
+      const body = await presignRes.json();
+      if (body?.error) message = body.error;
+    } catch {
+      // ignore — non-JSON error body
+    }
+    throw new Error(message);
+  }
+
+  const { uploadUrl, key, url } = await presignRes.json();
+
+  // Step 2: PUT the file straight to R2
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Video upload to R2 failed (${xhr.status})`));
+    };
+
+    xhr.onerror = () => reject(new Error("Network error during video upload"));
+    xhr.send(file);
+  });
+
+  return { key, url };
 }
 
 /**

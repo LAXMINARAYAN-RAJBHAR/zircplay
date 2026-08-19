@@ -2,13 +2,10 @@ import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "../../config/supabase";
 import axios from "axios";
 import EmojiPicker from "./EmojiPicker";
-import { uploadToR2, buildTransformUrl } from "../../utils/mediaUpload";
-
-const CLOUDINARY_CLOUD = "uaa756bj";
-const CLOUDINARY_PRESET = "zixplon-data";
+import { uploadToR2, buildTransformUrl, uploadVideoToR2 } from "../../utils/mediaUpload";
 
 const MAX_IMAGES = 6;
-const MAX_VIDEO_MB = 100; // adjust to your Cloudinary plan's limit
+const MAX_VIDEO_MB = 100; // adjust as needed — R2 has no per-request size ceiling like Vercel's function body did
 const LINK_PREVIEW_DEBOUNCE_MS = 600;
 
 const PRIVACY_OPTIONS = [
@@ -25,7 +22,7 @@ const FEELINGS = [
 const PostComposer = ({ currentUser, onPost }) => {
   const [text, setText] = useState("");
   const [imageFiles, setImageFiles] = useState([]);
-  const [videoFile, setVideoFile] = useState(null); // ← NEW: { file, preview }
+  const [videoFile, setVideoFile] = useState(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkPreview, setLinkPreview] = useState(null);
   const [fetchingPreview, setFetchingPreview] = useState(false);
@@ -38,7 +35,7 @@ const PostComposer = ({ currentUser, onPost }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
   const fileRef = useRef();
-  const videoRef = useRef(); // ← NEW
+  const videoRef = useRef();
   const linkDebounceRef = useRef(null);
 
   useEffect(() => {
@@ -85,7 +82,6 @@ const PostComposer = ({ currentUser, onPost }) => {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  // ── NEW: video select ──
   const handleVideoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -150,7 +146,6 @@ const PostComposer = ({ currentUser, onPost }) => {
       });
       setLinkPreview(res.data);
     } catch {
-      // API failed — fall back to a plain domain card rather than nothing
       const domain = parsedUrl.hostname.replace(/^www\./, "");
       setLinkPreview({
         url: parsedUrl.toString(),
@@ -180,26 +175,10 @@ const PostComposer = ({ currentUser, onPost }) => {
     }, LINK_PREVIEW_DEBOUNCE_MS);
   };
 
-  // ── Image upload — now goes to R2 instead of Cloudinary ──
+  // ── Image upload — R2 ──
   const uploadImage = async (file, onProgress) => {
     const { url } = await uploadToR2(file, onProgress);
     return buildTransformUrl(url, { width: 800, quality: 85 });
-  };
-
-  // ── Video upload stays on Cloudinary for now (R2 has no transcoding) ──
-  const uploadVideoToCloudinary = async (file, onProgress) => {
-    const data = new FormData();
-    data.append("file", file);
-    data.append("upload_preset", CLOUDINARY_PRESET);
-    data.append("resource_type", "video");
-    const res = await axios.post(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/video/upload`,
-      data,
-      {
-        onUploadProgress: (e) => onProgress(Math.round((e.loaded * 100) / e.total)),
-      }
-    );
-    return res.data.secure_url;
   };
 
   const handleSubmit = async () => {
@@ -222,9 +201,10 @@ const PostComposer = ({ currentUser, onPost }) => {
           imageUrls.push(url);
         }
       } else if (videoFile) {
-        videoUrl = await uploadVideoToCloudinary(videoFile.file, (pct) => {
+        const { url } = await uploadVideoToR2(videoFile.file, (pct) => {
           setUploadProgress(pct);
         });
+        videoUrl = url;
       }
 
       const payload = {
@@ -232,7 +212,7 @@ const PostComposer = ({ currentUser, onPost }) => {
         text: text.trim() || null,
         image_url: imageUrls[0] || null,
         image_urls: imageUrls.length > 0 ? imageUrls : null,
-        video_url: videoUrl, // ← NEW
+        video_url: videoUrl,
         link: linkPreview || null,
         feeling: feeling || null,
         privacy,
@@ -305,7 +285,6 @@ const PostComposer = ({ currentUser, onPost }) => {
             </div>
           )}
 
-          {/* ── NEW: video preview ── */}
           {videoFile && (
             <div className="pf-video-preview-wrap">
               <video
@@ -402,7 +381,6 @@ const PostComposer = ({ currentUser, onPost }) => {
             />
           </label>
 
-          {/* ── NEW: video attach button ── */}
           <label
             className="pf-attach-btn"
             title="Video"

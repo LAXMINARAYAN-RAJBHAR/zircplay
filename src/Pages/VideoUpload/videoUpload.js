@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import "./videoUpload.css";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import axios from "axios";
 import CircularProgress from "@mui/material/CircularProgress";
 import Box from "@mui/material/Box";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
@@ -10,7 +9,7 @@ import { supabase } from "../../config/supabase";
 import RecordModal from "../RecordModal/RecordModal";
 import { checkContent } from "../../Component/Moderation/useModerationFilter";
 import { notifySubscribers } from "../../utils/notifications";
-import { uploadToR2, buildTransformUrl } from "../../utils/mediaUpload";
+import { uploadToR2, uploadVideoToR2 } from "../../utils/mediaUpload";
 
 const INITIAL_FIELDS = {
   title: "",
@@ -201,83 +200,17 @@ const VideoUpload = () => {
     video.load();
   });
 
-  // ── Thumbnail upload — now goes to R2 instead of Cloudinary ──
+  // ── Thumbnail upload — goes through R2 (small file, fine for /api/upload) ──
   const uploadThumbnail = async (blob) => {
     const file = new File([blob], "thumbnail.jpg", { type: "image/jpeg" });
     const { url } = await uploadToR2(file);
     const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover" });
-    // ── DEBUG: confirm R2 actually returned a usable image URL ──
-    console.log("[upload-debug] thumbnail R2 response:", { url, transformedUrl });
     return transformedUrl;
   };
 
   const handleOnChangeInput = (event, name) => {
     setInputField((prev) => ({ ...prev, [name]: event.target.value }));
     setError("");
-  };
-
-  const uploadToCloudinary = async (file) => {
-    const CLOUD_NAME    = "uaa756bj";
-    const UPLOAD_PRESET = "zixplon-data";
-    const CHUNK_SIZE    = 20 * 1024 * 1024;
-    const totalChunks   = Math.ceil(file.size / CHUNK_SIZE);
-
-    if (file.size <= CHUNK_SIZE) {
-      const videoData = new FormData();
-      videoData.append("file", file);
-      videoData.append("upload_preset", UPLOAD_PRESET);
-      const res = await axios.post(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
-        videoData,
-        { onUploadProgress: (e) => { setUploadProgress(Math.round((e.loaded * 100) / e.total)); updateSpeedAndETA(e.loaded, file.size); }, timeout: 0 },
-      );
-      // ── DEBUG: confirm Cloudinary actually returned a usable video URL
-      // (single-request path — file under CHUNK_SIZE) ──
-      console.log("[upload-debug] single-shot video Cloudinary response:", res.data);
-      return res.data.secure_url;
-    }
-
-    const uniqueUploadId = `uq_${Date.now()}`;
-    let videoUrl = "", totalUploaded = 0;
-    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-      const start     = chunkIndex * CHUNK_SIZE;
-      const end       = Math.min(start + CHUNK_SIZE, file.size);
-      const chunk     = file.slice(start, end);
-      const chunkData = new FormData();
-      chunkData.append("file", chunk);
-      chunkData.append("upload_preset", UPLOAD_PRESET);
-      const res = await axios.post(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
-        chunkData,
-        {
-          headers: { "X-Unique-Upload-Id": uniqueUploadId, "Content-Range": `bytes ${start}-${end - 1}/${file.size}` },
-          timeout: 0,
-          onUploadProgress: (e) => {
-            const overall = Math.round(((chunkIndex + e.loaded / e.total) / totalChunks) * 100);
-            setUploadProgress(overall);
-            updateSpeedAndETA(totalUploaded + e.loaded, file.size);
-          },
-        },
-      );
-      totalUploaded += end - start;
-      // ── DEBUG: log EVERY chunk response — if the final chunk's response
-      // doesn't include secure_url (some large-file / async-processing
-      // Cloudinary responses return it later, or return "eager" instead
-      // of "secure_url" on the last chunk), that's the smoking gun. ──
-      console.log(`[upload-debug] chunk ${chunkIndex + 1}/${totalChunks} response:`, res.data);
-      if (chunkIndex === totalChunks - 1) videoUrl = res.data.secure_url;
-    }
-    console.log("[upload-debug] chunked upload final videoUrl:", videoUrl);
-    return videoUrl;
-  };
-
-  const buildCloudinaryFallbackThumbnail = (videoUrl) => {
-    try {
-      if (!/\.(mp4|webm|mov|mkv|m4v)(\?.*)?$/i.test(videoUrl)) return "";
-      return videoUrl
-        .replace(/\.(mp4|webm|mov|mkv|m4v)(\?.*)?$/i, ".jpg")
-        .replace("/video/upload/", "/video/upload/so_1,w_640,h_360,c_fill/");
-    } catch (_) { return ""; }
   };
 
   const uploadVideo = async (e) => {
@@ -294,17 +227,24 @@ const VideoUpload = () => {
         getVideoDuration(file),
         captureThumbnail(file).catch((err) => { console.warn("Client-side thumbnail capture failed:", err.message); return null; }),
       ]);
-      const videoUrl = await uploadToCloudinary(file);
-      // ── DEBUG: what did uploadToCloudinary actually hand back? ──
-      console.log("[upload-debug] videoUrl after uploadToCloudinary:", videoUrl);
+
+      const { url: videoUrl } = await uploadVideoToR2(file, (pct) => {
+        setUploadProgress(pct);
+        updateSpeedAndETA((pct / 100) * file.size, file.size);
+      });
+
       let thumbnailUrl = inputField.thumbnail;
       if (!imageUploaded) {
-        if (thumbnailBlob) { thumbnailUrl = await uploadThumbnail(thumbnailBlob); setThumbSource("auto"); }
-        else { const fallback = buildCloudinaryFallbackThumbnail(videoUrl); thumbnailUrl = fallback || thumbnailUrl; setThumbSource("auto"); }
+        if (thumbnailBlob) {
+          thumbnailUrl = await uploadThumbnail(thumbnailBlob);
+          setThumbSource("auto");
+        } else {
+          // Client-side capture failed — no Cloudinary fallback anymore.
+          // Leave thumbnail as-is; user can still set one manually.
+          console.warn("No thumbnail available for this upload.");
+        }
       }
-      // ── DEBUG: what's about to be written into inputField (and, from
-      // there, into the Supabase insert payload) for both fields? ──
-      console.log("[upload-debug] about to setInputField with:", { videoUrl, thumbnailUrl });
+
       setInputField((prev) => ({ ...prev, videoLink: videoUrl, thumbnail: thumbnailUrl }));
       setVideoUploaded(true); setUploadProgress(100); setLoader(false); releaseWakeLock();
     } catch (err) {
@@ -314,7 +254,7 @@ const VideoUpload = () => {
     }
   };
 
-  // ── Manual thumbnail upload — now goes to R2 instead of Cloudinary ──
+  // ── Manual thumbnail upload — goes to R2 ──
   const uploadManualThumbnail = async (e) => {
     setThumbLoader(true); setError("");
     const files = e.target.files;
@@ -348,7 +288,7 @@ const VideoUpload = () => {
       type:               "upload",
       message:            `@${remixerUsername} remixed your reel "${remixData.remixed_from_title}" with "${title}" 🎬`,
       is_read:            false,
-      content_id:         contentId, // ✅ so this notification is clickable too
+      content_id:         contentId,
       content_type:       "reel",
     });
   };
@@ -369,14 +309,13 @@ const VideoUpload = () => {
       type:               "upload",
       message:            notif.msg,
       is_read:            false,
-      content_id:         contentId, // ✅ so this notification is clickable too
+      content_id:         contentId,
       content_type:       "reel",
     });
   };
 
   // ── handleSubmit — with moderation check INSIDE the function ──────────────
   const handleSubmit = async () => {
-    // ── Validation ──
     if (!inputField.title)       return setError("Please enter a title.");
     if (!inputField.description) return setError("Please enter a description.");
     if (!inputField.videoLink)   return setError("Please upload a video first.");
@@ -386,7 +325,6 @@ const VideoUpload = () => {
     setSaving(true);
     setError("");
 
-    // ── FIX: Moderation check is INSIDE handleSubmit, after validation ──────
     try {
       const { isClean, violatingWord } = await checkContent(
         inputField.title,
@@ -399,18 +337,13 @@ const VideoUpload = () => {
         return;
       }
     } catch (moderationErr) {
-      // If moderation check itself fails, log but allow upload to continue
       console.warn("Moderation check failed, proceeding:", moderationErr);
     }
-    // ── End moderation check ─────────────────────────────────────────────────
 
     try {
       const uploaderUsername = localStorage.getItem("username") || "anonymous";
 
       if (uploadMode === "video" && !isFeatureMode) {
-        // ── Plain video upload ──
-        // FIX: added .select().single() so we get the new row's id back —
-        // needed to attach content_id to the upload notification below.
         const videoPayload = {
           title:         inputField.title,
           description:   inputField.description,
@@ -421,12 +354,6 @@ const VideoUpload = () => {
           username:      uploaderUsername,
           duration:      durationRef.current,
         };
-        // ── DEBUG: the EXACT payload being sent to Supabase. If
-        // video_url/thumbnail_url are empty HERE, the bug is upstream
-        // (Cloudinary response or inputField state). If they're populated
-        // HERE but empty in the DB afterward, the bug is server-side
-        // (RLS policy, a trigger, or a column-level grant on `videos`). ──
-        console.log("[upload-debug] videos insert payload:", videoPayload);
 
         const { data: newVideo, error: videoError } = await supabase
           .from("videos")
@@ -435,9 +362,6 @@ const VideoUpload = () => {
           .single();
         if (videoError) throw new Error(videoError.message);
 
-        // ── DEBUG: what Supabase actually stored/returned for the new row ──
-        console.log("[upload-debug] videos insert result (newVideo):", newVideo);
-
         await notifySubscribers(uploaderUsername, {
           type: "video",
           message: `${uploaderUsername} uploaded a new video: "${inputField.title}"`,
@@ -445,7 +369,6 @@ const VideoUpload = () => {
           contentType: "video",
         });
       } else {
-        // ── Reel / feature upload ──
         const reelPayload = {
           title:       inputField.title,
           description: inputField.description,
@@ -463,9 +386,6 @@ const VideoUpload = () => {
           reelPayload.remixed_from_username = featureData.remixed_from_username;
         }
 
-        // FIX: added .select().single() so we get the new reel's id back —
-        // needed to attach content_id to the upload / remix / feature
-        // notifications below.
         const { data: newReel, error: reelError } = await supabase
           .from("reels")
           .insert([reelPayload])
@@ -505,7 +425,6 @@ const VideoUpload = () => {
         ? `Post ${banner?.emoji}`
         : `Upload ${uploadMode === "reel" ? "Reel" : "Video"}`;
 
-  // ── Success screen ──
   if (submitted) return (
     <div className="videoUpload">
       <div className="uploadBox">
@@ -539,13 +458,11 @@ const VideoUpload = () => {
     <div className="videoUpload">
       <div className="uploadBox">
 
-        {/* ── Title row ── */}
         <div className="uploadVideoTitle">
           <CloudUploadIcon sx={{ fontSize: "54px", color: "orange" }} />
           {isFeatureMode ? `${banner?.emoji} ${banner?.label}` : "Upload"}
         </div>
 
-        {/* ── Feature banner ── */}
         {isFeatureMode && banner && (
           <div className="upload_feature_banner" style={{ "--feature-color": banner.color }}>
             <img src={banner.thumb} alt="source" className="upload_feature_thumb" />
@@ -559,7 +476,6 @@ const VideoUpload = () => {
           </div>
         )}
 
-        {/* ── Mode toggle ── */}
         {!isFeatureMode && (
           <div className="upload_mode_toggle">
             <div className={`upload_mode_btn ${uploadMode === "video" ? "active" : ""}`} onClick={() => switchMode("video")}>🎬 Video</div>
@@ -580,13 +496,11 @@ const VideoUpload = () => {
           }
         `}</style>
 
-        {/* Hint text */}
         {isFeatureMode && banner?.hint && <p className="upload_mode_hint">{banner.hint}</p>}
         {!isFeatureMode && uploadMode === "reel" && (
           <p className="upload_mode_hint">Reels are short vertical videos — they appear in the Reels / Shorts section.</p>
         )}
 
-        {/* ── Form ── */}
         <div className="uploadForm">
           <input
             type="text"
@@ -612,7 +526,6 @@ const VideoUpload = () => {
             />
           )}
 
-          {/* Video file */}
           <div className="upload_file_row">
             <span className="upload_file_label">
               {isFeatureMode ? `${banner?.emoji} Your Video` : uploadMode === "reel" ? "Reel Video" : "Video"}
@@ -623,7 +536,6 @@ const VideoUpload = () => {
             </span>
           </div>
 
-          {/* Thumbnail file */}
           <div className="upload_file_row">
             <span className="upload_file_label">
               Thumbnail
@@ -636,7 +548,6 @@ const VideoUpload = () => {
             {thumbLoader && <CircularProgress size={20} sx={{ color:"orange", ml:1 }} />}
           </div>
 
-          {/* Thumbnail preview */}
           {inputField.thumbnail && (
             <div className="upload_thumb_row">
               <img src={inputField.thumbnail} alt="Thumbnail preview" className="upload_thumb_preview" />
@@ -646,7 +557,6 @@ const VideoUpload = () => {
             </div>
           )}
 
-          {/* Upload progress */}
           {loader && (
             <Box sx={{ display:"flex", flexDirection:"column", gap:"8px", width:"100%" }}>
               <Box sx={{ display:"flex", alignItems:"center", gap:"12px" }}>
@@ -668,7 +578,6 @@ const VideoUpload = () => {
           {error && <p className="upload_error_msg">{error}</p>}
         </div>
 
-        {/* Action buttons */}
         <div className="uploadBtns">
           <div
             className={`uploadBtns-form ${loader || saving || thumbLoader ? "uploadBtns-disabled" : ""}`}
