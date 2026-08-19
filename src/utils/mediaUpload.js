@@ -1,25 +1,33 @@
 /**
  * ZIXPLON — shared R2 media helper
  *
- * Drop this in src/utils/mediaUpload.js. Every upload flow (profile
- * picture, post images, video thumbnails) should go through
- * uploadToR2() instead of calling Cloudinary directly, and use
- * buildTransformUrl() instead of Cloudinary's transformation URL
- * builder.
+ * Every upload flow should go through one of these instead of calling
+ * Cloudinary directly:
  *
- * Video files (too large to stream through a Vercel function body)
- * go through uploadVideoToR2() instead — it fetches a presigned PUT
- * URL from /api/upload-url, then uploads directly to R2.
+ *   uploadToR2()          — small files streamed through a Vercel
+ *                            function body (profile pics, post images,
+ *                            video thumbnails). Not suitable for large
+ *                            files — Vercel's function body size limit
+ *                            applies.
+ *
+ *   uploadVideoToR2()      — video specifically, via presigned URL.
+ *
+ *   uploadAttachmentToR2() — any Messages/chat attachment (image,
+ *                            video, voice note, document) via the same
+ *                            presigned-URL pattern, since attachments
+ *                            can be any type/size up to 25MB and can't
+ *                            reliably go through a Vercel function body.
+ *
+ * buildTransformUrl() replaces Cloudinary's transformation URL builder.
  */
 
 /**
  * Uploads a File or Blob to R2 via the /api/upload endpoint.
- * Mirrors what Cloudinary's upload widget used to return.
- * Use for small files only (images/thumbnails) — see uploadVideoToR2
- * for video.
+ * Small files only (images/thumbnails) — see uploadVideoToR2 /
+ * uploadAttachmentToR2 for anything that might exceed a few MB.
  *
- * @param {File|Blob} file - the image file/blob to upload
- * @param {(percent: number) => void} [onProgress] - optional progress callback (0-100)
+ * @param {File|Blob} file
+ * @param {(percent: number) => void} [onProgress]
  * @returns {Promise<{ key: string, url: string }>}
  */
 export async function uploadToR2(file, onProgress) {
@@ -59,27 +67,22 @@ export async function uploadToR2(file, onProgress) {
 }
 
 /**
- * Uploads a video File directly to R2 via a presigned URL, bypassing
- * the Vercel function body entirely (Vercel's request size limit is
- * far smaller than typical video files).
+ * Shared implementation behind uploadVideoToR2 and uploadAttachmentToR2:
+ * gets a presigned PUT URL from /api/upload-url, then PUTs the file
+ * bytes straight to R2, bypassing the Vercel function body entirely.
  *
- * Two-step flow:
- *   1. POST /api/upload-url with { contentType, fileSize } to get a
- *      short-lived signed PUT URL + the eventual public URL.
- *   2. PUT the raw file bytes straight to that signed URL.
- *
- * @param {File} file - the video file to upload
- * @param {(percent: number) => void} [onProgress] - optional progress callback (0-100)
+ * @param {File} file
+ * @param {(percent: number) => void} [onProgress]
  * @returns {Promise<{ key: string, url: string }>}
  */
-export async function uploadVideoToR2(file, onProgress) {
-  // Step 1: get a presigned upload URL
+async function presignAndUpload(file, onProgress) {
   const presignRes = await fetch("/api/upload-url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contentType: file.type || "video/mp4",
+      contentType: file.type || "application/octet-stream",
       fileSize: file.size,
+      fileName: file.name,
     }),
   });
 
@@ -96,11 +99,10 @@ export async function uploadVideoToR2(file, onProgress) {
 
   const { uploadUrl, key, url } = await presignRes.json();
 
-  // Step 2: PUT the file straight to R2
   await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
-    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
     if (onProgress) {
       xhr.upload.onprogress = (event) => {
@@ -112,10 +114,10 @@ export async function uploadVideoToR2(file, onProgress) {
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Video upload to R2 failed (${xhr.status})`));
+      else reject(new Error(`Upload to R2 failed (${xhr.status})`));
     };
 
-    xhr.onerror = () => reject(new Error("Network error during video upload"));
+    xhr.onerror = () => reject(new Error("Network error during upload"));
     xhr.send(file);
   });
 
@@ -123,10 +125,30 @@ export async function uploadVideoToR2(file, onProgress) {
 }
 
 /**
+ * Uploads a video File directly to R2 via a presigned URL.
+ * @param {File} file
+ * @param {(percent: number) => void} [onProgress]
+ * @returns {Promise<{ key: string, url: string }>}
+ */
+export async function uploadVideoToR2(file, onProgress) {
+  return presignAndUpload(file, onProgress);
+}
+
+/**
+ * Uploads any Messages/chat attachment (image, video, voice note, or
+ * document) directly to R2 via a presigned URL. Use this in place of
+ * Cloudinary for MessagesPanel / GroupChatWindow / BroadcastComposeWindow.
+ * @param {File} file
+ * @param {(percent: number) => void} [onProgress]
+ * @returns {Promise<{ key: string, url: string }>}
+ */
+export async function uploadAttachmentToR2(file, onProgress) {
+  return presignAndUpload(file, onProgress);
+}
+
+/**
  * Builds a transformed image URL from a base R2 media URL.
- * Replaces Cloudinary's transformation URL syntax.
- *
- * @param {string} baseUrl - the url returned by uploadToR2()
+ * @param {string} baseUrl
  * @param {object} opts
  * @param {number} [opts.width]
  * @param {number} [opts.height]

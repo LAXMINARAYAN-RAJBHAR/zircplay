@@ -1,9 +1,11 @@
 /**
  * ZIXPLON — Vercel serverless endpoint: presigned R2 upload URL
  *
- * For large files (video) that can't be streamed through a Vercel
- * serverless function body, the client asks this endpoint for a
- * short-lived, authorized PUT URL, then uploads directly to R2.
+ * Generic presign endpoint for any attachment that's too large (or too
+ * variable in type) to stream through a Vercel function body — video,
+ * voice notes, and chat/message file attachments all go through here.
+ * The client asks for a short-lived, authorized PUT URL, then uploads
+ * directly to R2.
  *
  * Required env vars (same R2 credentials already used by api/upload.js):
  *   R2_ACCOUNT_ID
@@ -26,26 +28,21 @@ const s3 = new S3Client({
   },
 });
 
-const ALLOWED_VIDEO_TYPES = new Set([
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/x-matroska",
-  "video/x-m4v",
-]);
-
-const EXT_BY_TYPE = {
-  "video/mp4": "mp4",
-  "video/webm": "webm",
-  "video/quicktime": "mov",
-  "video/x-matroska": "mkv",
-  "video/x-m4v": "m4v",
-};
-
-// R2 supports single-PUT objects up to 5GiB. Keep this at/under your
-// existing client-side video size cap.
-const MAX_VIDEO_BYTES = 4 * 1024 * 1024 * 1024; // 4GB
+// R2 supports single-PUT objects up to 5GiB. This is a shared ceiling
+// across video, voice notes, and file attachments.
+const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB
 const URL_EXPIRY_SECONDS = 60 * 30; // 30 min — generous for slow uploads
+
+// Used only to pick a sensible stored filename extension — this is NOT
+// an allow-list. We accept any contentType; this just prefers the
+// original file's extension when we recognize it, and falls back to
+// deriving one from contentType otherwise.
+const KNOWN_EXTENSIONS = new Set([
+  "jpg", "jpeg", "png", "webp", "gif",
+  "mp4", "webm", "mov", "mkv", "m4v",
+  "m4a", "mp3", "ogg", "wav",
+  "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip", "rar", "csv",
+]);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -53,33 +50,36 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // TODO: this is also the right place to check the caller is an
-  // authenticated ZIXPLON user (e.g. verify a Supabase session/JWT
-  // passed in the Authorization header) before issuing a signed URL —
-  // otherwise anyone who finds this endpoint can get a valid R2 PUT URL.
-  // Wire that check in here once your auth token format is settled.
+  // TODO: verify the caller is an authenticated ZIXPLON user (e.g. a
+  // Supabase session/JWT in the Authorization header) before issuing a
+  // signed URL — right now anyone who finds this endpoint can get a
+  // valid R2 PUT URL. This got more urgent now that this endpoint also
+  // accepts arbitrary attachment types, not just video.
 
-  const { contentType, fileSize } = req.body || {};
+  const { contentType, fileSize, fileName } = req.body || {};
 
-  if (!contentType || !ALLOWED_VIDEO_TYPES.has(contentType)) {
-    return res.status(400).json({
-      error: `Unsupported video content type: ${contentType}`,
-    });
+  if (!contentType || typeof contentType !== "string") {
+    return res.status(400).json({ error: "contentType is required" });
   }
 
   if (!fileSize || typeof fileSize !== "number") {
     return res.status(400).json({ error: "fileSize is required" });
   }
 
-  if (fileSize > MAX_VIDEO_BYTES) {
+  if (fileSize > MAX_BYTES) {
     return res.status(413).json({
-      error: `File too large (max ${MAX_VIDEO_BYTES / (1024 * 1024 * 1024)}GB)`,
+      error: `File too large (max ${MAX_BYTES / (1024 * 1024 * 1024)}GB)`,
     });
   }
 
   try {
-    const ext = EXT_BY_TYPE[contentType] || "mp4";
-    const key = `videos/${randomUUID()}.${ext}`;
+    const rawExt = (fileName || "").split(".").pop()?.toLowerCase();
+    const ext =
+      rawExt && KNOWN_EXTENSIONS.has(rawExt)
+        ? rawExt
+        : (contentType.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "") || "bin";
+
+    const key = `attachments/${randomUUID()}.${ext}`;
 
     const command = new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
