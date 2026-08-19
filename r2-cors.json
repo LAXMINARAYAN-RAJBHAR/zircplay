@@ -1,0 +1,8 @@
+[
+  {
+    "AllowedOrigins": ["https://www.zixplon.in", "https://zixplon.in", "https://zixplon-tawny.vercel.app", "http://localhost:3000"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["Content-Type"],
+    "MaxAgeSeconds": 3600
+  }
+]
