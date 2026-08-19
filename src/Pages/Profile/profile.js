@@ -6,6 +6,7 @@ import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../config/supabase";
+import { uploadToR2, buildTransformUrl } from "../../utils/mediaUpload";
 
 const allVideos = [
   { id: 7679, thumbnail: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTu-l3JR0guZspKsBZkVoakjkQ-qxUCCpkQnw&s", title: "Big Buck Bunny open-source film", duration: "09:56", channel: "Gangeshwary" },
@@ -920,17 +921,15 @@ const Profile = ({ sideNavbar }) => {
     }
   };
 
+  // ── Edit content thumbnail upload — now goes to R2 instead of Cloudinary ──
   const handleEditContentThumbnailUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setEditContentLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", "zixplon-data");
     try {
-      const res  = await fetch("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      setEditContentThumbnail(data.secure_url);
+      const { url } = await uploadToR2(file);
+      const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover" });
+      setEditContentThumbnail(transformedUrl);
     } catch {
       alert("Thumbnail upload failed. Try again.");
     }
@@ -989,16 +988,16 @@ const Profile = ({ sideNavbar }) => {
               🖼️ {user.bannerPic ? "Change Banner" : "Add Banner"}
             </div>
           )}
+          {/* ── Banner upload — now goes to R2 instead of Cloudinary ── */}
           <input type="file" id="bannerInput" accept="image/*" style={{ display:"none" }}
             onChange={async (e) => {
               const file = e.target.files[0]; if (!file) return;
-              const formData = new FormData(); formData.append("file", file); formData.append("upload_preset", "zixplon-data");
               try {
-                const res  = await fetch("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", { method:"POST", body:formData });
-                const data = await res.json(); const url = data.secure_url;
-                await supabase.auth.updateUser({ data: { bannerPic: url } });
-                await supabase.from("profiles").upsert({ id: user.id || localStorage.getItem("userId"), username: user.username || localStorage.getItem("username"), banner_pic: url, profile_pic: localStorage.getItem("profilePic") || user.profilePic, about: localStorage.getItem("about") || user.about }, { onConflict: "id" });
-                setUser((prev) => ({ ...prev, bannerPic: url }));
+                const { url } = await uploadToR2(file);
+                const bannerUrl = buildTransformUrl(url, { width: 1200, height: 300, fit: "cover" });
+                await supabase.auth.updateUser({ data: { bannerPic: bannerUrl } });
+                await supabase.from("profiles").upsert({ id: user.id || localStorage.getItem("userId"), username: user.username || localStorage.getItem("username"), banner_pic: bannerUrl, profile_pic: localStorage.getItem("profilePic") || user.profilePic, about: localStorage.getItem("about") || user.about }, { onConflict: "id" });
+                setUser((prev) => ({ ...prev, bannerPic: bannerUrl }));
               } catch { alert("Banner upload failed. Try again."); }
             }}
           />
@@ -1212,12 +1211,16 @@ const Profile = ({ sideNavbar }) => {
             </div>
             <div>
               <p style={{ color:"var(--zx-text3)", fontSize:"13px", margin:"0 0 6px" }}>Or upload a new photo:</p>
+              {/* ── Profile photo upload — now goes to R2 instead of Cloudinary ── */}
               <input type="file" accept="image/*"
                 onChange={async (e) => {
                   const file = e.target.files[0]; if (!file) return;
                   setEditLoading(true);
-                  const formData = new FormData(); formData.append("file", file); formData.append("upload_preset", "zixplon-data");
-                  try { const res = await fetch("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", { method:"POST", body:formData }); const data = await res.json(); setEditPic(data.secure_url); }
+                  try {
+                    const { url } = await uploadToR2(file);
+                    const transformedUrl = buildTransformUrl(url, { width: 150, height: 150, fit: "cover" });
+                    setEditPic(transformedUrl);
+                  }
                   catch { alert("Upload failed. Try again."); }
                   setEditLoading(false);
                 }}

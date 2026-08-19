@@ -10,6 +10,7 @@ import { supabase } from "../../config/supabase";
 import RecordModal from "../RecordModal/RecordModal";
 import { checkContent } from "../../Component/Moderation/useModerationFilter";
 import { notifySubscribers } from "../../utils/notifications";
+import { uploadToR2, buildTransformUrl } from "../../utils/mediaUpload";
 
 const INITIAL_FIELDS = {
   title: "",
@@ -200,14 +201,14 @@ const VideoUpload = () => {
     video.load();
   });
 
-  const uploadThumbnailToCloudinary = async (blob) => {
-    const data = new FormData();
-    data.append("file", blob, "thumbnail.jpg");
-    data.append("upload_preset", "zixplon-data");
-    const res = await axios.post("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", data);
-    // ── DEBUG: confirm Cloudinary actually returned a usable image URL ──
-    console.log("[upload-debug] thumbnail Cloudinary response:", res.data);
-    return res.data.secure_url;
+  // ── Thumbnail upload — now goes to R2 instead of Cloudinary ──
+  const uploadThumbnail = async (blob) => {
+    const file = new File([blob], "thumbnail.jpg", { type: "image/jpeg" });
+    const { url } = await uploadToR2(file);
+    const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover" });
+    // ── DEBUG: confirm R2 actually returned a usable image URL ──
+    console.log("[upload-debug] thumbnail R2 response:", { url, transformedUrl });
+    return transformedUrl;
   };
 
   const handleOnChangeInput = (event, name) => {
@@ -298,7 +299,7 @@ const VideoUpload = () => {
       console.log("[upload-debug] videoUrl after uploadToCloudinary:", videoUrl);
       let thumbnailUrl = inputField.thumbnail;
       if (!imageUploaded) {
-        if (thumbnailBlob) { thumbnailUrl = await uploadThumbnailToCloudinary(thumbnailBlob); setThumbSource("auto"); }
+        if (thumbnailBlob) { thumbnailUrl = await uploadThumbnail(thumbnailBlob); setThumbSource("auto"); }
         else { const fallback = buildCloudinaryFallbackThumbnail(videoUrl); thumbnailUrl = fallback || thumbnailUrl; setThumbSource("auto"); }
       }
       // ── DEBUG: what's about to be written into inputField (and, from
@@ -313,18 +314,20 @@ const VideoUpload = () => {
     }
   };
 
+  // ── Manual thumbnail upload — now goes to R2 instead of Cloudinary ──
   const uploadManualThumbnail = async (e) => {
     setThumbLoader(true); setError("");
     const files = e.target.files;
     if (!files || files.length === 0) { setThumbLoader(false); return; }
-    const data = new FormData();
-    data.append("file", files[0]);
-    data.append("upload_preset", "zixplon-data");
     try {
-      const res = await axios.post("https://api.cloudinary.com/v1_1/uaa756bj/image/upload", data);
-      setInputField((prev) => ({ ...prev, thumbnail: res.data.secure_url }));
+      const { url } = await uploadToR2(files[0]);
+      const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover" });
+      setInputField((prev) => ({ ...prev, thumbnail: transformedUrl }));
       setImageUploaded(true); setThumbSource("manual"); setThumbLoader(false);
-    } catch (err) { setThumbLoader(false); setError("Thumbnail upload failed. Please try again."); }
+    } catch (err) {
+      setThumbLoader(false);
+      setError("Thumbnail upload failed. Please try again.");
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────

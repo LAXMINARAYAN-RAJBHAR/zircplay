@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "../../config/supabase";
 import axios from "axios";
 import EmojiPicker from "./EmojiPicker";
+import { uploadToR2, buildTransformUrl } from "../../utils/mediaUpload";
 
 const CLOUDINARY_CLOUD = "uaa756bj";
 const CLOUDINARY_PRESET = "zixplon-data";
@@ -179,21 +180,13 @@ const PostComposer = ({ currentUser, onPost }) => {
     }, LINK_PREVIEW_DEBOUNCE_MS);
   };
 
-  const uploadImageToCloudinary = async (file, onProgress) => {
-    const data = new FormData();
-    data.append("file", file);
-    data.append("upload_preset", CLOUDINARY_PRESET);
-    const res = await axios.post(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-      data,
-      {
-        onUploadProgress: (e) => onProgress(Math.round((e.loaded * 100) / e.total)),
-      }
-    );
-    return res.data.secure_url;
+  // ── Image upload — now goes to R2 instead of Cloudinary ──
+  const uploadImage = async (file, onProgress) => {
+    const { url } = await uploadToR2(file, onProgress);
+    return buildTransformUrl(url, { width: 800, quality: 85 });
   };
 
-  // ── NEW: video upload uses Cloudinary's /video/upload endpoint ──
+  // ── Video upload stays on Cloudinary for now (R2 has no transcoding) ──
   const uploadVideoToCloudinary = async (file, onProgress) => {
     const data = new FormData();
     data.append("file", file);
@@ -222,7 +215,7 @@ const PostComposer = ({ currentUser, onPost }) => {
       if (imageFiles.length > 0) {
         const total = imageFiles.length;
         for (let i = 0; i < total; i++) {
-          const url = await uploadImageToCloudinary(imageFiles[i].file, (pct) => {
+          const url = await uploadImage(imageFiles[i].file, (pct) => {
             const overall = Math.round(((i + pct / 100) / total) * 100);
             setUploadProgress(overall);
           });
