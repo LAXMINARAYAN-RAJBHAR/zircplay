@@ -184,6 +184,15 @@ const EMOJI_LIST = [
 // ── Quick-reaction emoji set for message/attachment reactions ──
 const REACTION_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 
+// ── Report reasons ──
+const REPORT_REASONS = [
+  "Nudity or sexual content",
+  "Involves a minor",
+  "Harassment or threats",
+  "Spam",
+  "Other",
+];
+
 const timeAgo = (dateStr) => {
   if (!dateStr) return "";
   const diff = (Date.now() - new Date(dateStr)) / 1000;
@@ -348,6 +357,12 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const [openReactionFor, setOpenReactionFor] = useState(null); // message id
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
+
+  // ── Reporting ──
+  const [reportTarget, setReportTarget] = useState(null); // message object being reported
+  const [reportReason, setReportReason] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
 
   // ── Presence / last-seen ──
   const { onlineUsers, getLastSeen } = usePresence();
@@ -669,6 +684,13 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   useEffect(() => {
     fetchConversations();
 
+    // Fires on every conversation change (new conversation created, or
+    // last_message_* updated by a new message). If the message wasn't
+    // sent by us AND isn't for the conversation currently open (that
+    // conversation's own dm-panel listener already plays the inline
+    // "receive" pop — we don't want to double-chime for the same
+    // message), play the louder background notification chime and show
+    // a browser notification.
     const handleConversationRealtime = (convRow) => {
       fetchConversations();
       if (!convRow.last_message_sender || convRow.last_message_sender === currentUser) return;
@@ -852,6 +874,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
           filter: `conversation_id=eq.${activeConvo.id}`,
         },
         (payload) => {
+          // Guard against duplicates: the sender already appends their own
+          // message optimistically in handleSend, so this same row can
+          // arrive again here once Supabase Realtime broadcasts the INSERT.
           const incoming = payload.new;
           let wasAppended = false;
           setMessages((prev) => {
@@ -859,6 +884,8 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             wasAppended = true;
             return [...prev, incoming];
           });
+          // Only chime for messages that actually arrived from the other
+          // person — our own optimistic echo shouldn't play "receive".
           if (wasAppended && incoming.sender_username !== currentUser) {
             playReceiveSound();
           }
@@ -885,6 +912,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
   // ── Typing indicator: broadcast channel scoped to this conversation ──
   useEffect(() => {
+    // Reset whenever we leave/switch conversations.
     setOtherTyping(false);
     clearTimeout(autoClearTimeoutRef.current);
     clearTimeout(stopTypingTimeoutRef.current);
@@ -922,6 +950,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, [activeConvo?.id, currentUser]);
 
+  // Called on every keystroke in the message input. Broadcasts "typing"
+  // immediately, then debounces a "stopped typing" broadcast for
+  // TYPING_STOP_DELAY_MS after the last keystroke.
   const handleTypingInput = () => {
     const channel = typingChannelRef.current;
     if (!channel) return;
@@ -972,6 +1003,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       });
   }, [messages, activeConvo, currentUser]);
 
+  // Fallback auto-scroll whenever the message list changes (covers
+  // incoming messages from the other person, edits, reactions, etc) —
+  // also fires when the typing bubble appears/disappears so it's never
+  // scrolled out of view.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, otherTyping]);
@@ -1117,6 +1152,8 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     const trimmed = text.trim();
     setText("");
 
+    // Sending counts as "done typing" — clear the debounce timer and
+    // tell the other person right away instead of waiting out the delay.
     clearTimeout(stopTypingTimeoutRef.current);
     typingChannelRef.current?.send({
       type: "broadcast",
@@ -1147,6 +1184,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       return;
     }
 
+    // .select().single() hands back the inserted row so we can show it
+    // immediately instead of waiting on the Realtime broadcast to echo
+    // it back — that round trip is what made sent messages feel delayed.
     const { data: inserted, error } = await supabase
       .from("direct_messages")
       .insert({
@@ -1167,6 +1207,14 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       );
       playSendSound();
 
+      // Force the scroll on the very next frame instead of relying only
+      // on the `messages`-effect above. On mobile, sending a message
+      // often happens while the keyboard is still open/animating; a
+      // scroll that fires in the same tick as the state update can run
+      // against a layout that hasn't settled yet (see the --mp-vh fix
+      // above) and end up scrolling to a position that's stale the
+      // instant the keyboard finishes moving. Doing it on the next
+      // animation frame lets layout catch up first.
       requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
       });
@@ -1207,6 +1255,8 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     const current = message.reactions || {};
     const alreadyThisEmoji = (current[emoji] || []).includes(currentUser);
 
+    // One reaction per user: strip currentUser from every emoji first,
+    // then re-add them to the picked emoji unless they were toggling it off.
     const updated = {};
     Object.entries(current).forEach(([em, users]) => {
       const filtered = users.filter((u) => u !== currentUser);
@@ -1301,6 +1351,49 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       .eq("id", message.id);
   };
 
+  // ── Reporting ──
+  const openReport = (message) => {
+    setReportTarget(message);
+    setReportReason("");
+    setReportSubmitted(false);
+    setOpenReactionFor(null);
+  };
+
+  const closeReport = () => {
+    setReportTarget(null);
+    setReportReason("");
+    setReportSubmitting(false);
+    setReportSubmitted(false);
+  };
+
+  const submitReport = async () => {
+    if (!reportTarget || !reportReason || reportSubmitting) return;
+    setReportSubmitting(true);
+
+    const { error } = await supabase.from("content_reports").insert({
+      reporter_username: currentUser,
+      reported_username: reportTarget.sender_username,
+      content_type: "direct_message",
+      content_id: String(reportTarget.id),
+      reason: reportReason,
+      content_snapshot: {
+        text: reportTarget.text,
+        attachment_url: reportTarget.attachment_url,
+        attachment_type: reportTarget.attachment_type,
+      },
+      status: "pending",
+    });
+
+    setReportSubmitting(false);
+
+    if (error) {
+      alert("Failed to submit report. Please try again.");
+      return;
+    }
+
+    setReportSubmitted(true);
+  };
+
   const panelStyle = position
     ? {
         position: "fixed",
@@ -1333,6 +1426,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setActiveUsername(username);
   };
 
+  // Used by the on-screen "←" arrow: routes through closeDetail() so it
+  // behaves identically to the hardware/gesture back button (pops the
+  // depth-2 history entry on mobile, keeping the stack in sync).
   const handleBackFromChat = (e) => {
     e.stopPropagation();
     closeDetail();
@@ -1732,6 +1828,17 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                       ✎
                                     </button>
                                   )}
+                                  {!mine && (
+                                    <button
+                                      type="button"
+                                      className="mp-bubble-action-btn"
+                                      onClick={() => openReport(m)}
+                                      aria-label="Report message"
+                                      title="Report"
+                                    >
+                                      🚩
+                                    </button>
+                                  )}
                                   {mine && (
                                     <button
                                       type="button"
@@ -2123,6 +2230,100 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             else openBroadcast({ ...data, broadcast_recipients: [] });
           }}
         />
+      )}
+
+      {reportTarget && (
+        <div
+          className="mp-overlay"
+          onClick={closeReport}
+          style={{ zIndex: 999999 }}
+        >
+          <div
+            className="mp-panel mp-panel-login"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: 24 }}>
+              {reportSubmitted ? (
+                <>
+                  <h3 style={{ marginTop: 0 }}>Report submitted</h3>
+                  <p style={{ fontSize: 13, color: "var(--zx-text3)" }}>
+                    Thanks — our team will review this. You can close this
+                    now.
+                  </p>
+                  <button
+                    onClick={closeReport}
+                    style={{
+                      width: "100%",
+                      background: "var(--zx-primary)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: 10,
+                      marginTop: 8,
+                    }}
+                  >
+                    Close
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h3 style={{ marginTop: 0 }}>Report this message</h3>
+                  <p style={{ fontSize: 13, color: "var(--zx-text3)" }}>
+                    From {reportTarget.sender_username}. This will be sent
+                    to our moderation team.
+                  </p>
+                  {REPORT_REASONS.map((r) => (
+                    <label
+                      key={r}
+                      style={{ display: "block", padding: "6px 0", fontSize: 14 }}
+                    >
+                      <input
+                        type="radio"
+                        name="reportReason"
+                        checked={reportReason === r}
+                        onChange={() => setReportReason(r)}
+                      />{" "}
+                      {r}
+                    </label>
+                  ))}
+                  <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                    <button
+                      onClick={submitReport}
+                      disabled={!reportReason || reportSubmitting}
+                      style={{
+                        flex: 1,
+                        background: "var(--zx-primary)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: 10,
+                        opacity: !reportReason || reportSubmitting ? 0.6 : 1,
+                        cursor:
+                          !reportReason || reportSubmitting
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                    >
+                      {reportSubmitting ? "Submitting…" : "Submit Report"}
+                    </button>
+                    <button
+                      onClick={closeReport}
+                      style={{
+                        flex: 1,
+                        background: "none",
+                        border: "1px solid var(--zx-border)",
+                        borderRadius: 8,
+                        padding: 10,
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
