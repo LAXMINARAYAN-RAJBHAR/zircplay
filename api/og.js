@@ -52,8 +52,6 @@ function renderHtml({ type, title, description, image, url }) {
     <meta property="og:title" content="${safeTitle}" />
     <meta property="og:description" content="${safeDescription}" />
     <meta property="og:image" content="${safeImage}" />
-    <meta property="og:image:width" content="1280" />
-    <meta property="og:image:height" content="720" />
     <meta property="og:url" content="${safeUrl}" />
     <meta property="og:site_name" content="ZIXPLON" />
     <meta name="twitter:card" content="summary_large_image" />
