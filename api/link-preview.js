@@ -13,6 +13,11 @@
 //      (this covers many sites not in the hardcoded provider list).
 //   3. Plain domain-card fallback if nothing else worked.
 //
+// Every response now also carries imageWidth/imageHeight (null if the
+// source didn't provide them) so the client can reserve layout space
+// for the preview image before it loads, instead of the image "popping
+// in" and shifting content below it.
+//
 // Usage: GET /api/link-preview?url=<encoded url>
 
 export const config = { runtime: "edge" };
@@ -71,11 +76,6 @@ const BROWSER_HEADERS = {
 };
 
 // ── Fetch timeout wrapper ──────────────────────────────────────────────
-// NEW: neither the oEmbed calls nor the generic page fetch used to have
-// a timeout, so a slow/hanging remote host would stall this Edge
-// function until the platform's own hard limit killed it — slow for the
-// user and wasteful of execution time. Every outbound fetch below now
-// goes through this.
 const FETCH_TIMEOUT_MS = 4000;
 
 async function fetchWithTimeout(url, options, timeoutMs = FETCH_TIMEOUT_MS) {
@@ -117,6 +117,15 @@ function resolveUrl(maybeRelative, baseUrl) {
   }
 }
 
+// Parses a meta tag's content as a positive integer, returning null for
+// anything non-numeric/zero/negative — a malformed or absent dimension
+// should behave the same as "not provided" to the client.
+function parseDimension(str) {
+  if (!str) return null;
+  const n = parseInt(str, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function extractMeta(html, baseUrl) {
   const metaTags = [...html.matchAll(/<meta\s+[^>]*>/gi)].map((m) => m[0]);
   const result = {};
@@ -135,6 +144,15 @@ function extractMeta(html, baseUrl) {
     }
     if ((key === "og:image" || key === "og:image:secure_url" || key === "twitter:image") && !result.image) {
       result.image = resolveUrl(content, baseUrl);
+    }
+    // NEW: capture declared image dimensions when the page provides
+    // them, so the client can reserve layout space up front instead of
+    // the preview image popping in and shifting content below it.
+    if (key === "og:image:width" && !result.imageWidth) {
+      result.imageWidth = parseDimension(content);
+    }
+    if (key === "og:image:height" && !result.imageHeight) {
+      result.imageHeight = parseDimension(content);
     }
     if (key === "og:site_name" && !result.siteName) {
       result.siteName = decodeEntities(content);
@@ -209,6 +227,8 @@ export default async function handler(req) {
     title: `Link from ${domain}`,
     desc: parsed.toString(),
     image: null,
+    imageWidth: null,
+    imageHeight: null,
   };
 
   // ── 1) Known-provider oEmbed fast path ──
@@ -222,6 +242,10 @@ export default async function handler(req) {
         title: data.title || fallback.title,
         desc: data.author_name ? `by ${data.author_name}` : parsed.toString(),
         image: data.thumbnail_url || null,
+        // oEmbed responses commonly include these directly — no need to
+        // guess or fetch anything extra to get accurate dimensions.
+        imageWidth: parseDimension(data.thumbnail_width),
+        imageHeight: parseDimension(data.thumbnail_height),
       });
     }
     // fall through to generic path if the provider's oEmbed call failed
@@ -245,6 +269,8 @@ export default async function handler(req) {
     let image = meta.image || null;
     let title = meta.title || fallback.title;
     let desc = meta.description || fallback.desc;
+    let imageWidth = meta.imageWidth || null;
+    let imageHeight = meta.imageHeight || null;
 
     // If the page advertises an oEmbed endpoint and we're still missing
     // an image, try it — this fills in a lot of the "site not in our
@@ -254,6 +280,8 @@ export default async function handler(req) {
       if (oembedData) {
         image = oembedData.thumbnail_url || image;
         title = oembedData.title || title;
+        imageWidth = parseDimension(oembedData.thumbnail_width) || imageWidth;
+        imageHeight = parseDimension(oembedData.thumbnail_height) || imageHeight;
       }
     }
 
@@ -263,6 +291,8 @@ export default async function handler(req) {
       title,
       desc,
       image,
+      imageWidth,
+      imageHeight,
     });
   } catch {
     return jsonResponse(fallback);
