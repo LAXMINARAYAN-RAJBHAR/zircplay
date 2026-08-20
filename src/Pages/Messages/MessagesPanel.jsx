@@ -12,6 +12,7 @@ import { playSendSound, playReceiveSound, playNotificationSound } from "../../ut
 import { ensureNotificationPermission, showChatNotification } from "../../utils/chatNotifications";
 import { extractFirstUrl } from "../../utils/linkPreview";
 import LinkPreviewCard from "../../Component/Messages/LinkPreviewCard";
+import { uploadAttachmentToR2 } from "../../utils/mediaUpload";
 
 const EMOJI_ONLY_REGEX = /^(\p{Extended_Pictographic}|\u200d|\ufe0f|\s)+$/u;
 
@@ -115,9 +116,6 @@ const formatDuration = (totalSeconds) => {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 };
 
-const CLOUDINARY_CLOUD_NAME = "uaa756bj";
-const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
-
 // Hard cap on recording length so a stray open mic can't produce a
 // huge upload. Auto-stops and hands off to the preview stage.
 const MAX_VOICE_SECONDS = 180;
@@ -208,28 +206,6 @@ const attachmentTypeFromFile = (file) => {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
   return "file";
-};
-
-const uploadToCloudinary = async (file, resourceType) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-
-  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
-  const res = await fetch(endpoint, { method: "POST", body: formData });
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const errJson = await res.json();
-      detail = errJson?.error?.message || JSON.stringify(errJson);
-    } catch {
-      detail = await res.text().catch(() => "");
-    }
-    console.error(`Cloudinary upload failed (${res.status}):`, detail);
-    throw new Error(detail || `Upload failed (${res.status})`);
-  }
-  const data = await res.json();
-  return data.secure_url;
 };
 
 // ── Small three-dot "typing…" bubble, rendered as its own row in the
@@ -445,17 +421,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const isMobile = () => window.innerWidth <= 768;
 
   // ── Keyboard-aware viewport height ──────────────────────────────────────
-  // On mobile, the panel is sized with 100vh in CSS. 100vh reflects the
-  // LAYOUT viewport, which does NOT shrink when the on-screen keyboard
-  // opens — only the VISUAL viewport does. That mismatch is what made
-  // "instant" sent messages seem to vanish: the new bubble was appended
-  // to the DOM correctly, but .mp-chat-body was still sized against the
-  // stale, taller 100vh, so the new content rendered off-screen behind
-  // the keyboard until a reload/resize forced a recalculation.
-  //
-  // Fix: track the real visible height via visualViewport (falling back
-  // to innerHeight where visualViewport isn't supported) and expose it
-  // as a CSS var the stylesheet uses instead of raw vh units.
   useEffect(() => {
     if (!isMobile()) return;
 
@@ -475,15 +440,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, []);
 
-  // ── Mobile back-button: pressing back should step out ONE level at a
-  // time — first press closes an open chat/group/broadcast (back to the
-  // inbox), a second press then closes the whole Messages panel. We
-  // mirror this with a history-depth model: depth 0 = whatever page was
-  // showing before the panel opened, depth 1 = panel open (inbox), depth
-  // 2 = a chat/group/broadcast open on top of the panel. Every close
-  // action — hardware back, the on-screen back arrow, or any ✕ button —
-  // goes through this same depth so the history stack and UI state never
-  // drift out of sync with each other.
   const historyDepthRef = useRef(0);
   const isMountedRef = useRef(true);
 
@@ -494,9 +450,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, []);
 
-  // Push a base history entry (depth 1) the moment the panel mounts on
-  // mobile, so there's always one "level" to consume before the panel
-  // actually closes.
   useEffect(() => {
     if (!isMobile()) return;
 
@@ -508,10 +461,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, []);
 
-  // Push a second history entry (depth 2) the moment a chat/group/
-  // broadcast opens on mobile. We only ever push here — closing is
-  // always done by popping via closeDetail()/closePanel() below, which
-  // keeps historyDepthRef and the real browser history stack in sync.
   useEffect(() => {
     if (!isMobile()) return;
 
@@ -523,10 +472,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     }
   }, [activeUsername, activeGroup, activeBroadcast]);
 
-  // Intercept the back button (hardware or gesture) one level at a time,
-  // driven entirely by the depth stored in history.state rather than by
-  // separate boolean flags — this is what keeps repeated open/close
-  // cycles from ever getting out of sync.
   useEffect(() => {
     if (!isMobile()) return;
 
@@ -552,10 +497,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [onClose]);
 
-  // Close just the open chat/group/broadcast, back to the inbox list.
-  // On mobile this pops the depth-2 history entry (triggering the same
-  // popstate handler the hardware back button uses); on desktop there's
-  // no history entry to pop, so it just updates state directly.
   const closeDetail = () => {
     if (isMobile() && historyDepthRef.current >= 2) {
       window.history.back();
@@ -566,10 +507,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     }
   };
 
-  // Close the whole Messages panel. On mobile this jumps back past
-  // however many history entries the panel pushed (1 or 2) in a single
-  // hop, so the popstate handler fires once with depth 0 and calls
-  // onClose() — never leaving an orphaned history entry behind.
   const closePanel = () => {
     if (isMobile() && historyDepthRef.current >= 1) {
       window.history.go(-historyDepthRef.current);
@@ -732,13 +669,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   useEffect(() => {
     fetchConversations();
 
-    // Fires on every conversation change (new conversation created, or
-    // last_message_* updated by a new message). If the message wasn't
-    // sent by us AND isn't for the conversation currently open (that
-    // conversation's own dm-panel listener already plays the inline
-    // "receive" pop — we don't want to double-chime for the same
-    // message), play the louder background notification chime and show
-    // a browser notification.
     const handleConversationRealtime = (convRow) => {
       fetchConversations();
       if (!convRow.last_message_sender || convRow.last_message_sender === currentUser) return;
@@ -766,13 +696,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   }, [fetchConversations, currentUser]);
 
   // ── Group message notifications ──
-  // Mirrors the logic above but for group_messages: chimes + a browser
-  // notification for any group this user belongs to, EXCEPT the one
-  // currently open (whose own GroupChatWindow already plays the inline
-  // receive sound via its own realtime listener). Membership is checked
-  // client-side against `groups` (kept fresh via groupsRef) — if your
-  // group_messages RLS already restricts SELECT to members only, this
-  // check is redundant-but-harmless extra safety.
   useEffect(() => {
     if (!currentUser) return;
 
@@ -784,13 +707,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         (payload) => {
           const msg = payload.new;
 
-          // ── Live reorder: move this group to the top of the sidebar
-          // and refresh its preview text, regardless of whether it's the
-          // currently open chat or a background one. Without this, the
-          // groups list only ever reflected activity as of whenever it
-          // was last fetched (on mount) — a group with brand new
-          // messages could sit anywhere in the list until the panel was
-          // closed and reopened.
           setGroups((prev) => {
             const idx = prev.findIndex((g) => g.id === msg.group_id);
             if (idx === -1) return prev; // not a group this user belongs to (or not loaded yet)
@@ -936,9 +852,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
           filter: `conversation_id=eq.${activeConvo.id}`,
         },
         (payload) => {
-          // Guard against duplicates: the sender already appends their own
-          // message optimistically in handleSend, so this same row can
-          // arrive again here once Supabase Realtime broadcasts the INSERT.
           const incoming = payload.new;
           let wasAppended = false;
           setMessages((prev) => {
@@ -946,8 +859,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             wasAppended = true;
             return [...prev, incoming];
           });
-          // Only chime for messages that actually arrived from the other
-          // person — our own optimistic echo shouldn't play "receive".
           if (wasAppended && incoming.sender_username !== currentUser) {
             playReceiveSound();
           }
@@ -973,11 +884,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   }, [activeConvo]);
 
   // ── Typing indicator: broadcast channel scoped to this conversation ──
-  // Uses Supabase Realtime's ephemeral "broadcast" feature rather than a
-  // database table — typing status is inherently transient and doesn't
-  // need to be persisted, queried later, or survive a page reload.
   useEffect(() => {
-    // Reset whenever we leave/switch conversations.
     setOtherTyping(false);
     clearTimeout(autoClearTimeoutRef.current);
     clearTimeout(stopTypingTimeoutRef.current);
@@ -1015,9 +922,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     };
   }, [activeConvo?.id, currentUser]);
 
-  // Called on every keystroke in the message input. Broadcasts "typing"
-  // immediately, then debounces a "stopped typing" broadcast for
-  // TYPING_STOP_DELAY_MS after the last keystroke.
   const handleTypingInput = () => {
     const channel = typingChannelRef.current;
     if (!channel) return;
@@ -1068,10 +972,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       });
   }, [messages, activeConvo, currentUser]);
 
-  // Fallback auto-scroll whenever the message list changes (covers
-  // incoming messages from the other person, edits, reactions, etc) —
-  // also fires when the typing bubble appears/disappears so it's never
-  // scrolled out of view.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, otherTyping]);
@@ -1217,8 +1117,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     const trimmed = text.trim();
     setText("");
 
-    // Sending counts as "done typing" — clear the debounce timer and
-    // tell the other person right away instead of waiting out the delay.
     clearTimeout(stopTypingTimeoutRef.current);
     typingChannelRef.current?.send({
       type: "broadcast",
@@ -1234,17 +1132,8 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     try {
       if (pendingAttachment) {
         setUploading(true);
-        const resourceType =
-          pendingAttachment.type === "image"
-            ? "image"
-            : pendingAttachment.type === "video" ||
-                pendingAttachment.type === "voice"
-              ? "video"
-              : "raw";
-        attachment_url = await uploadToCloudinary(
-          pendingAttachment.file,
-          resourceType,
-        );
+        const { url } = await uploadAttachmentToR2(pendingAttachment.file);
+        attachment_url = url;
         attachment_type = pendingAttachment.type;
         attachment_name = pendingAttachment.name;
         attachment_size = pendingAttachment.size;
@@ -1258,9 +1147,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       return;
     }
 
-    // .select().single() hands back the inserted row so we can show it
-    // immediately instead of waiting on the Realtime broadcast to echo
-    // it back — that round trip is what made sent messages feel delayed.
     const { data: inserted, error } = await supabase
       .from("direct_messages")
       .insert({
@@ -1281,14 +1167,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       );
       playSendSound();
 
-      // Force the scroll on the very next frame instead of relying only
-      // on the `messages`-effect above. On mobile, sending a message
-      // often happens while the keyboard is still open/animating; a
-      // scroll that fires in the same tick as the state update can run
-      // against a layout that hasn't settled yet (see the --mp-vh fix
-      // above) and end up scrolling to a position that's stale the
-      // instant the keyboard finishes moving. Doing it on the next
-      // animation frame lets layout catch up first.
       requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
       });
@@ -1329,8 +1207,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     const current = message.reactions || {};
     const alreadyThisEmoji = (current[emoji] || []).includes(currentUser);
 
-    // One reaction per user: strip currentUser from every emoji first,
-    // then re-add them to the picked emoji unless they were toggling it off.
     const updated = {};
     Object.entries(current).forEach(([em, users]) => {
       const filtered = users.filter((u) => u !== currentUser);
@@ -1457,9 +1333,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setActiveUsername(username);
   };
 
-  // Used by the on-screen "←" arrow: routes through closeDetail() so it
-  // behaves identically to the hardware/gesture back button (pops the
-  // depth-2 history entry on mobile, keeping the stack in sync).
   const handleBackFromChat = (e) => {
     e.stopPropagation();
     closeDetail();

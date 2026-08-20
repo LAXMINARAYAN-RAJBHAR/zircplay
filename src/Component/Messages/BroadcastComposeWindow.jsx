@@ -1,30 +1,7 @@
 import React, { useState, useRef } from "react";
 import { sendBroadcastMessage } from "../../utils/broadcast";
 import "./BroadcastComposeWindow.css";
-
-const CLOUDINARY_CLOUD_NAME = "uaa756bj";
-const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
-
-const uploadToCloudinary = async (file, resourceType) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
-  const res = await fetch(endpoint, { method: "POST", body: formData });
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const errJson = await res.json();
-      detail = errJson?.error?.message || JSON.stringify(errJson);
-    } catch {
-      detail = await res.text().catch(() => "");
-    }
-    console.error(`Cloudinary upload failed (${res.status}):`, detail);
-    throw new Error(detail || `Upload failed (${res.status})`);
-  }
-  const data = await res.json();
-  return data.secure_url;
-};
+import { uploadAttachmentToR2 } from "../../utils/mediaUpload";
 
 const BroadcastComposeWindow = ({ list, currentUser, onBack, onClose }) => {
   const [text, setText] = useState("");
@@ -62,8 +39,8 @@ const BroadcastComposeWindow = ({ list, currentUser, onBack, onClose }) => {
     try {
       if (pendingAttachment) {
         setUploading(true);
-        const resourceType = pendingAttachment.type === "image" ? "image" : pendingAttachment.type === "video" ? "video" : "raw";
-        attachment_url = await uploadToCloudinary(pendingAttachment.file, resourceType);
+        const { url } = await uploadAttachmentToR2(pendingAttachment.file);
+        attachment_url = url;
         attachment_type = pendingAttachment.type;
         attachment_name = pendingAttachment.name;
         attachment_size = pendingAttachment.size;

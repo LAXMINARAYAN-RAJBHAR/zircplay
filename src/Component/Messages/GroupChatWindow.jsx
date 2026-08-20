@@ -11,34 +11,11 @@ import LinkPreviewCard from "./LinkPreviewCard";
 import AddMembersModal from "./AddMembersModal";
 import "./GroupChatWindow.css";
 import { playSendSound, playReceiveSound } from "../../utils/soundEffects";
-
-const CLOUDINARY_CLOUD_NAME = "uaa756bj";
-const CLOUDINARY_UPLOAD_PRESET = "zixplon-data";
+import { uploadAttachmentToR2 } from "../../utils/mediaUpload";
 
 // ── Typing indicator tuning (mirrors MessagesPanel's 1:1 chat) ──
 const TYPING_STOP_DELAY_MS = 1500;
 const TYPING_AUTO_CLEAR_MS = 4000;
-
-const uploadToCloudinary = async (file, resourceType) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
-  const res = await fetch(endpoint, { method: "POST", body: formData });
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const errJson = await res.json();
-      detail = errJson?.error?.message || JSON.stringify(errJson);
-    } catch {
-      detail = await res.text().catch(() => "");
-    }
-    console.error(`Cloudinary upload failed (${res.status}):`, detail);
-    throw new Error(detail || `Upload failed (${res.status})`);
-  }
-  const data = await res.json();
-  return data.secure_url;
-};
 
 const timeShort = (dateStr) =>
   new Date(dateStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -105,10 +82,6 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [uploading, setUploading] = useState(false);
 
   // ── Optimistic send tracking ──
-  // Holds the tempId of the message we just appended locally but haven't
-  // reconciled with the server yet. Since the send button is disabled
-  // while `sending` is true, there's only ever at most one of these in
-  // flight per client, so a single ref is enough (no need for a map).
   const pendingOptimisticIdRef = useRef(null);
 
   // ── Typing indicator state ──
@@ -143,13 +116,6 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   }, [group.id, currentUser, loadMembers]);
 
   // ── Realtime listener ──
-  // Dedupes against real ids we already have, AND reconciles against a
-  // still-pending optimistic placeholder for our OWN message — this is
-  // what prevents a duplicate bubble from appearing if the realtime
-  // INSERT event happens to arrive before (or instead of) the insert's
-  // own .select() response resolving (e.g. under RLS, where the select
-  // half of insert().select() can be denied even though the insert
-  // itself succeeded).
   useEffect(() => {
     const channel = supabase
       .channel(`group-messages-${group.id}`)
@@ -175,8 +141,6 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
             wasAppended = true;
             return [...prev, incoming];
           });
-          // Only chime for genuinely new messages from other members —
-          // not for our own message being reconciled from its temp id.
           if (wasAppended && incoming.sender_username !== currentUser) {
             playReceiveSound();
           }
@@ -360,13 +324,8 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     try {
       if (pendingAttachmentSnapshot) {
         setUploading(true);
-        const resourceType =
-          pendingAttachmentSnapshot.type === "image"
-            ? "image"
-            : pendingAttachmentSnapshot.type === "video"
-              ? "video"
-              : "raw";
-        attachment_url = await uploadToCloudinary(pendingAttachmentSnapshot.file, resourceType);
+        const { url } = await uploadAttachmentToR2(pendingAttachmentSnapshot.file);
+        attachment_url = url;
         attachment_type = pendingAttachmentSnapshot.type;
         attachment_name = pendingAttachmentSnapshot.name;
         attachment_size = pendingAttachmentSnapshot.size;

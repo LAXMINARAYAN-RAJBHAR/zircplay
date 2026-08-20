@@ -1,4 +1,4 @@
-const CLOUDINARY_QUALITY_TRANSFORMS = {
+﻿const CLOUDINARY_QUALITY_TRANSFORMS = {
   low: "q_auto:low,w_426,h_240,c_limit",
   medium: "q_auto:good,w_640,h_360,c_limit",
   high: "q_auto:best,w_1280,h_720,c_limit",
