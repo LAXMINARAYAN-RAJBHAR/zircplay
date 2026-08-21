@@ -1149,9 +1149,11 @@
 
 .mp-link-image {
   width: 100%;
-  max-height: 120px;
+  aspect-ratio: 1.91 / 1;
+  max-height: 160px;
   object-fit: cover;
   display: block;
+  background: var(--zx-bg);
 }
 
 .mp-link-body {
