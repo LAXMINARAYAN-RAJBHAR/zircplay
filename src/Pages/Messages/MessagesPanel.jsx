@@ -1366,23 +1366,18 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setReportSubmitted(false);
   };
 
-  const submitReport = async () => {
-    if (!reportTarget || !reportReason || reportSubmitting) return;
-    setReportSubmitting(true);
-
-    const { error } = await supabase.from("content_reports").insert({
-      reporter_username: currentUser,
-      reported_username: reportTarget.sender_username,
-      content_type: "direct_message",
-      content_id: String(reportTarget.id),
-      reason: reportReason,
-      content_snapshot: {
-        text: reportTarget.text,
-        attachment_url: reportTarget.attachment_url,
-        attachment_type: reportTarget.attachment_type,
-      },
-      status: "pending",
-    });
+  const { error } = await supabase.from("reports").insert({
+  content_type: "message",
+  content_id: String(reportTarget.id),
+  content_title: reportTarget.text?.slice(0, 80) || "Message",
+  content_owner: reportTarget.sender_username,
+  reporter_username: currentUser,
+  reason: reportReason,
+  details: reportTarget.attachment_url
+    ? `Attachment: ${reportTarget.attachment_type || "file"}`
+    : null,
+  status: "pending",
+});
 
     setReportSubmitting(false);
 

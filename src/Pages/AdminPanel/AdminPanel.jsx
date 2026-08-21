@@ -90,22 +90,41 @@ const AdminPanel = () => {
   };
 
   const deleteContent = async (report) => {
-    setActionLoading(report.id + "delete");
-    try {
-      const table = report.content_type === "reel" ? "reels"
-        : report.content_type === "video" ? "videos"
-        : "posts";
-
-      // Strip db_ prefix for reels
-      const rawId = String(report.content_id).replace("db_", "");
-      await supabase.from(table).delete().eq("id", rawId);
-      await updateReportStatus(report.id, "removed", "Content deleted by admin");
-      showToast(`✅ Content deleted and report closed`);
-    } catch (e) {
-      showToast("❌ Failed to delete content");
+  setActionLoading(report.id + "delete");
+  try {
+    if (report.content_type === "message") {
+      const { error } = await supabase
+        .from("direct_messages")
+        .update({
+          deleted_at: new Date().toISOString(),
+          text: null,
+          attachment_url: null,
+          attachment_type: null,
+          attachment_name: null,
+          attachment_size: null,
+          reactions: {},
+        })
+        .eq("id", report.content_id);
+      if (error) throw error;
+      await updateReportStatus(report.id, "removed", "Message deleted by admin");
+      showToast(`✅ Message deleted and report closed`);
+      return;
     }
-    setActionLoading(null);
-  };
+
+    const table = report.content_type === "reel" ? "reels"
+      : report.content_type === "video" ? "videos"
+      : "posts";
+
+    // Strip db_ prefix for reels
+    const rawId = String(report.content_id).replace("db_", "");
+    await supabase.from(table).delete().eq("id", rawId);
+    await updateReportStatus(report.id, "removed", "Content deleted by admin");
+    showToast(`✅ Content deleted and report closed`);
+  } catch (e) {
+    showToast("❌ Failed to delete content");
+  }
+  setActionLoading(null);
+};
 
   // ── Banned words actions ────────────────────────────────────────────────────
   const addBannedWord = async () => {
