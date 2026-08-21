@@ -1387,9 +1387,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setReportSubmitting(false);
 
     if (error) {
-      alert("Failed to submit report. Please try again.");
-      return;
-    }
+  console.error("Report submission failed:", error);
+  alert(`Failed to submit report: ${error.message || "please try again."}`);
+  return;
+}
 
     setReportSubmitted(true);
   };
