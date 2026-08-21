@@ -1366,7 +1366,11 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setReportSubmitted(false);
   };
 
-  const { error } = await supabase.from("reports").insert({
+  const submitReport = async () => {
+    if (!reportTarget || !reportReason || reportSubmitting) return;
+    setReportSubmitting(true);
+
+    const { error } = await supabase.from("reports").insert({
   content_type: "message",
   content_id: String(reportTarget.id),
   content_title: reportTarget.text?.slice(0, 80) || "Message",
