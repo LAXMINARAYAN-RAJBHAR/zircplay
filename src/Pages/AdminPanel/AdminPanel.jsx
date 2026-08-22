@@ -89,42 +89,52 @@ const AdminPanel = () => {
     setActionLoading(null);
   };
 
+  // Deletes the underlying reported content and closes the report.
+  // "message" reports are handled separately from video/reel/post
+  // reports: those live in direct_messages (not videos/reels/posts), and
+  // getting soft-deleted (deleted_at + fields cleared) rather than a hard
+  // row delete, matching MessagesPanel's own deleteMessage() behavior.
+  // Without this explicit branch, a message report's content_type
+  // ("message") would fall through to the `: "posts"` default below and
+  // attempt to delete a row from the posts table using a message's id —
+  // silently touching the wrong table.
   const deleteContent = async (report) => {
-  setActionLoading(report.id + "delete");
-  try {
-    if (report.content_type === "message") {
-      const { error } = await supabase
-        .from("direct_messages")
-        .update({
-          deleted_at: new Date().toISOString(),
-          text: null,
-          attachment_url: null,
-          attachment_type: null,
-          attachment_name: null,
-          attachment_size: null,
-          reactions: {},
-        })
-        .eq("id", report.content_id);
-      if (error) throw error;
-      await updateReportStatus(report.id, "removed", "Message deleted by admin");
-      showToast(`✅ Message deleted and report closed`);
-      return;
+    setActionLoading(report.id + "delete");
+    try {
+      if (report.content_type === "message") {
+        const { error } = await supabase
+          .from("direct_messages")
+          .update({
+            deleted_at: new Date().toISOString(),
+            text: null,
+            attachment_url: null,
+            attachment_type: null,
+            attachment_name: null,
+            attachment_size: null,
+            reactions: {},
+          })
+          .eq("id", report.content_id);
+        if (error) throw error;
+        await updateReportStatus(report.id, "removed", "Message deleted by admin");
+        showToast(`✅ Message deleted and report closed`);
+        setActionLoading(null);
+        return;
+      }
+
+      const table = report.content_type === "reel" ? "reels"
+        : report.content_type === "video" ? "videos"
+        : "posts";
+
+      // Strip db_ prefix for reels
+      const rawId = String(report.content_id).replace("db_", "");
+      await supabase.from(table).delete().eq("id", rawId);
+      await updateReportStatus(report.id, "removed", "Content deleted by admin");
+      showToast(`✅ Content deleted and report closed`);
+    } catch (e) {
+      showToast("❌ Failed to delete content");
     }
-
-    const table = report.content_type === "reel" ? "reels"
-      : report.content_type === "video" ? "videos"
-      : "posts";
-
-    // Strip db_ prefix for reels
-    const rawId = String(report.content_id).replace("db_", "");
-    await supabase.from(table).delete().eq("id", rawId);
-    await updateReportStatus(report.id, "removed", "Content deleted by admin");
-    showToast(`✅ Content deleted and report closed`);
-  } catch (e) {
-    showToast("❌ Failed to delete content");
-  }
-  setActionLoading(null);
-};
+    setActionLoading(null);
+  };
 
   // ── Banned words actions ────────────────────────────────────────────────────
   const addBannedWord = async () => {
