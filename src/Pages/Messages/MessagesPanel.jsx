@@ -1366,30 +1366,38 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setReportSubmitted(false);
   };
 
+  // Message reports now insert into the shared "reports" table — the same
+  // one AdminPanel already reads and gets realtime updates for — instead
+  // of a separate "content_reports" table that AdminPanel never queries
+  // (which meant message reports were being submitted successfully but
+  // were completely invisible to moderation). Column names mirror what
+  // AdminPanel expects from video/reel/post reports: content_type,
+  // content_id, content_title, content_owner, reporter_username, reason,
+  // details, status.
   const submitReport = async () => {
     if (!reportTarget || !reportReason || reportSubmitting) return;
     setReportSubmitting(true);
 
     const { error } = await supabase.from("reports").insert({
-  content_type: "message",
-  content_id: String(reportTarget.id),
-  content_title: reportTarget.text?.slice(0, 80) || "Message",
-  content_owner: reportTarget.sender_username,
-  reporter_username: currentUser,
-  reason: reportReason,
-  details: reportTarget.attachment_url
-    ? `Attachment: ${reportTarget.attachment_type || "file"}`
-    : null,
-  status: "pending",
-});
+      content_type: "message",
+      content_id: String(reportTarget.id),
+      content_title: reportTarget.text?.slice(0, 80) || "Message",
+      content_owner: reportTarget.sender_username,
+      reporter_username: currentUser,
+      reason: reportReason,
+      details: reportTarget.attachment_url
+        ? `Attachment: ${reportTarget.attachment_type || "file"}`
+        : null,
+      status: "pending",
+    });
 
     setReportSubmitting(false);
 
     if (error) {
-  console.error("Report submission failed:", error);
-  alert(`Failed to submit report: ${error.message || "please try again."}`);
-  return;
-}
+      console.error("Report submission failed:", error);
+      alert(`Failed to submit report: ${error.message || "please try again."}`);
+      return;
+    }
 
     setReportSubmitted(true);
   };
