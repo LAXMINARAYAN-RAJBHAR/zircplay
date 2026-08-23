@@ -20,6 +20,17 @@ const TYPING_AUTO_CLEAR_MS = 4000;
 const timeShort = (dateStr) =>
   new Date(dateStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
+// Short label used for a reply/forward preview when the source message
+// has no text (e.g. it's an attachment-only message). Mirrors the same
+// helper in MessagesPanel.jsx.
+const attachmentPreviewLabel = (type, name) => {
+  if (type === "image") return "📷 Photo";
+  if (type === "video") return "🎥 Video";
+  if (type === "voice") return "🎤 Voice message";
+  if (type === "file") return `📎 ${name || "Attachment"}`;
+  return "Message";
+};
+
 // Splits group message text into URL / plain-text segments so links are
 // clickable, mirroring MessagesPanel's renderMessageText but without the
 // emoji-halo styling (group bubbles don't currently have that treatment).
@@ -81,6 +92,17 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  // ── Reply ──
+  const [replyTarget, setReplyTarget] = useState(null);
+
+  // ── Forward (targets a 1:1 conversation, searched by username) ──
+  const [forwardTarget, setForwardTarget] = useState(null);
+  const [forwardQuery, setForwardQuery] = useState("");
+  const [forwardResults, setForwardResults] = useState([]);
+  const [searchingForward, setSearchingForward] = useState(false);
+  const [forwarding, setForwarding] = useState(false);
+  const [forwardedTo, setForwardedTo] = useState(null); // username, briefly shown as confirmation
+
   // ── Optimistic send tracking ──
   const pendingOptimisticIdRef = useRef(null);
 
@@ -92,6 +114,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
 
   const fileInputRef = useRef();
   const bottomRef = useRef();
+  const inputRef = useRef();
   const membersPanelRef = useRef();
   const membersTriggerRef = useRef();
 
@@ -100,6 +123,10 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   }, [group.id]);
 
   useEffect(() => {
+    // Switching groups invalidates any in-progress reply — the quoted
+    // message belongs to the group we're leaving.
+    setReplyTarget(null);
+
     const load = async () => {
       setLoading(true);
       const { data } = await supabase
@@ -252,6 +279,32 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMembers]);
 
+  // ── Forward: search profiles by username while the picker is open ──
+  useEffect(() => {
+    if (!forwardTarget) return;
+    const query = forwardQuery.trim();
+    if (!query) {
+      setForwardResults([]);
+      setSearchingForward(false);
+      return;
+    }
+
+    setSearchingForward(true);
+    const timer = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("username")
+        .ilike("username", `%${query}%`)
+        .neq("username", currentUser)
+        .limit(8);
+
+      if (!error) setForwardResults(data || []);
+      setSearchingForward(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [forwardQuery, forwardTarget, currentUser]);
+
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -270,6 +323,20 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     setSending(true);
     const trimmed = text.trim();
     setText("");
+
+    // Snapshot the reply target now — it gets cleared right after the
+    // optimistic bubble is appended, same as pendingAttachment below.
+    const replyTargetSnapshot = replyTarget;
+    const reply_to_id = replyTargetSnapshot?.id || null;
+    const reply_to_sender = replyTargetSnapshot?.sender_username || null;
+    const reply_to_text = replyTargetSnapshot
+      ? replyTargetSnapshot.text
+        ? replyTargetSnapshot.text.slice(0, 120)
+        : attachmentPreviewLabel(
+            replyTargetSnapshot.attachment_type,
+            replyTargetSnapshot.attachment_name,
+          )
+      : null;
 
     // ── Optimistic append happens FIRST, before anything else that could
     // possibly throw (e.g. the typing-stop broadcast below, which has
@@ -292,11 +359,16 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       attachment_type: pendingAttachmentSnapshot?.type || null,
       attachment_name: pendingAttachmentSnapshot?.name || null,
       attachment_size: pendingAttachmentSnapshot?.size || null,
+      reply_to_id,
+      reply_to_text,
+      reply_to_sender,
+      forwarded: false,
       created_at: new Date().toISOString(),
       deleted_at: null,
     };
     setMessages((prev) => [...prev, optimisticMessage]);
     playSendSound();
+    setReplyTarget(null);
 
     if (pendingAttachmentSnapshot?.previewUrl) URL.revokeObjectURL(pendingAttachmentSnapshot.previewUrl);
     setPendingAttachment(null);
@@ -349,6 +421,9 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         attachmentType: attachment_type,
         attachmentName: attachment_name,
         attachmentSize: attachment_size,
+        replyToId: reply_to_id,
+        replyToText: reply_to_text,
+        replyToSender: reply_to_sender,
       });
 
       // Happy path: the insert's .select() came back with a real row —
@@ -388,6 +463,101 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     if (!window.confirm(`Leave "${group.name}"?`)) return;
     await leaveGroup(group.id, currentUser);
     onBack();
+  };
+
+  // ── Reply ──
+  const startReply = (m) => {
+    setReplyTarget(m);
+    inputRef.current?.focus();
+  };
+
+  const cancelReply = () => setReplyTarget(null);
+
+  // ── Forward ──
+  const openForward = (message) => {
+    setForwardTarget(message);
+    setForwardQuery("");
+    setForwardResults([]);
+    setForwardedTo(null);
+  };
+
+  const closeForward = () => {
+    if (forwarding) return;
+    setForwardTarget(null);
+    setForwardQuery("");
+    setForwardResults([]);
+    setForwardedTo(null);
+  };
+
+  // Forwards forwardTarget out of the group and into a 1:1 conversation
+  // with targetUsername, creating that conversation first if it doesn't
+  // exist yet.
+  const forwardToUser = async (targetUsername) => {
+    if (!forwardTarget || forwarding) return;
+    setForwarding(true);
+
+    const [user_a, user_b] = [currentUser, targetUsername].sort();
+
+    let { data: convo } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("user_a", user_a)
+      .eq("user_b", user_b)
+      .maybeSingle();
+
+    if (!convo) {
+      const { data: created } = await supabase
+        .from("conversations")
+        .insert({ user_a, user_b })
+        .select()
+        .single();
+      convo = created;
+    }
+
+    if (!convo) {
+      setForwarding(false);
+      alert("Couldn't start that conversation. Please try again.");
+      return;
+    }
+
+    const { error } = await supabase.from("direct_messages").insert({
+      conversation_id: convo.id,
+      sender_username: currentUser,
+      text: forwardTarget.text || null,
+      attachment_url: forwardTarget.attachment_url || null,
+      attachment_type: forwardTarget.attachment_type || null,
+      attachment_name: forwardTarget.attachment_name || null,
+      attachment_size: forwardTarget.attachment_size || null,
+      forwarded: true,
+    });
+
+    if (error) {
+      setForwarding(false);
+      alert(`Failed to forward message: ${error.message || "please try again."}`);
+      return;
+    }
+
+    const previewText =
+      forwardTarget.text ||
+      attachmentPreviewLabel(forwardTarget.attachment_type, forwardTarget.attachment_name);
+    await supabase
+      .from("conversations")
+      .update({
+        last_message: previewText,
+        last_message_at: new Date().toISOString(),
+        last_message_sender: currentUser,
+      })
+      .eq("id", convo.id);
+
+    setForwarding(false);
+    setForwardedTo(targetUsername);
+    // Brief confirmation, then close the picker.
+    setTimeout(() => {
+      setForwardTarget(null);
+      setForwardQuery("");
+      setForwardResults([]);
+      setForwardedTo(null);
+    }, 900);
   };
 
   const typingLabel = formatTypingLabel(typingUsers);
@@ -454,37 +624,74 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         ) : (
           messages.map((m) => {
             const mine = m.sender_username === currentUser;
+            const hasContent = !!(m.text || m.attachment_url);
             return (
               <div key={m.id} className={`gcw-bubble-row ${mine ? "mine" : ""}`}>
-                <div className="gcw-bubble">
-                  {!mine && <div className="gcw-sender-name">{m.sender_username}</div>}
-                  {m.deleted_at ? (
-                    <span className="gcw-deleted-text">🚫 This message was deleted</span>
-                  ) : (
-                    <>
-                      {m.attachment_url && m.attachment_type === "image" && (
-                        <img
-                          src={m.attachment_url}
-                          alt="attachment"
-                          className="gcw-bubble-image"
-                          onClick={() => window.open(m.attachment_url, "_blank")}
-                        />
-                      )}
-                      {m.attachment_url && m.attachment_type === "video" && (
-                        <video src={m.attachment_url} controls className="gcw-bubble-video" />
-                      )}
-                      {m.attachment_url && m.attachment_type === "file" && (
-                        <a href={m.attachment_url} target="_blank" rel="noopener noreferrer" className="gcw-bubble-file">
-                          📎 {m.attachment_name || "Attachment"}
-                        </a>
-                      )}
-                      {m.text && <span>{renderGroupMessageText(m.text, mine)}</span>}
-                      {m.text && extractFirstUrl(m.text) && (
-                        <LinkPreviewCard url={extractFirstUrl(m.text)} mine={mine} classPrefix="gcw" />
-                      )}
-                      <span className="gcw-bubble-time">{timeShort(m.created_at)}</span>
-                    </>
+                <div className="gcw-bubble-stack">
+                  {!m.deleted_at && hasContent && (
+                    <div className="gcw-bubble-actions">
+                      <button
+                        type="button"
+                        className="gcw-bubble-action-btn"
+                        onClick={() => startReply(m)}
+                        aria-label="Reply"
+                        title="Reply"
+                      >
+                        ↩
+                      </button>
+                      <button
+                        type="button"
+                        className="gcw-bubble-action-btn"
+                        onClick={() => openForward(m)}
+                        aria-label="Forward"
+                        title="Forward"
+                      >
+                        ➡
+                      </button>
+                    </div>
                   )}
+
+                  <div className="gcw-bubble">
+                    {!mine && <div className="gcw-sender-name">{m.sender_username}</div>}
+                    {m.deleted_at ? (
+                      <span className="gcw-deleted-text">🚫 This message was deleted</span>
+                    ) : (
+                      <>
+                        {m.forwarded && <div className="gcw-forwarded-tag">↪ Forwarded</div>}
+
+                        {m.reply_to_id && (
+                          <div className={`gcw-reply-quote ${mine ? "mine" : ""}`}>
+                            <span className="gcw-reply-quote-sender">
+                              {m.reply_to_sender === currentUser ? "You" : m.reply_to_sender}
+                            </span>
+                            <span className="gcw-reply-quote-text">{m.reply_to_text}</span>
+                          </div>
+                        )}
+
+                        {m.attachment_url && m.attachment_type === "image" && (
+                          <img
+                            src={m.attachment_url}
+                            alt="attachment"
+                            className="gcw-bubble-image"
+                            onClick={() => window.open(m.attachment_url, "_blank")}
+                          />
+                        )}
+                        {m.attachment_url && m.attachment_type === "video" && (
+                          <video src={m.attachment_url} controls className="gcw-bubble-video" />
+                        )}
+                        {m.attachment_url && m.attachment_type === "file" && (
+                          <a href={m.attachment_url} target="_blank" rel="noopener noreferrer" className="gcw-bubble-file">
+                            📎 {m.attachment_name || "Attachment"}
+                          </a>
+                        )}
+                        {m.text && <span>{renderGroupMessageText(m.text, mine)}</span>}
+                        {m.text && extractFirstUrl(m.text) && (
+                          <LinkPreviewCard url={extractFirstUrl(m.text)} mine={mine} classPrefix="gcw" />
+                        )}
+                        <span className="gcw-bubble-time">{timeShort(m.created_at)}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -493,6 +700,30 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         {typingUsers.size > 0 && <TypingBubble />}
         <div ref={bottomRef} />
       </div>
+
+      {replyTarget && (
+        <div className="gcw-reply-preview">
+          <div className="gcw-reply-preview-bar" />
+          <div className="gcw-reply-preview-content">
+            <span className="gcw-reply-preview-sender">
+              Replying to {replyTarget.sender_username === currentUser ? "yourself" : replyTarget.sender_username}
+            </span>
+            <span className="gcw-reply-preview-text">
+              {replyTarget.text
+                ? replyTarget.text.slice(0, 80)
+                : attachmentPreviewLabel(replyTarget.attachment_type, replyTarget.attachment_name)}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="gcw-reply-preview-close"
+            onClick={cancelReply}
+            aria-label="Cancel reply"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {pendingAttachment && (
         <div className="gcw-pending-attachment">
@@ -508,6 +739,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileSelect} />
         <button className="gcw-icon-btn" onClick={() => fileInputRef.current?.click()}>📎</button>
         <input
+          ref={inputRef}
           className="gcw-text-input"
           placeholder="Type a message…"
           value={text}
@@ -521,6 +753,56 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
           ➤
         </button>
       </div>
+
+      {forwardTarget && (
+        <div className="gcw-overlay" onClick={closeForward}>
+          <div className="gcw-forward-panel" onClick={(e) => e.stopPropagation()}>
+            <h3 className="gcw-forward-title">Forward message</h3>
+            <p className="gcw-forward-preview">
+              {forwardTarget.text
+                ? `"${forwardTarget.text.slice(0, 80)}"`
+                : attachmentPreviewLabel(forwardTarget.attachment_type, forwardTarget.attachment_name)}
+            </p>
+
+            {forwardedTo ? (
+              <p className="gcw-forward-success">✓ Forwarded to {forwardedTo}</p>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  className="gcw-forward-search"
+                  placeholder="Search people…"
+                  value={forwardQuery}
+                  onChange={(e) => setForwardQuery(e.target.value)}
+                  autoFocus
+                />
+                <div className="gcw-forward-results">
+                  {searchingForward ? (
+                    <p className="gcw-empty gcw-empty-small">Searching…</p>
+                  ) : forwardQuery.trim() && forwardResults.length === 0 ? (
+                    <p className="gcw-empty gcw-empty-small">No matches</p>
+                  ) : (
+                    forwardResults.map((p) => (
+                      <div
+                        key={p.username}
+                        className="gcw-forward-result-row"
+                        onClick={() => !forwarding && forwardToUser(p.username)}
+                        style={{ opacity: forwarding ? 0.6 : 1, cursor: forwarding ? "default" : "pointer" }}
+                      >
+                        <div className="gcw-avatar-sm">{p.username.slice(0, 2).toUpperCase()}</div>
+                        <span>{p.username}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <button className="gcw-forward-cancel" onClick={closeForward} disabled={forwarding}>
+                  {forwarding ? "Forwarding…" : "Cancel"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

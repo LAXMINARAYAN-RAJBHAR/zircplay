@@ -104,6 +104,12 @@ export const markGroupRead = async (groupId, username) => {
 // is why sent messages only ever showed up after a refresh or whenever
 // the realtime event happened to arrive. Now returns the inserted row
 // so the UI can show the message immediately.
+//
+// Reply support: replyToId/replyToText/replyToSender are optional and
+// map to the reply_to_id / reply_to_text / reply_to_sender columns on
+// group_messages, mirroring the same pattern used for direct_messages
+// in MessagesPanel.jsx. All three are omitted (stored as null) for a
+// message that isn't a reply.
 export const sendGroupMessage = async ({
   groupId,
   senderUsername,
@@ -112,6 +118,9 @@ export const sendGroupMessage = async ({
   attachmentType,
   attachmentName,
   attachmentSize,
+  replyToId,
+  replyToText,
+  replyToSender,
 }) => {
   const { data, error } = await supabase
     .from("group_messages")
@@ -123,6 +132,9 @@ export const sendGroupMessage = async ({
       attachment_type: attachmentType || null,
       attachment_name: attachmentName || null,
       attachment_size: attachmentSize || null,
+      reply_to_id: replyToId || null,
+      reply_to_text: replyToText || null,
+      reply_to_sender: replyToSender || null,
     })
     .select()
     .single();
