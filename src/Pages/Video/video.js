@@ -943,7 +943,17 @@ const Video = ({ sideNavbar }) => {
             autoPlay
             muted={false}
             playsInline
-            crossOrigin="anonymous"
+            // REMOVED: crossOrigin="anonymous" — this was forcing the
+            // browser to fetch the video in CORS mode, which requires R2
+            // to send a matching Access-Control-Allow-Origin header on
+            // every GET request. R2 isn't configured for that the way
+            // Cloudinary was, so every single video request was being
+            // blocked before playback could even start — this is what
+            // produced the universal "This video could not be played"
+            // error across ALL videos, old and new. crossOrigin is only
+            // needed for pixel-level access (e.g. drawing frames to a
+            // <canvas>), which nothing in this component does — plain
+            // <video controls> playback doesn't require it at all.
             controlsList="nodownload noplaybackrate"
             onContextMenu={(e) => e.preventDefault()}
             className="video_youtube_video"
