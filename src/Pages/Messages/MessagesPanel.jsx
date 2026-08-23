@@ -193,6 +193,16 @@ const REPORT_REASONS = [
   "Other",
 ];
 
+// Short label used for a reply/forward preview when the source message
+// has no text (e.g. it's an attachment-only message).
+const attachmentPreviewLabel = (type, name) => {
+  if (type === "image") return "📷 Photo";
+  if (type === "video") return "🎥 Video";
+  if (type === "voice") return "🎤 Voice message";
+  if (type === "file") return `📎 ${name || "Attachment"}`;
+  return "Message";
+};
+
 const timeAgo = (dateStr) => {
   if (!dateStr) return "";
   const diff = (Date.now() - new Date(dateStr)) / 1000;
@@ -357,6 +367,18 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const [openReactionFor, setOpenReactionFor] = useState(null); // message id
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
+
+  // ── Reply ──
+  // The message currently being replied to (shown as a preview above the
+  // input, and attached to the outgoing message via reply_to_* columns).
+  const [replyTarget, setReplyTarget] = useState(null);
+
+  // ── Forward ──
+  // The message currently being forwarded (shown in a picker overlay so
+  // the user can choose which conversation to send it to).
+  const [forwardTarget, setForwardTarget] = useState(null);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [forwarding, setForwarding] = useState(false);
 
   // ── Reporting ──
   const [reportTarget, setReportTarget] = useState(null); // message object being reported
@@ -801,6 +823,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       return;
     }
 
+    // Switching conversations invalidates any in-progress reply — the
+    // quoted message belongs to the conversation we're leaving.
+    setReplyTarget(null);
+
     let active = true;
 
     const loadOrCreate = async () => {
@@ -1184,6 +1210,20 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       return;
     }
 
+    // If replying, snapshot a short preview of the quoted message now —
+    // storing it directly on the new row means the quote still renders
+    // correctly even if the original message is edited or deleted later.
+    const reply_to_id = replyTarget?.id || null;
+    const reply_to_sender = replyTarget?.sender_username || null;
+    const reply_to_text = replyTarget
+      ? replyTarget.text
+        ? replyTarget.text.slice(0, 120)
+        : attachmentPreviewLabel(
+            replyTarget.attachment_type,
+            replyTarget.attachment_name,
+          )
+      : null;
+
     // .select().single() hands back the inserted row so we can show it
     // immediately instead of waiting on the Realtime broadcast to echo
     // it back — that round trip is what made sent messages feel delayed.
@@ -1197,6 +1237,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         attachment_type,
         attachment_name,
         attachment_size,
+        reply_to_id,
+        reply_to_text,
+        reply_to_sender,
       })
       .select()
       .single();
@@ -1206,6 +1249,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted],
       );
       playSendSound();
+      setReplyTarget(null);
 
       // Force the scroll on the very next frame instead of relying only
       // on the `messages`-effect above. On mobile, sending a message
@@ -1221,13 +1265,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
       const previewText =
         trimmed ||
-        (attachment_type === "image"
-          ? "📷 Photo"
-          : attachment_type === "video"
-            ? "🎥 Video"
-            : attachment_type === "voice"
-              ? "🎤 Voice message"
-              : `📎 ${attachment_name || "Attachment"}`);
+        attachmentPreviewLabel(attachment_type, attachment_name);
       await supabase
         .from("conversations")
         .update({
@@ -1351,6 +1389,107 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       .eq("id", message.id);
   };
 
+  // ── Reply ──
+  const startReply = (m) => {
+    setReplyTarget(m);
+    setOpenReactionFor(null);
+    inputRef.current?.focus();
+  };
+
+  const cancelReply = () => setReplyTarget(null);
+
+  // ── Forward ──
+  const openForward = (message) => {
+    setForwardTarget(message);
+    setForwardSearch("");
+    setOpenReactionFor(null);
+  };
+
+  const closeForward = () => {
+    if (forwarding) return;
+    setForwardTarget(null);
+    setForwardSearch("");
+  };
+
+  // Forwards forwardTarget into the conversation with targetUsername,
+  // creating that conversation first if it doesn't exist yet (same
+  // load-or-create pattern used when opening a chat).
+  const forwardToConversation = async (targetUsername) => {
+    if (!forwardTarget || forwarding) return;
+    setForwarding(true);
+
+    const [user_a, user_b] = [currentUser, targetUsername].sort();
+
+    let { data: convo } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("user_a", user_a)
+      .eq("user_b", user_b)
+      .maybeSingle();
+
+    if (!convo) {
+      const { data: created } = await supabase
+        .from("conversations")
+        .insert({ user_a, user_b })
+        .select()
+        .single();
+      convo = created;
+    }
+
+    if (!convo) {
+      setForwarding(false);
+      alert("Couldn't start that conversation. Please try again.");
+      return;
+    }
+
+    const { data: inserted, error } = await supabase
+      .from("direct_messages")
+      .insert({
+        conversation_id: convo.id,
+        sender_username: currentUser,
+        text: forwardTarget.text || null,
+        attachment_url: forwardTarget.attachment_url || null,
+        attachment_type: forwardTarget.attachment_type || null,
+        attachment_name: forwardTarget.attachment_name || null,
+        attachment_size: forwardTarget.attachment_size || null,
+        forwarded: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      setForwarding(false);
+      alert(`Failed to forward message: ${error.message || "please try again."}`);
+      return;
+    }
+
+    const previewText = attachmentPreviewLabel(
+      forwardTarget.attachment_type,
+      forwardTarget.attachment_name,
+    );
+    await supabase
+      .from("conversations")
+      .update({
+        last_message: forwardTarget.text || previewText,
+        last_message_at: new Date().toISOString(),
+        last_message_sender: currentUser,
+      })
+      .eq("id", convo.id);
+
+    // If we forwarded into the conversation that's already open, show it
+    // immediately instead of waiting on the Realtime echo.
+    if (activeConvo?.id === convo.id) {
+      setMessages((prev) =>
+        prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted],
+      );
+    }
+
+    fetchConversations();
+    setForwarding(false);
+    setForwardTarget(null);
+    setForwardSearch("");
+  };
+
   // ── Reporting ──
   const openReport = (message) => {
     setReportTarget(message);
@@ -1428,6 +1567,13 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const newProfileResults = profileResults.filter(
     (p) => !existingUsernames.has(p.username),
   );
+
+  const normalizedForwardSearch = forwardSearch.trim().toLowerCase();
+  const forwardableConversations = normalizedForwardSearch
+    ? conversations.filter((c) =>
+        getOtherUser(c).toLowerCase().includes(normalizedForwardSearch),
+      )
+    : conversations;
 
   const startChatWith = (username) => {
     setInboxSearch("");
@@ -1805,6 +1951,7 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                         const reactionEntries = Object.entries(
                           m.reactions || {},
                         ).filter(([, users]) => users.length > 0);
+                        const hasContent = !!(m.text || m.attachment_url);
 
                         return (
                           <div
@@ -1826,6 +1973,28 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                   >
                                     🙂
                                   </button>
+                                  {hasContent && (
+                                    <button
+                                      type="button"
+                                      className="mp-bubble-action-btn"
+                                      onClick={() => startReply(m)}
+                                      aria-label="Reply"
+                                      title="Reply"
+                                    >
+                                      ↩
+                                    </button>
+                                  )}
+                                  {hasContent && (
+                                    <button
+                                      type="button"
+                                      className="mp-bubble-action-btn"
+                                      onClick={() => openForward(m)}
+                                      aria-label="Forward"
+                                      title="Forward"
+                                    >
+                                      ➡
+                                    </button>
+                                  )}
                                   {mine && m.text && !m.attachment_url && (
                                     <button
                                       type="button"
@@ -1922,6 +2091,27 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                   </div>
                                 ) : (
                                   <>
+                                    {m.forwarded && (
+                                      <div className="mp-forwarded-tag">
+                                        ↪ Forwarded
+                                      </div>
+                                    )}
+
+                                    {m.reply_to_id && (
+                                      <div
+                                        className={`mp-reply-quote ${mine ? "mine" : ""}`}
+                                      >
+                                        <span className="mp-reply-quote-sender">
+                                          {m.reply_to_sender === currentUser
+                                            ? "You"
+                                            : m.reply_to_sender}
+                                        </span>
+                                        <span className="mp-reply-quote-text">
+                                          {m.reply_to_text}
+                                        </span>
+                                      </div>
+                                    )}
+
                                     {m.attachment_url &&
                                       m.attachment_type === "image" && (
                                         <img
@@ -2066,6 +2256,36 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                     {otherTyping && <TypingBubble />}
                     <div ref={bottomRef} />
                   </div>
+
+                  {replyTarget && (
+                    <div className="mp-reply-preview">
+                      <div className="mp-reply-preview-bar" />
+                      <div className="mp-reply-preview-content">
+                        <span className="mp-reply-preview-sender">
+                          Replying to{" "}
+                          {replyTarget.sender_username === currentUser
+                            ? "yourself"
+                            : replyTarget.sender_username}
+                        </span>
+                        <span className="mp-reply-preview-text">
+                          {replyTarget.text
+                            ? replyTarget.text.slice(0, 80)
+                            : attachmentPreviewLabel(
+                                replyTarget.attachment_type,
+                                replyTarget.attachment_name,
+                              )}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="mp-reply-preview-close"
+                        onClick={cancelReply}
+                        aria-label="Cancel reply"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
 
                   {pendingAttachment && (
                     <div className="mp-pending-attachment">
@@ -2238,6 +2458,93 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             else openBroadcast({ ...data, broadcast_recipients: [] });
           }}
         />
+      )}
+
+      {forwardTarget && (
+        <div
+          className="mp-overlay"
+          onClick={closeForward}
+          style={{ zIndex: 999999 }}
+        >
+          <div
+            className="mp-panel mp-panel-login"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 380 }}
+          >
+            <div style={{ padding: 24 }}>
+              <h3 style={{ marginTop: 0 }}>Forward message</h3>
+              <p style={{ fontSize: 13, color: "var(--zx-text3)" }}>
+                {forwardTarget.text
+                  ? `"${forwardTarget.text.slice(0, 80)}"`
+                  : attachmentPreviewLabel(
+                      forwardTarget.attachment_type,
+                      forwardTarget.attachment_name,
+                    )}
+              </p>
+              <input
+                type="text"
+                placeholder="Search people…"
+                value={forwardSearch}
+                onChange={(e) => setForwardSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  marginBottom: 12,
+                  borderRadius: 8,
+                  border: "1px solid var(--zx-border)",
+                  boxSizing: "border-box",
+                }}
+              />
+              <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                {forwardableConversations.length === 0 ? (
+                  <p style={{ fontSize: 13, color: "var(--zx-text3)" }}>
+                    No conversations found.
+                  </p>
+                ) : (
+                  forwardableConversations.map((c) => {
+                    const other = getOtherUser(c);
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() =>
+                          !forwarding && forwardToConversation(other)
+                        }
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "8px 4px",
+                          cursor: forwarding ? "default" : "pointer",
+                          opacity: forwarding ? 0.6 : 1,
+                        }}
+                      >
+                        <div className="mp-convo-avatar">
+                          {other.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span>{other}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <button
+                onClick={closeForward}
+                disabled={forwarding}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  background: "none",
+                  border: "1px solid var(--zx-border)",
+                  borderRadius: 8,
+                  padding: 10,
+                  cursor: forwarding ? "not-allowed" : "pointer",
+                }}
+              >
+                {forwarding ? "Forwarding…" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {reportTarget && (
