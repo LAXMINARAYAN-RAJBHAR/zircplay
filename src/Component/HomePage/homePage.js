@@ -3410,14 +3410,7 @@ const HomePage = ({ sideNavbar }) => {
           id: "db_" + r.id,
           dbId: r.id,
           src: r.video_url,
-          // FIX: was a hardcoded `?random=99` — picsum's `random` param is
-          // NOT actually random per load, it's a deterministic seed. Every
-          // reel missing a real thumbnail was getting the exact same
-          // fallback photo, which is why the trending carousel showed the
-          // same mountain/lake image repeated across multiple different
-          // reels. Seeding with the reel's own id gives each one a
-          // distinct (still fake, but at least not identical) placeholder.
-          thumbnail: r.thumbnail || `https://picsum.photos/200/350?random=${r.id}`,
+          thumbnail: r.thumbnail || "https://picsum.photos/200/350?random=99",
           title: r.title || "Untitled",
           duration: r.duration || "00:00",
           user: r.user || r.username || "Unknown",
@@ -3449,11 +3442,7 @@ const HomePage = ({ sideNavbar }) => {
             id: "db_" + r.id,
             dbId: r.id,
             src: r.video_url,
-            // FIX: same reasoning as fetchDbReels above — seed with this
-            // reel's own id instead of a hardcoded number, so a freshly
-            // inserted reel without a thumbnail doesn't share the exact
-            // same fallback photo as every other thumbnail-less reel.
-            thumbnail: r.thumbnail || `https://picsum.photos/200/350?random=${r.id}`,
+            thumbnail: r.thumbnail || "https://picsum.photos/200/350?random=99",
             title: r.title || "Untitled",
             duration: r.duration || "00:00",
             user: r.user || r.username || "Unknown",
