@@ -459,10 +459,11 @@ const VideoUpload = () => {
         ? `Post ${banner?.emoji}`
         : `Upload ${uploadMode === "reel" ? "Reel" : "Video"}`;
 
-  // The image shown to the user for confirmation: prefer the real
-  // (server) thumbnail once it's ready, otherwise fall back to the
-  // local blob preview so a preview is ALWAYS shown post-upload.
-  const displayThumb = inputField.thumbnail || localPreviewUrl;
+  // The server-generated thumbnail is a real IMAGE and can go through
+  // an <img> tag. localPreviewUrl is a blob URL of the VIDEO FILE itself
+  // (not an image) — it must be rendered with a <video> element, never
+  // <img>, or the browser shows a broken-image icon.
+  const hasServerThumb = !!inputField.thumbnail;
 
   if (submitted) return (
     <div className="videoUpload">
@@ -476,7 +477,7 @@ const VideoUpload = () => {
               {banner?.emoji} {banner?.label} {banner?.by}
             </p>
           )}
-          <video src={inputField.videoLink} poster={displayThumb} controls className="upload_success_preview" />
+          <video src={inputField.videoLink} poster={inputField.thumbnail || undefined} controls className="upload_success_preview" />
           <h3>{inputField.title}</h3>
           <p className="upload_success_meta">
             {uploadMode === "video" && !isFeatureMode ? `${inputField.videoType} • ` : ""}
@@ -587,13 +588,23 @@ const VideoUpload = () => {
             {thumbLoader && <CircularProgress size={20} sx={{ color:"orange", ml:1 }} />}
           </div>
 
-          {displayThumb && (
+          {(hasServerThumb || localPreviewUrl) && (
             <div className="upload_thumb_row">
-              <img src={displayThumb} alt="Thumbnail preview" className="upload_thumb_preview" />
+              {hasServerThumb ? (
+                <img src={inputField.thumbnail} alt="Thumbnail preview" className="upload_thumb_preview" />
+              ) : (
+                <video
+                  src={localPreviewUrl}
+                  className="upload_thumb_preview"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              )}
               <span style={{ color:"#888", fontSize:"0.78rem", marginTop:"4px" }}>
                 {thumbSource === "manual"
                   ? "✏️ Custom thumbnail"
-                  : inputField.thumbnail
+                  : hasServerThumb
                     ? "🎞️ Auto-captured from video"
                     : "📼 Preview (auto thumbnail pending/unavailable)"}
               </span>
