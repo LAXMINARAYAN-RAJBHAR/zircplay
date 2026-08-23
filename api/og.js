@@ -158,19 +158,26 @@ export default async function handler(req) {
       // since our live URLs (/video/:id, /reels/db_:id) use the real
       // id, but some rows may only have short_id populated.
       //
-      // FIX: only compare against the `id` column when the requested id
-      // actually looks numeric. `id` is a bigint/int column, so trying
-      // `id.eq.<alphanumeric short_id>` (e.g. "b1bZGDMmzY") makes
-      // Postgres throw a type-cast error — which fails the WHOLE OR
-      // query (returns a non-2xx response), even though `short_id.eq.`
-      // alone would have matched fine. This was silently breaking every
-      // share link that used an alphanumeric short_id for a video/reel,
-      // falling all the way through to the generic fallback card.
+      // FIX: `id` is a uuid column, so trying `id.eq.<value>` with a
+      // value that isn't a valid UUID (e.g. an alphanumeric short_id
+      // like "b1bZGDMmzY") makes Postgres throw a type-cast error —
+      // which fails the WHOLE OR query, even though `short_id.eq.`
+      // alone would have matched fine. So: only include the id.eq.
+      // comparison when the requested id actually looks like a UUID.
+      //
+      // Also note the standalone (non-OR) filter below uses
+      // `short_id=eq.value` (an "=" separating column and operator) —
+      // NOT `short_id.eq.value` (a "."). The dot form is only valid
+      // *inside* an or(...) wrapper; used bare as a top-level query
+      // param it isn't recognized by PostgREST and silently applies no
+      // filter at all, which is what caused the wrong reel to be
+      // returned in testing.
       const table = type === "reel" ? "reels" : "videos";
-      const isNumericId = /^\d+$/.test(id);
-      const filter = isNumericId
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUuid = UUID_RE.test(id);
+      const filter = isUuid
         ? `or=(id.eq.${encodeURIComponent(id)},short_id.eq.${encodeURIComponent(id)})`
-        : `short_id.eq.${encodeURIComponent(id)}`;
+        : `short_id=eq.${encodeURIComponent(id)}`;
 
       const res = await fetchWithTimeout(
         `${SUPABASE_URL}/rest/v1/${table}?${filter}&select=*`,
