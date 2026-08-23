@@ -148,6 +148,16 @@ export async function uploadAttachmentToR2(file, onProgress) {
 
 /**
  * Builds a transformed image URL from a base R2 media URL.
+ *
+ * NOTE on `format`: this defaults to "webp" for general-purpose image
+ * use (avatars, banners, post images), since webp is smaller and every
+ * modern browser renders it fine as a normal <img>. BUT: anything that
+ * will be used as an og:image for shared links (video/reel thumbnails
+ * in particular) must explicitly pass format: "jpeg" — WhatsApp's
+ * link-preview crawler does not render webp og:image and will just
+ * show no image at all (title/description still show up fine, which
+ * makes this bug easy to miss). See PRESETS.videoThumbnail below.
+ *
  * @param {string} baseUrl
  * @param {object} opts
  * @param {number} [opts.width]
@@ -171,9 +181,14 @@ export function buildTransformUrl(baseUrl, opts = {}) {
 }
 
 // Common presets so components don't repeat the same width/height everywhere.
+// NOTE: videoThumbnail is intentionally "jpeg", not "webp". These
+// thumbnails get used as og:image for shared links, and WhatsApp's
+// link-preview crawler does not render webp — it silently shows no
+// image at all (title/description still work, image doesn't). jpeg
+// is safe across WhatsApp, Facebook, Twitter, etc.
 export const PRESETS = {
   avatar: { width: 150, height: 150, fit: "cover", format: "webp" },
   banner: { width: 1200, height: 300, fit: "cover", format: "webp" },
   postImage: { width: 800, format: "webp", quality: 85 },
-  videoThumbnail: { width: 400, height: 225, fit: "cover", format: "webp" },
+  videoThumbnail: { width: 400, height: 225, fit: "cover", format: "jpeg" },
 };

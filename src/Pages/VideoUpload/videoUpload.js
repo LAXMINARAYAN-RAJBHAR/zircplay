@@ -227,7 +227,10 @@ const VideoUpload = () => {
   const uploadThumbnail = async (blob) => {
     const file = new File([blob], "thumbnail.jpg", { type: "image/jpeg" });
     const { url } = await uploadToR2(file);
-    const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover" });
+    // format: "jpeg" is required here (not the default "webp") because this
+    // thumbnail becomes the og:image for shared video/reel links, and
+    // WhatsApp's link-preview crawler does not render webp images.
+    const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover", format: "jpeg" });
     return transformedUrl;
   };
 
@@ -295,7 +298,9 @@ const VideoUpload = () => {
     if (!files || files.length === 0) { setThumbLoader(false); return; }
     try {
       const { url } = await uploadToR2(files[0]);
-      const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover" });
+      // format: "jpeg" — same reasoning as uploadThumbnail() above, this
+      // also ends up as the shared-link og:image.
+      const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover", format: "jpeg" });
       setInputField((prev) => ({ ...prev, thumbnail: transformedUrl }));
       setImageUploaded(true); setThumbSource("manual"); setThumbLoader(false);
     } catch (err) {
