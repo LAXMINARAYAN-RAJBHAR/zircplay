@@ -87,11 +87,17 @@ const VideoUpload = () => {
   const [uploadProgress,  setUploadProgress]  = useState(0);
   const [uploadSpeed,     setUploadSpeed]     = useState(0);
   const [timeRemaining,   setTimeRemaining]   = useState("");
+  // ── Local, client-side preview of the picked video file. This is
+  // independent of server-side thumbnail capture/upload, so the user
+  // always gets a visual "your video is in" confirmation the moment
+  // it finishes uploading — even if auto thumbnail capture fails. ──
+  const [localPreviewUrl, setLocalPreviewUrl] = useState("");
 
   const uploadStartTime  = useRef(null);
   const uploadedBytesRef = useRef(0);
   const durationRef      = useRef("00:00");
   const wakeLockRef      = useRef(null);
+  const localPreviewRef  = useRef(""); // mirrors localPreviewUrl for safe cleanup
 
   const requestWakeLock = async () => {
     try {
@@ -112,6 +118,19 @@ const VideoUpload = () => {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [loader]);
 
+  // Revoke any local blob preview URL on unmount to avoid leaking memory.
+  useEffect(() => {
+    return () => {
+      if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
+    };
+  }, []);
+
+  const clearLocalPreview = () => {
+    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
+    localPreviewRef.current = "";
+    setLocalPreviewUrl("");
+  };
+
   const resetState = () => {
     setInputField({ ...INITIAL_FIELDS });
     setVideoUploaded(false);
@@ -124,6 +143,7 @@ const VideoUpload = () => {
     uploadStartTime.current  = null;
     uploadedBytesRef.current = 0;
     durationRef.current      = "00:00";
+    clearLocalPreview();
   };
 
   const switchMode = (mode) => { setUploadMode(mode); resetState(); };
@@ -165,7 +185,6 @@ const VideoUpload = () => {
     video.preload    = "auto";
     video.muted      = true;
     video.playsInline = true;
-    video.crossOrigin = "anonymous";
     let settled = false;
     const cleanup = () => URL.revokeObjectURL(video.src);
     const finish  = (result, err) => {
@@ -195,7 +214,11 @@ const VideoUpload = () => {
       else setTimeout(grabFrame, 200);
     };
     video.onerror = () => finish(null, new Error("Failed to load video for thumbnail."));
-    setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 8000);
+    // Slightly shorter timeout so the UI doesn't feel stuck waiting on a
+    // capture that's going to fail on this browser anyway — the local
+    // preview (set immediately on file pick) already covers the user-facing
+    // confirmation regardless of how this resolves.
+    setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 6000);
     video.src = URL.createObjectURL(file);
     video.load();
   });
@@ -222,6 +245,15 @@ const VideoUpload = () => {
     if (!files || files.length === 0) { setLoader(false); return; }
     const file = files[0];
     if (file.size > 4 * 1024 * 1024 * 1024) { setError("File too large. Maximum size is 4GB."); setLoader(false); return; }
+
+    // Show a confirmation preview immediately from the local file — this
+    // does not depend on captureThumbnail() or any network call, so it
+    // always shows up the moment the upload finishes.
+    clearLocalPreview();
+    const localUrl = URL.createObjectURL(file);
+    localPreviewRef.current = localUrl;
+    setLocalPreviewUrl(localUrl);
+
     try {
       const [, thumbnailBlob] = await Promise.all([
         getVideoDuration(file),
@@ -239,9 +271,11 @@ const VideoUpload = () => {
           thumbnailUrl = await uploadThumbnail(thumbnailBlob);
           setThumbSource("auto");
         } else {
-          // Client-side capture failed — no Cloudinary fallback anymore.
-          // Leave thumbnail as-is; user can still set one manually.
-          console.warn("No thumbnail available for this upload.");
+          // Server-side auto thumbnail capture failed (no Cloudinary
+          // fallback since the move to R2). We still have localPreviewUrl
+          // to show the user their video, so the confirmation preview
+          // isn't lost — it just won't be the DB thumbnail_url yet.
+          console.warn("Auto thumbnail capture failed; showing local preview instead.");
         }
       }
 
@@ -425,6 +459,11 @@ const VideoUpload = () => {
         ? `Post ${banner?.emoji}`
         : `Upload ${uploadMode === "reel" ? "Reel" : "Video"}`;
 
+  // The image shown to the user for confirmation: prefer the real
+  // (server) thumbnail once it's ready, otherwise fall back to the
+  // local blob preview so a preview is ALWAYS shown post-upload.
+  const displayThumb = inputField.thumbnail || localPreviewUrl;
+
   if (submitted) return (
     <div className="videoUpload">
       <div className="uploadBox">
@@ -437,7 +476,7 @@ const VideoUpload = () => {
               {banner?.emoji} {banner?.label} {banner?.by}
             </p>
           )}
-          <video src={inputField.videoLink} poster={inputField.thumbnail} controls className="upload_success_preview" />
+          <video src={inputField.videoLink} poster={displayThumb} controls className="upload_success_preview" />
           <h3>{inputField.title}</h3>
           <p className="upload_success_meta">
             {uploadMode === "video" && !isFeatureMode ? `${inputField.videoType} • ` : ""}
@@ -548,11 +587,15 @@ const VideoUpload = () => {
             {thumbLoader && <CircularProgress size={20} sx={{ color:"orange", ml:1 }} />}
           </div>
 
-          {inputField.thumbnail && (
+          {displayThumb && (
             <div className="upload_thumb_row">
-              <img src={inputField.thumbnail} alt="Thumbnail preview" className="upload_thumb_preview" />
+              <img src={displayThumb} alt="Thumbnail preview" className="upload_thumb_preview" />
               <span style={{ color:"#888", fontSize:"0.78rem", marginTop:"4px" }}>
-                {thumbSource === "manual" ? "✏️ Custom thumbnail" : "🎞️ Auto-captured from video"}
+                {thumbSource === "manual"
+                  ? "✏️ Custom thumbnail"
+                  : inputField.thumbnail
+                    ? "🎞️ Auto-captured from video"
+                    : "📼 Preview (auto thumbnail pending/unavailable)"}
               </span>
             </div>
           )}
