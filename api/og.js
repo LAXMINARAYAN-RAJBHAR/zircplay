@@ -157,9 +157,23 @@ export default async function handler(req) {
       // Video/reel: match on EITHER the real internal id or short_id,
       // since our live URLs (/video/:id, /reels/db_:id) use the real
       // id, but some rows may only have short_id populated.
+      //
+      // FIX: only compare against the `id` column when the requested id
+      // actually looks numeric. `id` is a bigint/int column, so trying
+      // `id.eq.<alphanumeric short_id>` (e.g. "b1bZGDMmzY") makes
+      // Postgres throw a type-cast error — which fails the WHOLE OR
+      // query (returns a non-2xx response), even though `short_id.eq.`
+      // alone would have matched fine. This was silently breaking every
+      // share link that used an alphanumeric short_id for a video/reel,
+      // falling all the way through to the generic fallback card.
       const table = type === "reel" ? "reels" : "videos";
+      const isNumericId = /^\d+$/.test(id);
+      const filter = isNumericId
+        ? `or=(id.eq.${encodeURIComponent(id)},short_id.eq.${encodeURIComponent(id)})`
+        : `short_id.eq.${encodeURIComponent(id)}`;
+
       const res = await fetchWithTimeout(
-        `${SUPABASE_URL}/rest/v1/${table}?or=(id.eq.${encodeURIComponent(id)},short_id.eq.${encodeURIComponent(id)})&select=*`,
+        `${SUPABASE_URL}/rest/v1/${table}?${filter}&select=*`,
         {
           headers: {
             apikey: SUPABASE_ANON_KEY,
