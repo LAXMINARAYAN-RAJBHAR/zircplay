@@ -64,9 +64,25 @@ const QUALITY_LABELS = {
 // ── Relative-time formatter for comment timestamps (e.g. "3h ago").
 //    Mirrors the helper used in Video.jsx so comment ages read
 //    consistently across posts, videos, and reels.
+//
+//    FIX: Supabase/Postgres `timestamp` (no timezone) columns come back
+//    as strings like "2024-06-01 10:00:00" — no "T", no "Z", no offset.
+//    `new Date(...)` parses a string in that shape as LOCAL time, not
+//    UTC, which silently shifts every relative time by the browser's
+//    UTC offset (e.g. showing "5h ago" for a comment posted seconds
+//    ago, for a user in UTC+5:30). If the string has no explicit
+//    timezone marker, we now treat it as UTC before parsing. Strings
+//    that already carry a "Z" or a numeric offset (i.e. a proper
+//    `timestamptz` column) pass through unchanged.
 const timeAgo = (dateStr) => {
   if (!dateStr) return "";
-  const date = new Date(dateStr);
+
+  let normalized = dateStr;
+  if (typeof normalized === "string" && !/[zZ]|[+-]\d\d:?\d\d$/.test(normalized)) {
+    normalized = normalized.replace(" ", "T") + "Z";
+  }
+
+  const date = new Date(normalized);
   if (isNaN(date)) return dateStr;
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
   if (diff < 60) return "just now";
