@@ -368,6 +368,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
 
+  // ── Per-message "⋮" action menu (Reply / Forward / Edit / Report / Delete) ──
+  const [openMenuFor, setOpenMenuFor] = useState(null); // message id
+
   // ── Reply ──
   // The message currently being replied to (shown as a preview above the
   // input, and attached to the outgoing message via reply_to_* columns).
@@ -630,6 +633,21 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openReactionFor]);
+
+  // Close the "⋮" action menu when clicking outside it
+  useEffect(() => {
+    if (!openMenuFor) return;
+    const handleClickOutside = (e) => {
+      if (
+        !e.target.closest(".mp-menu") &&
+        !e.target.closest(".mp-menu-trigger")
+      ) {
+        setOpenMenuFor(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openMenuFor]);
 
   // Close the "New" menu (New Group / New Broadcast) when clicking outside it
   useEffect(() => {
@@ -1964,68 +1982,100 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                   <button
                                     type="button"
                                     className="mp-bubble-action-btn mp-react-trigger"
-                                    onClick={() =>
+                                    onClick={() => {
                                       setOpenReactionFor(
                                         openReactionFor === m.id ? null : m.id,
-                                      )
-                                    }
+                                      );
+                                      setOpenMenuFor(null);
+                                    }}
                                     aria-label="React"
                                   >
                                     🙂
                                   </button>
-                                  {hasContent && (
+
+                                  <div className="mp-menu-wrap">
                                     <button
                                       type="button"
-                                      className="mp-bubble-action-btn"
-                                      onClick={() => startReply(m)}
-                                      aria-label="Reply"
-                                      title="Reply"
+                                      className="mp-bubble-action-btn mp-menu-trigger"
+                                      onClick={() => {
+                                        setOpenMenuFor(
+                                          openMenuFor === m.id ? null : m.id,
+                                        );
+                                        setOpenReactionFor(null);
+                                      }}
+                                      aria-label="More options"
+                                      title="More"
                                     >
-                                      ↩
+                                      ⋮
                                     </button>
-                                  )}
-                                  {hasContent && (
-                                    <button
-                                      type="button"
-                                      className="mp-bubble-action-btn"
-                                      onClick={() => openForward(m)}
-                                      aria-label="Forward"
-                                      title="Forward"
-                                    >
-                                      ➡
-                                    </button>
-                                  )}
-                                  {mine && m.text && !m.attachment_url && (
-                                    <button
-                                      type="button"
-                                      className="mp-bubble-action-btn"
-                                      onClick={() => startEdit(m)}
-                                      aria-label="Edit message"
-                                    >
-                                      ✎
-                                    </button>
-                                  )}
-                                  {!mine && (
-                                    <button
-                                      type="button"
-                                      className="mp-bubble-action-btn"
-                                      onClick={() => openReport(m)}
-                                      aria-label="Report message"
-                                      title="Report"
-                                    >
-                                      🚩
-                                    </button>
-                                  )}
-                                  {mine && (
-                                    <button
-                                      type="button"
-                                      className="mp-bubble-action-btn mp-delete-action-btn"
-                                      onClick={() => deleteMessage(m)}
-                                      aria-label="Delete message"
-                                    >
-                                      🗑
-                                    </button>
-                                  )}
+
+                                    {openMenuFor === m.id && (
+                                      <div
+                                        className={`mp-menu ${mine ? "mine" : ""}`}
+                                      >
+                                        {hasContent && (
+                                          <button
+                                            type="button"
+                                            className="mp-menu-item"
+                                            onClick={() => {
+                                              startReply(m);
+                                              setOpenMenuFor(null);
+                                            }}
+                                          >
+                                            ↩ Reply
+                                          </button>
+                                        )}
+                                        {hasContent && (
+                                          <button
+                                            type="button"
+                                            className="mp-menu-item"
+                                            onClick={() => {
+                                              openForward(m);
+                                              setOpenMenuFor(null);
+                                            }}
+                                          >
+                                            ➡ Forward
+                                          </button>
+                                        )}
+                                        {mine && m.text && !m.attachment_url && (
+                                          <button
+                                            type="button"
+                                            className="mp-menu-item"
+                                            onClick={() => {
+                                              startEdit(m);
+                                              setOpenMenuFor(null);
+                                            }}
+                                          >
+                                            ✎ Edit
+                                          </button>
+                                        )}
+                                        {!mine && (
+                                          <button
+                                            type="button"
+                                            className="mp-menu-item"
+                                            onClick={() => {
+                                              openReport(m);
+                                              setOpenMenuFor(null);
+                                            }}
+                                          >
+                                            🚩 Report
+                                          </button>
+                                        )}
+                                        {mine && (
+                                          <button
+                                            type="button"
+                                            className="mp-menu-item danger"
+                                            onClick={() => {
+                                              deleteMessage(m);
+                                              setOpenMenuFor(null);
+                                            }}
+                                          >
+                                            🗑 Delete
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               )}
 

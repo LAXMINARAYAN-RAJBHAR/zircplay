@@ -17,6 +17,15 @@ import { uploadAttachmentToR2 } from "../../utils/mediaUpload";
 const TYPING_STOP_DELAY_MS = 1500;
 const TYPING_AUTO_CLEAR_MS = 4000;
 
+// ── Report reasons (mirrors MessagesPanel's 1:1 report modal) ──
+const REPORT_REASONS = [
+  "Nudity or sexual content",
+  "Involves a minor",
+  "Harassment or threats",
+  "Spam",
+  "Other",
+];
+
 const timeShort = (dateStr) =>
   new Date(dateStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
@@ -103,6 +112,19 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [forwarding, setForwarding] = useState(false);
   const [forwardedTo, setForwardedTo] = useState(null); // username, briefly shown as confirmation
 
+  // ── Inline editing ──
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
+
+  // ── Per-message "⋮" action menu (Reply / Forward / Edit / Report / Delete) ──
+  const [openMenuFor, setOpenMenuFor] = useState(null);
+
+  // ── Reporting ──
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+
   // ── Optimistic send tracking ──
   const pendingOptimisticIdRef = useRef(null);
 
@@ -171,6 +193,15 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
           if (wasAppended && incoming.sender_username !== currentUser) {
             playReceiveSound();
           }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` },
+        (payload) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === payload.new.id ? payload.new : m)),
+          );
         },
       )
       .subscribe();
@@ -278,6 +309,18 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMembers]);
+
+  // Close the "⋮" action menu when tapping/clicking anywhere outside it.
+  useEffect(() => {
+    if (!openMenuFor) return;
+    const handleClickOutside = (e) => {
+      if (!e.target.closest(".gcw-menu") && !e.target.closest(".gcw-menu-trigger")) {
+        setOpenMenuFor(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openMenuFor]);
 
   // ── Forward: search profiles by username while the picker is open ──
   useEffect(() => {
@@ -560,6 +603,122 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     }, 900);
   };
 
+  // ── Inline editing ──
+  const startEdit = (m) => {
+    setEditingId(m.id);
+    setEditText(m.text || "");
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText("");
+  };
+
+  const saveEdit = async (message) => {
+    const trimmed = editText.trim();
+    if (!trimmed || trimmed === message.text) {
+      cancelEdit();
+      return;
+    }
+
+    const editedAt = new Date().toISOString();
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === message.id ? { ...m, text: trimmed, edited_at: editedAt } : m,
+      ),
+    );
+    setEditingId(null);
+    setEditText("");
+
+    await supabase
+      .from("group_messages")
+      .update({ text: trimmed, edited_at: editedAt })
+      .eq("id", message.id);
+  };
+
+  // ── Delete message (delete for everyone) ──
+  const deleteMessage = async (message) => {
+    const confirmed = window.confirm("Delete this message for everyone?");
+    if (!confirmed) return;
+
+    const deletedAt = new Date().toISOString();
+    if (editingId === message.id) cancelEdit();
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === message.id
+          ? {
+              ...m,
+              deleted_at: deletedAt,
+              text: null,
+              attachment_url: null,
+              attachment_type: null,
+              attachment_name: null,
+              attachment_size: null,
+            }
+          : m,
+      ),
+    );
+
+    await supabase
+      .from("group_messages")
+      .update({
+        deleted_at: deletedAt,
+        text: null,
+        attachment_url: null,
+        attachment_type: null,
+        attachment_name: null,
+        attachment_size: null,
+      })
+      .eq("id", message.id);
+  };
+
+  // ── Reporting ──
+  const openReport = (message) => {
+    setReportTarget(message);
+    setReportReason("");
+    setReportSubmitted(false);
+  };
+
+  const closeReport = () => {
+    if (reportSubmitting) return;
+    setReportTarget(null);
+    setReportReason("");
+    setReportSubmitting(false);
+    setReportSubmitted(false);
+  };
+
+  // Mirrors MessagesPanel's submitReport — inserts into the shared
+  // "reports" table that AdminPanel already reads, tagged content_type
+  // "group_message" so moderation can tell the two apart.
+  const submitReport = async () => {
+    if (!reportTarget || !reportReason || reportSubmitting) return;
+    setReportSubmitting(true);
+
+    const { error } = await supabase.from("reports").insert({
+      content_type: "group_message",
+      content_id: String(reportTarget.id),
+      content_title: reportTarget.text?.slice(0, 80) || "Message",
+      content_owner: reportTarget.sender_username,
+      reporter_username: currentUser,
+      reason: reportReason,
+      details: reportTarget.attachment_url
+        ? `Attachment: ${reportTarget.attachment_type || "file"} (group: ${group.name})`
+        : `Group: ${group.name}`,
+      status: "pending",
+    });
+
+    setReportSubmitting(false);
+
+    if (error) {
+      console.error("Group message report submission failed:", error);
+      alert(`Failed to submit report: ${error.message || "please try again."}`);
+      return;
+    }
+
+    setReportSubmitted(true);
+  };
+
   const typingLabel = formatTypingLabel(typingUsers);
 
   return (
@@ -628,26 +787,80 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
             return (
               <div key={m.id} className={`gcw-bubble-row ${mine ? "mine" : ""}`}>
                 <div className="gcw-bubble-stack">
-                  {!m.deleted_at && hasContent && (
+                  {editingId !== m.id && !m.deleted_at && hasContent && (
                     <div className="gcw-bubble-actions">
-                      <button
-                        type="button"
-                        className="gcw-bubble-action-btn"
-                        onClick={() => startReply(m)}
-                        aria-label="Reply"
-                        title="Reply"
-                      >
-                        ↩
-                      </button>
-                      <button
-                        type="button"
-                        className="gcw-bubble-action-btn"
-                        onClick={() => openForward(m)}
-                        aria-label="Forward"
-                        title="Forward"
-                      >
-                        ➡
-                      </button>
+                      <div className="gcw-menu-wrap">
+                        <button
+                          type="button"
+                          className="gcw-bubble-action-btn gcw-menu-trigger"
+                          onClick={() => setOpenMenuFor(openMenuFor === m.id ? null : m.id)}
+                          aria-label="More options"
+                          title="More"
+                        >
+                          ⋮
+                        </button>
+
+                        {openMenuFor === m.id && (
+                          <div className={`gcw-menu ${mine ? "mine" : ""}`}>
+                            <button
+                              type="button"
+                              className="gcw-menu-item"
+                              onClick={() => {
+                                startReply(m);
+                                setOpenMenuFor(null);
+                              }}
+                            >
+                              ↩ Reply
+                            </button>
+                            <button
+                              type="button"
+                              className="gcw-menu-item"
+                              onClick={() => {
+                                openForward(m);
+                                setOpenMenuFor(null);
+                              }}
+                            >
+                              ➡ Forward
+                            </button>
+                            {mine && m.text && !m.attachment_url && (
+                              <button
+                                type="button"
+                                className="gcw-menu-item"
+                                onClick={() => {
+                                  startEdit(m);
+                                  setOpenMenuFor(null);
+                                }}
+                              >
+                                ✎ Edit
+                              </button>
+                            )}
+                            {!mine && (
+                              <button
+                                type="button"
+                                className="gcw-menu-item"
+                                onClick={() => {
+                                  openReport(m);
+                                  setOpenMenuFor(null);
+                                }}
+                              >
+                                🚩 Report
+                              </button>
+                            )}
+                            {mine && (
+                              <button
+                                type="button"
+                                className="gcw-menu-item danger"
+                                onClick={() => {
+                                  deleteMessage(m);
+                                  setOpenMenuFor(null);
+                                }}
+                              >
+                                🗑 Delete
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -655,6 +868,26 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
                     {!mine && <div className="gcw-sender-name">{m.sender_username}</div>}
                     {m.deleted_at ? (
                       <span className="gcw-deleted-text">🚫 This message was deleted</span>
+                    ) : editingId === m.id ? (
+                      <div className="gcw-edit-box">
+                        <input
+                          className="gcw-edit-input"
+                          value={editText}
+                          autoFocus
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              saveEdit(m);
+                            }
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                        />
+                        <div className="gcw-edit-actions">
+                          <button onClick={() => saveEdit(m)}>Save</button>
+                          <button onClick={cancelEdit}>Cancel</button>
+                        </div>
+                      </div>
                     ) : (
                       <>
                         {m.forwarded && <div className="gcw-forwarded-tag">↪ Forwarded</div>}
@@ -688,7 +921,10 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
                         {m.text && extractFirstUrl(m.text) && (
                           <LinkPreviewCard url={extractFirstUrl(m.text)} mine={mine} classPrefix="gcw" />
                         )}
-                        <span className="gcw-bubble-time">{timeShort(m.created_at)}</span>
+                        <span className="gcw-bubble-time">
+                          {m.edited_at && <span className="gcw-edited-tag">edited </span>}
+                          {timeShort(m.created_at)}
+                        </span>
                       </>
                     )}
                   </div>
@@ -797,6 +1033,61 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
                 </div>
                 <button className="gcw-forward-cancel" onClick={closeForward} disabled={forwarding}>
                   {forwarding ? "Forwarding…" : "Cancel"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {reportTarget && (
+        <div className="gcw-overlay" onClick={closeReport}>
+          <div className="gcw-forward-panel" onClick={(e) => e.stopPropagation()}>
+            {reportSubmitted ? (
+              <>
+                <h3 className="gcw-forward-title">Report submitted</h3>
+                <p className="gcw-forward-preview">
+                  Thanks — our team will review this. You can close this now.
+                </p>
+                <button className="gcw-forward-cancel" onClick={closeReport}>
+                  Close
+                </button>
+              </>
+            ) : (
+              <>
+                <h3 className="gcw-forward-title">Report this message</h3>
+                <p className="gcw-forward-preview">
+                  From {reportTarget.sender_username}. This will be sent to our moderation team.
+                </p>
+                {REPORT_REASONS.map((r) => (
+                  <label
+                    key={r}
+                    style={{ display: "block", padding: "6px 0", fontSize: 13 }}
+                  >
+                    <input
+                      type="radio"
+                      name="gcwReportReason"
+                      checked={reportReason === r}
+                      onChange={() => setReportReason(r)}
+                    />{" "}
+                    {r}
+                  </label>
+                ))}
+                <button
+                  className="gcw-forward-cancel"
+                  style={{ marginTop: 10 }}
+                  onClick={submitReport}
+                  disabled={!reportReason || reportSubmitting}
+                >
+                  {reportSubmitting ? "Submitting…" : "Submit Report"}
+                </button>
+                <button
+                  className="gcw-forward-cancel"
+                  style={{ marginTop: 8 }}
+                  onClick={closeReport}
+                  disabled={reportSubmitting}
+                >
+                  Cancel
                 </button>
               </>
             )}

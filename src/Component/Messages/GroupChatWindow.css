@@ -246,10 +246,6 @@
 @media (max-width: 768px) {
   .gcw-window { width: 100vw; height: 100vh; }
 }
-/* ── Append these rules to your existing GroupChatWindow.css ──
-   (I don't have the current file, so these are additive and use the
-   same gcw- prefix as your other classes; adjust colors/fonts to match
-   if your existing panel uses different variables.) */
 
 .gcw-members-panel-header {
   display: flex;
@@ -293,11 +289,7 @@
 /* ══════════════════════════════════════════════════════════════════════
    LINK PREVIEW CARD (group chat) — used by LinkPreviewCard.jsx
    classPrefix="gcw". Mirrors the .mp-link-* rules in MessagesPanel.css
-   so 1:1 and group chat previews look/behave identically; kept as a
-   separate block here since GroupChatWindow.css had no link-preview
-   styles at all before this fix — group chat previews were previously
-   rendering completely unstyled.
-   Paste this at the bottom of GroupChatWindow.css.
+   so 1:1 and group chat previews look/behave identically.
    ══════════════════════════════════════════════════════════════════════ */
 
 .gcw-link-loading {
@@ -380,7 +372,7 @@
   color: rgba(255, 255, 255, 0.75);
 }
 
-/* ── Reply/forward action icons above a bubble ── */
+/* ── Reply/forward/edit/report/delete "⋮" action menu above a bubble ── */
 .gcw-bubble-stack {
   display: flex;
   flex-direction: column;
@@ -394,7 +386,13 @@
 .gcw-bubble-actions {
   display: flex;
   gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
+.gcw-bubble-row:hover .gcw-bubble-actions {
+  opacity: 1;
+}
+
 .gcw-bubble-action-btn {
   background: #fff;
   border: 1.5px solid #fbd5d5;
@@ -408,6 +406,94 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.gcw-menu-wrap {
+  position: relative;
+}
+
+.gcw-menu {
+  position: absolute;
+  top: 26px;
+  z-index: 10;
+  background: #fff;
+  border: 1.5px solid var(--zx-border, #fbd5d5);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  min-width: 140px;
+  overflow: hidden;
+  padding: 4px 0;
+}
+.gcw-menu.mine { right: 0; }
+.gcw-menu:not(.mine) { left: 0; }
+
+.gcw-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--zx-text, #1a1414);
+  cursor: pointer;
+  text-align: left;
+}
+.gcw-menu-item:hover {
+  background: var(--zx-bg, #fff5f5);
+}
+.gcw-menu-item.danger {
+  color: var(--zx-primary, #dc2626);
+}
+
+/* ── Inline editing ── */
+.gcw-edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+.gcw-edit-input {
+  border: none;
+  outline: none;
+  background: rgba(0,0,0,0.05);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: inherit;
+  font-family: 'Outfit', sans-serif;
+}
+.gcw-bubble-row.mine .gcw-edit-input {
+  background: rgba(255,255,255,0.2);
+}
+.gcw-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.gcw-edit-actions button {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.85;
+}
+.gcw-edit-actions button:hover {
+  opacity: 1;
+}
+
+.gcw-edited-tag {
+  font-size: 9px;
+  opacity: 0.65;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .gcw-bubble-actions { opacity: 0.85; }
 }
 
 /* ── Reply preview bar above the input ── */
@@ -489,7 +575,7 @@
   margin-bottom: 2px;
 }
 
-/* ── Forward picker overlay ── */
+/* ── Forward / report picker overlay ── */
 .gcw-overlay {
   position: fixed;
   inset: 0;
