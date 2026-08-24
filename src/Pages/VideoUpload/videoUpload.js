@@ -682,7 +682,7 @@ const VideoUpload = () => {
             <Box sx={{ display:"flex", flexDirection:"column", gap:"8px", width:"100%" }}>
               <Box sx={{ display:"flex", alignItems:"center", gap:"12px" }}>
                 <CircularProgress size={28} sx={{ color:"orange" }} />
-                <span style={{ color:"#aaa", fontSize:"0.9rem" }}>☁️ Uploading to Zixplon...</span>
+                <span style={{ color:"#aaa", fontSize:"0.9rem" }}>☁️ Uploading to ZIXPLON...</span>
               </Box>
               <div style={{ width:"100%", background:"#333", borderRadius:"8px", height:"8px" }}>
                 <div style={{ width:`${uploadProgress}%`, background:"orange", height:"100%", borderRadius:"8px", transition:"width 0.3s" }} />
