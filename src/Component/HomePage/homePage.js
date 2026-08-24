@@ -3410,7 +3410,16 @@ const HomePage = ({ sideNavbar }) => {
           id: "db_" + r.id,
           dbId: r.id,
           src: r.video_url,
-          thumbnail: r.thumbnail || "https://picsum.photos/200/350?random=99",
+          // FIX: previously fell back to a single hardcoded picsum URL
+          // ("random=99") for EVERY reel missing a thumbnail. Since the
+          // URL was byte-for-byte identical each time, the browser/CDN
+          // served the exact same cached image for every reel that
+          // lacked its own thumbnail — making it look like most reels
+          // shared one placeholder photo instead of being distinct.
+          // Seeding with the reel's own id keeps each fallback distinct.
+          thumbnail:
+            r.thumbnail ||
+            `https://picsum.photos/200/350?random=${r.id}`,
           title: r.title || "Untitled",
           duration: r.duration || "00:00",
           user: r.user || r.username || "Unknown",
@@ -3442,7 +3451,12 @@ const HomePage = ({ sideNavbar }) => {
             id: "db_" + r.id,
             dbId: r.id,
             src: r.video_url,
-            thumbnail: r.thumbnail || "https://picsum.photos/200/350?random=99",
+            // FIX: same per-reel seed as fetchDbReels above, applied to
+            // realtime INSERTs too, so a freshly uploaded reel without a
+            // thumbnail doesn't collide with the same shared placeholder.
+            thumbnail:
+              r.thumbnail ||
+              `https://picsum.photos/200/350?random=${r.id}`,
             title: r.title || "Untitled",
             duration: r.duration || "00:00",
             user: r.user || r.username || "Unknown",

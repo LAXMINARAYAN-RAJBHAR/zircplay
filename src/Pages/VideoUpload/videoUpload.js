@@ -179,6 +179,32 @@ const VideoUpload = () => {
     videoEl.src = URL.createObjectURL(file);
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // captureThumbnail — HARDENED VERSION
+  //
+  // The previous implementation seeked exactly once, driven off
+  // `loadedmetadata`, and gave up after 6s. That failed silently and
+  // often for phone-recorded reels: some codecs/containers (notably
+  // certain H.265/.mov clips) report `video.duration` as NaN or
+  // Infinity right when `loadedmetadata` first fires, which broke the
+  // `dur > 2` branch and could leave `currentTime` set to a value the
+  // browser just ignores — so `onseeked` never fires and the whole
+  // capture times out with no visible error to the user (it's caught
+  // and swallowed by the caller, see uploadVideo()).
+  //
+  // Fixes:
+  //  1. Seeking is now attempted from THREE events (loadedmetadata,
+  //     durationchange, loadeddata) via trySeek(), which bails out
+  //     harmlessly if duration still isn't finite yet and simply waits
+  //     for the next event to retry.
+  //  2. A 3s safety net force-grabs whatever frame is currently decoded
+  //     if no seek ever actually started (readyState >= 2 means a frame
+  //     is available even without a successful seek).
+  //  3. Guards against a zero-dimension canvas, another silent failure
+  //     mode with some codecs.
+  //  4. Final timeout extended 6s → 10s to give mobile files more room
+  //     to decode before giving up entirely.
+  // ─────────────────────────────────────────────────────────────────────────
   const captureThumbnail = (file) => new Promise((resolve, reject) => {
     const video  = document.createElement("video");
     const canvas = document.createElement("canvas");
@@ -186,16 +212,23 @@ const VideoUpload = () => {
     video.muted      = true;
     video.playsInline = true;
     let settled = false;
+    let seekAttempted = false;
+
     const cleanup = () => URL.revokeObjectURL(video.src);
     const finish  = (result, err) => {
       if (settled) return;
       settled = true; cleanup();
       if (err) reject(err); else resolve(result);
     };
+
     const grabFrame = () => {
       try {
         canvas.width  = video.videoWidth  || 320;
         canvas.height = video.videoHeight || 180;
+        if (canvas.width === 0 || canvas.height === 0) {
+          finish(null, new Error("Video has no dimensions yet."));
+          return;
+        }
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob((blob) => {
@@ -204,21 +237,50 @@ const VideoUpload = () => {
         }, "image/jpeg", 0.85);
       } catch (err) { finish(null, err); }
     };
-    video.onloadedmetadata = () => {
-      const dur    = video.duration || 0;
+
+    // Try to seek once we actually have a usable duration. Some codecs
+    // (common on phone-recorded reels) report duration as NaN or
+    // Infinity right when `loadedmetadata` first fires — in that case
+    // we wait for `durationchange`/`loadeddata` instead of giving up,
+    // rather than silently failing the whole capture.
+    const trySeek = () => {
+      if (seekAttempted || settled) return;
+      const dur = video.duration;
+      if (!isFinite(dur) || dur <= 0) return; // not ready yet — wait for next event
+      seekAttempted = true;
       const seekTo = dur > 2 ? 1 : dur / 2;
-      try { video.currentTime = seekTo || 0.1; } catch (_) { grabFrame(); }
+      try {
+        video.currentTime = seekTo || 0.1;
+      } catch (_) {
+        grabFrame();
+      }
     };
+
+    video.onloadedmetadata = trySeek;
+    // Fires when the browser updates its knowledge of duration — covers
+    // the case where it was NaN/Infinity at loadedmetadata time.
+    video.ondurationchange = trySeek;
+    // Extra safety net: some browsers only reliably expose a valid
+    // duration once actual frame data is available.
+    video.onloadeddata = trySeek;
+
     video.onseeked = () => {
       if ("requestVideoFrameCallback" in video) video.requestVideoFrameCallback(() => grabFrame());
       else setTimeout(grabFrame, 200);
     };
+
     video.onerror = () => finish(null, new Error("Failed to load video for thumbnail."));
-    // Slightly shorter timeout so the UI doesn't feel stuck waiting on a
-    // capture that's going to fail on this browser anyway — the local
-    // preview (set immediately on file pick) already covers the user-facing
-    // confirmation regardless of how this resolves.
-    setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 6000);
+
+    // If duration never resolves and no seek ever happens, force a grab
+    // from whatever frame is currently loaded rather than failing outright.
+    setTimeout(() => {
+      if (!settled && !seekAttempted && video.readyState >= 2) grabFrame();
+    }, 3000);
+
+    // Final fallback if nothing above worked. Longer than the original
+    // 6s — mobile files / slower decode need more room.
+    setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 10000);
+
     video.src = URL.createObjectURL(file);
     video.load();
   });
