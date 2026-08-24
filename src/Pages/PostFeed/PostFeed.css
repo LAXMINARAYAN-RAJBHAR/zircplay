@@ -594,6 +594,28 @@
   min-width: 0; /* FIX: prevents bubble from overflowing */
 }
 
+/* ── Comment header row: author name + relative timestamp ── */
+.pf-comment-bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.pf-comment-bubble-header .pf-comment-author {
+  margin-bottom: 0;
+}
+
+.pf-comment-time {
+  font-family: 'Nunito', sans-serif;
+  font-size: 10px;
+  color: var(--zx-text3);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .pf-comment-author {
   font-family: 'Nunito', sans-serif;
   font-size: 12px;

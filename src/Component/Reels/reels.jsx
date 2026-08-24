@@ -61,6 +61,22 @@ const QUALITY_LABELS = {
   high: "720p HD",
 };
 
+// ── Relative-time formatter for comment timestamps (e.g. "3h ago").
+//    Mirrors the helper used in Video.jsx so comment ages read
+//    consistently across posts, videos, and reels.
+const timeAgo = (dateStr) => {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (isNaN(date)) return dateStr;
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo ago`;
+  return `${Math.floor(diff / 31536000)}y ago`;
+};
+
 // ─────────────────────────────────────────────────────────
 // "New" badge helpers
 // A reel is NEW if:
@@ -306,7 +322,10 @@ const ReelItem = ({ reel, allReels }) => {
     const loadComments = async () => {
       const { data } = await supabase.from("comments").select("*").match({ content_id: String(reel.id), content_type: "reel" }).order("created_at", { ascending: false });
       if (data && data.length > 0) {
-        setComments(data.map((c) => ({ id: c.id, user: c.username, text: c.text, date: c.created_at?.slice(0, 10) })));
+        // CHANGED: keep the full created_at timestamp (was previously
+        // sliced to just the date, e.g. "2024-06-01") so the comment
+        // list can render a relative "x ago" time via timeAgo() below.
+        setComments(data.map((c) => ({ id: c.id, user: c.username, text: c.text, date: c.created_at })));
       }
     };
     loadComments();
@@ -360,7 +379,11 @@ const ReelItem = ({ reel, allReels }) => {
     if (!userId) { alert("Please login to comment"); return; }
     const { data, error } = await supabase.from("comments").insert({ user_id: userId, username: loggedInUser, content_id: String(reel.id), content_type: "reel", text: commentText }).select().single();
     if (!error && data) {
-      setComments((prev) => [{ id: data.id, user: data.username, text: data.text, date: data.created_at?.slice(0, 10) }, ...prev]);
+      // CHANGED: keep the full created_at timestamp (was previously
+      // sliced to just the date) so the newly-posted comment shows a
+      // relative "just now" / "Xm ago" time immediately, consistent
+      // with comments loaded from the database.
+      setComments((prev) => [{ id: data.id, user: data.username, text: data.text, date: data.created_at }, ...prev]);
       // NEW: notify the reel owner about the comment.
       notifyUser({
         recipientUsername: reel.username,
@@ -844,7 +867,10 @@ const ReelItem = ({ reel, allReels }) => {
               ) : (
                 comments.map((c) => (
                   <div key={c.id} className="reel_comment_item">
-                    <span className="reel_comment_user">{c.user}</span>
+                    <div className="reel_comment_item_header">
+                      <span className="reel_comment_user">{c.user}</span>
+                      {c.date && <span className="reel_comment_time">{timeAgo(c.date)}</span>}
+                    </div>
                     <span className="reel_comment_text">{c.text}</span>
                   </div>
                 ))

@@ -1129,12 +1129,19 @@ const PostCard = ({
                   {(c.username || "?").slice(0, 2).toUpperCase()}
                 </Link>
                 <div className="pf-comment-bubble">
-                  <Link
-                    to={`/user/${c.username}`}
-                    className="pf-comment-author-link"
-                  >
-                    <p className="pf-comment-author">{c.username}</p>
-                  </Link>
+                  <div className="pf-comment-bubble-header">
+                    <Link
+                      to={`/user/${c.username}`}
+                      className="pf-comment-author-link"
+                    >
+                      <p className="pf-comment-author">{c.username}</p>
+                    </Link>
+                    {c.created_at && (
+                      <span className="pf-comment-time">
+                        {timeAgo(c.created_at)}
+                      </span>
+                    )}
+                  </div>
                   <p className="pf-comment-text">{c.text}</p>
                 </div>
               </div>
