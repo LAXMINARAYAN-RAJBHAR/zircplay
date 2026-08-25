@@ -6,7 +6,12 @@ import PostComposer from "./PostComposer";
 import PostCard from "./PostCard";
 import SideNavbar from "../../Component/SideNavbar/sideNavbar";
 import AdUnit from "../../Component/Ads/AdUnit";
-import { notifySubscribers } from "../../utils/notifications";
+// CHANGED: now also imports notifyUser — needed for post like/comment
+// notifications added below. notifySubscribers already handled new-post
+// notifications; likes/comments on posts previously never notified
+// anyone at all (unlike Video.jsx/Reels.jsx, which both call notifyUser
+// inline right after their like/comment Supabase writes).
+import { notifySubscribers, notifyUser } from "../../utils/notifications";
 
 // currentUser now comes from App.js via HomeHub — the same auth state
 // that drives the Navbar's Upload button, BottomNav, etc — instead of
@@ -285,6 +290,21 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         await supabase
           .from("post_reactions")
           .insert({ post_id: postId, username: currentUser, type: reactionType });
+
+        // NEW: notify the post owner about the reaction — only on an
+        // actual new reaction (not on removing/undoing one), and never
+        // for reacting to your own post. Mirrors the like-notification
+        // pattern already used in Video.jsx / Reels.jsx.
+        if (post.username && post.username !== currentUser) {
+          notifyUser({
+            recipientUsername: post.username,
+            senderUsername: currentUser,
+            type: "like",
+            message: `${currentUser} reacted to your post`,
+            contentId: postId,
+            contentType: "post",
+          });
+        }
       }
     } catch {
       fetchPosts(true);
@@ -297,6 +317,12 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
       return;
     }
     if (!text.trim()) return;
+
+    // NEW: look up the post so we know who to notify below (handleReaction
+    // and handleShare already do this same lookup; handleComment
+    // previously didn't need `post` for anything else).
+    const post = posts.find((p) => p.id === postId);
+
     const { data, error: err } = await supabase
       .from("post_comments")
       .insert({ post_id: postId, username: currentUser, text: text.trim() })
@@ -310,6 +336,19 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
           : p
       )
     );
+
+    // NEW: notify the post owner about the comment, unless they're
+    // commenting on their own post.
+    if (post?.username && post.username !== currentUser) {
+      notifyUser({
+        recipientUsername: post.username,
+        senderUsername: currentUser,
+        type: "comment",
+        message: `${currentUser} commented on your post: "${text.trim().slice(0, 60)}"`,
+        contentId: postId,
+        contentType: "post",
+      });
+    }
   };
 
   const handleToggleComments = (postId) => {
