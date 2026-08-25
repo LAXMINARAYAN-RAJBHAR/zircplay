@@ -1034,6 +1034,24 @@ const Reels = () => {
   const fromTrending = location.state?.fromTrending || false;
   const trendingIds = location.state?.trendingIds || null;
 
+  // FIX: reel.id everywhere in this file is stored in the "db_<uuid>"
+  // form (see fetchDbReels/reelsSub above). But an incoming :id param —
+  // from a shared link, a notification's navigate("/reels/:id"), or the
+  // og-image endpoint — isn't guaranteed to carry that "db_" prefix.
+  // notifyUser() in src/utils/notifications.js normalizes contentId to a
+  // plain String(...) but has no idea about this file's "db_" convention,
+  // so upload notifications (via notifySubscribers, fired with the raw
+  // Supabase row id) end up stored WITHOUT the prefix, while like/comment
+  // notifications (fired from this file with contentId: reel.id) end up
+  // stored WITH it. Same content_type ("reel"), two different shapes.
+  // normalizeReelId() makes every lookup below tolerant of either shape,
+  // so a stale/inconsistent ID degrades gracefully instead of falsely
+  // reporting the reel as deleted.
+  const normalizeReelId = (value) => {
+    const str = String(value);
+    return str.startsWith("db_") ? str : `db_${str}`;
+  };
+
   const allReels = React.useMemo(() => {
     let pool = baseReels;
 
@@ -1048,8 +1066,13 @@ const Reels = () => {
     }
 
     if (id) {
-      const target = pool.find((r) => String(r.id) === String(id));
-      if (target) return [target, ...pool.filter((r) => String(r.id) !== String(id))];
+      // CHANGED: compare against both the raw :id param and its
+      // normalized "db_" form, instead of only String(r.id) === String(id).
+      const normalizedId = normalizeReelId(id);
+      const target = pool.find(
+        (r) => String(r.id) === String(id) || String(r.id) === normalizedId,
+      );
+      if (target) return [target, ...pool.filter((r) => String(r.id) !== String(target.id))];
       // FIX: previously fell through to `return pool` here — meaning a
       // link/notification pointing at a reel that isn't in this pool
       // (deleted, or a content_id/type mismatch) silently showed
@@ -1071,10 +1094,16 @@ const Reels = () => {
   // anywhere in the current pool. Distinguishing this from "there are
   // no reels at all" lets the empty-state UI below tell the user what
   // actually happened instead of them just landing on an unrelated reel.
+  // CHANGED: uses the same "db_"-tolerant comparison as the lookup above,
+  // so this no longer false-positives on an unprefixed id that DOES
+  // exist once normalized (the root cause of the "reel isn't available"
+  // bug when opened from an upload notification).
   const requestedReelMissing =
     Boolean(id) &&
     !location.state?.clickedReel &&
-    !baseReels.some((r) => String(r.id) === String(id));
+    !baseReels.some(
+      (r) => String(r.id) === String(id) || String(r.id) === normalizeReelId(id),
+    );
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [id]);
 
