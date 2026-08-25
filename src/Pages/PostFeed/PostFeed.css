@@ -855,6 +855,21 @@
   .pf-avatar-sm { width: 26px; height: 26px; font-size: 9px; }
   .pf-card-author { font-size: 13px; }
   .pf-card-text { font-size: 13px; }
+
+  /* NEW: strip the side/frame borders from post images and videos on
+     mobile — single image (.pf-card-image), the image carousel
+     (.pf-carousel-wrap), the multi-image grid (.pf-img-grid), and the
+     post video preview (.pf-card-video-wrap + the underlying
+     .pf-card-video element itself). Border-radius is left in place so
+     corners still read as intentional, and border-color is untouched
+     for desktop — this only applies inside the ≤768px block. */
+  .pf-card-image,
+  .pf-carousel-wrap,
+  .pf-img-grid,
+  .pf-card-video-wrap,
+  .pf-card-video {
+    border: none;
+  }
 }
 /* ── Image Carousel ── */
 .pf-carousel-wrap {
