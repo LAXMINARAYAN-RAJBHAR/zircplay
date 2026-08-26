@@ -1,0 +1,190 @@
+/* src/Component/PostFeed/PhotoViewer.css */
+
+.pv-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pv-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.pv-counter {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  color: #fff;
+  font-family: "Nunito", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 4px 12px;
+  border-radius: 12px;
+  z-index: 3;
+}
+
+.pv-arrow {
+  position: absolute;
+  top: 45%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 26px;
+  cursor: pointer;
+  z-index: 3;
+}
+.pv-arrow-l { left: 14px; }
+.pv-arrow-r { right: 14px; }
+
+.pv-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 92vw;
+  max-height: 92vh;
+}
+
+.pv-image {
+  max-width: 92vw;
+  max-height: 62vh;
+  object-fit: contain;
+  border-radius: 8px 8px 0 0;
+  display: block;
+}
+
+.pv-panel {
+  width: min(92vw, 480px);
+  background: #1c1c1c;
+  border-radius: 0 0 12px 12px;
+  color: #fff;
+  font-family: "Outfit", sans-serif;
+}
+
+.pv-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pv-text-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pv-actions {
+  display: flex;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pv-action-wrap { flex: 1; position: relative; }
+
+.pv-action-btn {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-family: "Nunito", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px;
+  cursor: pointer;
+}
+.pv-action-btn:hover { background: rgba(255, 255, 255, 0.06); }
+
+.pv-picker {
+  position: absolute;
+  bottom: 46px;
+  left: 0;
+  background: #2a2a2a;
+  border-radius: 20px;
+  padding: 6px 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 4;
+}
+.pv-pick-btn {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.pv-pick-btn:hover { transform: scale(1.35); }
+
+.pv-comments {
+  padding: 10px 14px 14px;
+  max-height: 22vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pv-comments-list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pv-muted { color: rgba(255, 255, 255, 0.5); font-size: 12px; }
+
+.pv-comment { font-size: 12px; }
+.pv-comment-user { font-weight: 800; color: #ef4444; margin-right: 6px; }
+.pv-comment-time { color: rgba(255, 255, 255, 0.4); font-size: 10px; }
+.pv-comment-text { margin-top: 2px; color: rgba(255, 255, 255, 0.9); }
+
+.pv-comment-input-row { display: flex; gap: 8px; }
+
+.pv-comment-input {
+  flex: 1;
+  background: #2a2a2a;
+  border: none;
+  border-radius: 18px;
+  padding: 8px 14px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+.pv-send-btn {
+  background: #dc2626;
+  border: none;
+  color: #fff;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+@media (max-width: 480px) {
+  .pv-panel { width: 100vw; border-radius: 0; }
+  .pv-image { max-height: 55vh; border-radius: 0; }
+}

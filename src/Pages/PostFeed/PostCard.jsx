@@ -3,6 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import EmojiPicker from "./EmojiPicker";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
 import ReportPostModal from "./ReportPostModal";
+// CHANGED: Lightbox (view-only zoom/swipe) replaced with PhotoViewer,
+// which adds per-photo like/comment/share/copy-link on top of the same
+// full-screen swipe experience. See PhotoViewer.jsx.
+import PhotoViewer from "./PhotoViewer";
 
 const REACTIONS = [
   { key: "like", emoji: "👍", label: "Like", color: "#1877f2" },
@@ -146,280 +150,9 @@ const PostVideo = ({ src }) => {
 };
 
 /* ─────────────────────────────────────────
-   LIGHTBOX — click-to-zoom + touch swipe
-───────────────────────────────────────── */
-const Lightbox = ({ images, startIndex = 0, onClose }) => {
-  const [index, setIndex] = useState(startIndex);
-  const [autoPlay, setAutoPlay] = useState(false);
-  const [zoomed, setZoomed] = useState(false);
-
-  const startXRef = useRef(0);
-  const dragXRef = useRef(0);
-
-  const next = (e) => {
-    e?.stopPropagation();
-    setIndex((i) => (i + 1) % images.length);
-  };
-
-  const prev = (e) => {
-    e?.stopPropagation();
-    setIndex((i) => (i - 1 + images.length) % images.length);
-  };
-
-  useEffect(() => {
-    setZoomed(false);
-  }, [index]);
-
-  useEffect(() => {
-    if (!autoPlay) return;
-    const timer = setInterval(() => {
-      setIndex((i) => (i + 1) % images.length);
-    }, 2500);
-    return () => clearInterval(timer);
-  }, [autoPlay, images.length]);
-
-  useEffect(() => {
-    const handleKey = (e) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "ArrowRight") next();
-      if (e.key === "ArrowLeft") prev();
-      if (e.key === " ") {
-        e.preventDefault();
-        setAutoPlay((a) => !a);
-      }
-    };
-    document.addEventListener("keydown", handleKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleKey);
-      document.body.style.overflow = "";
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, images.length]);
-
-  const handleTouchStart = (e) => {
-    startXRef.current = e.touches[0].clientX;
-    dragXRef.current = 0;
-  };
-  const handleTouchMove = (e) => {
-    if (zoomed) return;
-    dragXRef.current = e.touches[0].clientX - startXRef.current;
-  };
-  const handleTouchEnd = () => {
-    if (zoomed) return;
-    const dx = dragXRef.current;
-    if (dx < -50) next();
-    else if (dx > 50) prev();
-    dragXRef.current = 0;
-  };
-
-  return (
-    <div
-      onClick={onClose}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.92)",
-        zIndex: 999999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "zoom-out",
-        overflow: "hidden",
-      }}
-    >
-      <button
-        onClick={onClose}
-        aria-label="Close"
-        style={{
-          position: "absolute",
-          top: "16px",
-          right: "20px",
-          background: "rgba(255,255,255,0.1)",
-          border: "none",
-          color: "white",
-          fontSize: "24px",
-          width: "40px",
-          height: "40px",
-          borderRadius: "50%",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          lineHeight: 1,
-          zIndex: 2,
-        }}
-      >
-        ✕
-      </button>
-
-      {images.length > 1 && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setAutoPlay((a) => !a);
-          }}
-          aria-label={autoPlay ? "Pause slideshow" : "Play slideshow"}
-          style={{
-            position: "absolute",
-            top: "16px",
-            right: "70px",
-            background: "rgba(255,255,255,0.1)",
-            border: "none",
-            color: "white",
-            fontSize: "18px",
-            width: "40px",
-            height: "40px",
-            borderRadius: "50%",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            lineHeight: 1,
-            zIndex: 2,
-          }}
-        >
-          {autoPlay ? "⏸" : "▶"}
-        </button>
-      )}
-
-      {images.length > 1 && !zoomed && (
-        <>
-          <button
-            onClick={prev}
-            aria-label="Previous image"
-            style={{
-              position: "absolute",
-              left: "16px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "white",
-              fontSize: "28px",
-              width: "44px",
-              height: "44px",
-              borderRadius: "50%",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              lineHeight: 1,
-              zIndex: 1,
-            }}
-          >
-            ‹
-          </button>
-
-          <button
-            onClick={next}
-            aria-label="Next image"
-            style={{
-              position: "absolute",
-              right: "16px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "white",
-              fontSize: "28px",
-              width: "44px",
-              height: "44px",
-              borderRadius: "50%",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              lineHeight: 1,
-              zIndex: 1,
-            }}
-          >
-            ›
-          </button>
-        </>
-      )}
-
-      <img
-        src={images[index]}
-        alt={`Image ${index + 1}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setZoomed((z) => !z);
-        }}
-        style={{
-          maxWidth: zoomed ? "none" : "92vw",
-          maxHeight: zoomed ? "none" : "90vh",
-          objectFit: "contain",
-          borderRadius: "8px",
-          boxShadow: "0 8px 48px rgba(0,0,0,0.8)",
-          cursor: zoomed ? "zoom-out" : "zoom-in",
-          transform: zoomed ? "scale(1.8)" : "scale(1)",
-          transition: "transform 0.25s ease",
-        }}
-      />
-
-      {images.length > 1 && !zoomed && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute",
-            bottom: "60px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            gap: "8px",
-          }}
-        >
-          {images.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setIndex(i)}
-              aria-label={`Go to image ${i + 1}`}
-              style={{
-                width: "10px",
-                height: "10px",
-                borderRadius: "50%",
-                border: "none",
-                cursor: "pointer",
-                padding: 0,
-                background: i === index ? "#ffffff" : "rgba(255,255,255,0.35)",
-                transition: "background 0.2s",
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {images.length > 1 && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            color: "white",
-            fontSize: "14px",
-            fontFamily: "'Nunito', sans-serif",
-            fontWeight: 700,
-            background: "rgba(255,255,255,0.1)",
-            padding: "4px 12px",
-            borderRadius: "12px",
-          }}
-        >
-          {index + 1} / {images.length}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────
    IMAGE CAROUSEL
 ───────────────────────────────────────── */
-const ImageCarousel = ({ images, onOpenLightbox }) => {
+const ImageCarousel = ({ images, onOpenViewer }) => {
   const [idx, setIdx] = useState(0);
   const trackRef = useRef();
   const startXRef = useRef(0);
@@ -482,7 +215,7 @@ const ImageCarousel = ({ images, onOpenLightbox }) => {
 
   const handleClick = () => {
     if (Math.abs(dragXRef.current) < 8) {
-      onOpenLightbox(idx);
+      onOpenViewer(idx);
     }
   };
 
@@ -576,7 +309,9 @@ const PostCard = ({
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [lightboxData, setLightboxData] = useState(null);
+  // CHANGED: renamed from lightboxData — now drives PhotoViewer instead
+  // of the old view-only Lightbox. Same {images, startIndex} shape.
+  const [photoViewerData, setPhotoViewerData] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -726,11 +461,17 @@ const PostCard = ({
 
   return (
     <>
-      {lightboxData && (
-        <Lightbox
-          images={lightboxData.images}
-          startIndex={lightboxData.startIndex}
-          onClose={() => setLightboxData(null)}
+      {/* CHANGED: PhotoViewer replaces the old view-only Lightbox — same
+          {images, startIndex} shape driving it, but now with per-photo
+          like/comment/share/copy-link built in. */}
+      {photoViewerData && (
+        <PhotoViewer
+          images={photoViewerData.images}
+          startIndex={photoViewerData.startIndex}
+          postId={post.id}
+          postUsername={post.username}
+          currentUser={currentUser}
+          onClose={() => setPhotoViewerData(null)}
         />
       )}
 
@@ -927,8 +668,8 @@ const PostCard = ({
             {post.image_urls && post.image_urls.length > 0 ? (
               <ImageCarousel
                 images={post.image_urls}
-                onOpenLightbox={(startIndex) =>
-                  setLightboxData({ images: post.image_urls, startIndex })
+                onOpenViewer={(startIndex) =>
+                  setPhotoViewerData({ images: post.image_urls, startIndex })
                 }
               />
             ) : post.image_url ? (
@@ -938,7 +679,7 @@ const PostCard = ({
                 className="pf-card-image"
                 loading="lazy"
                 onClick={() =>
-                  setLightboxData({ images: [post.image_url], startIndex: 0 })
+                  setPhotoViewerData({ images: [post.image_url], startIndex: 0 })
                 }
                 style={{ cursor: "zoom-in" }}
               />
