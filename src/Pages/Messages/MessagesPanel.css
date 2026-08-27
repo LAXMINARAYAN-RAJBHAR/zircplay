@@ -585,6 +585,7 @@
 
 .mp-chat-input {
   flex: 1;
+  min-width: 0;   /* ← add this */
   border: 2px solid var(--zx-border);
   border-radius: 20px;
   padding: 8px 14px;
@@ -1514,3 +1515,4 @@
 @media (max-width: 768px) {
   .mp-convo-menu-trigger { opacity: 1; } /* no hover on touch, always visible */
 }
+
