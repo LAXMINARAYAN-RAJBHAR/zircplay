@@ -371,6 +371,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   // ── Per-message "⋮" action menu (Reply / Forward / Edit / Report / Delete) ──
   const [openMenuFor, setOpenMenuFor] = useState(null); // message id
 
+  // ── Per-conversation "⋮" menu in the inbox list (Delete chat) ──
+  const [openConvoMenuFor, setOpenConvoMenuFor] = useState(null); // conversation id
+  const [deletingConvoId, setDeletingConvoId] = useState(null);
+
   // ── Reply ──
   // The message currently being replied to (shown as a preview above the
   // input, and attached to the outgoing message via reply_to_* columns).
@@ -660,6 +664,21 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openMenuFor]);
 
+  // Close the per-conversation "⋮" menu (Delete chat) when clicking outside it
+  useEffect(() => {
+    if (!openConvoMenuFor) return;
+    const handleClickOutside = (e) => {
+      if (
+        !e.target.closest(".mp-convo-menu") &&
+        !e.target.closest(".mp-convo-menu-trigger")
+      ) {
+        setOpenConvoMenuFor(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openConvoMenuFor]);
+
   // Close the "New" menu (New Group / New Broadcast) when clicking outside it
   useEffect(() => {
     if (!showNewMenu) return;
@@ -762,6 +781,25 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "conversations" },
         (payload) => handleConversationRealtime(payload.new),
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "conversations" },
+        (payload) => {
+          // Keep the inbox in sync if the OTHER person deletes the shared
+          // conversation row (our current schema deletes it for both
+          // sides — see deleteConversation below).
+          setConversations((prev) => prev.filter((c) => c.id !== payload.old.id));
+          if (activeUsernameRef.current) {
+            const other = activeUsernameRef.current;
+            if (
+              (payload.old.user_a === currentUser && payload.old.user_b === other) ||
+              (payload.old.user_b === currentUser && payload.old.user_a === other)
+            ) {
+              setActiveUsername(null);
+            }
+          }
+        },
       )
       .subscribe();
 
@@ -1276,6 +1314,48 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     closeDetail();
   };
 
+  // ── Delete chat (from the inbox list "⋮" menu) ──
+  // Deletes the conversation and all of its messages outright. Since the
+  // current schema has no per-user "hidden" flag, this removes the chat
+  // for BOTH people — same behavior as declineRequest above. The other
+  // person's inbox is kept in sync via the "conversations" DELETE
+  // realtime listener registered further up.
+  const deleteConversation = async (conv) => {
+    const other = getOtherUser(conv);
+    const confirmed = window.confirm(
+      `Delete your chat with ${other}? This removes the conversation and its messages.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingConvoId(conv.id);
+    setOpenConvoMenuFor(null);
+
+    const { error: msgErr } = await supabase
+      .from("direct_messages")
+      .delete()
+      .eq("conversation_id", conv.id);
+
+    const { error: convErr } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", conv.id);
+
+    setDeletingConvoId(null);
+
+    if (msgErr || convErr) {
+      alert(
+        `Couldn't delete this chat: ${msgErr?.message || convErr?.message || "please try again."}`,
+      );
+      return;
+    }
+
+    setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+
+    if (other === activeUsername) {
+      closeDetail();
+    }
+  };
+
   const handleSend = async () => {
     if (
       (!text.trim() && !pendingAttachment) ||
@@ -1746,12 +1826,15 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   // Shared render for a single conversation row in the inbox list —
   // used for both the "Message Requests" section and the regular list,
   // so the two stay visually consistent apart from the request badge.
+  // Now also renders a "⋮" menu at the end of the row with a
+  // "Delete chat" action (see deleteConversation above).
   const renderConvoItem = (conv, isRequestItem) => {
     const other = getOtherUser(conv);
     const isActive = other === activeUsername;
     const isOnline = onlineUsers.has(other);
     const unread = isConvoUnread(conv);
     const isMyPending = conv.status === "pending" && conv.initiated_by === currentUser;
+    const isDeleting = deletingConvoId === conv.id;
     return (
       <div
         key={conv.id}
@@ -1781,6 +1864,34 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             <span className="mp-request-dot" />
           ) : (
             unread && <span className="mp-unread-dot" />
+          )}
+        </div>
+
+        <div className="mp-convo-menu-wrap">
+          <button
+            type="button"
+            className="mp-convo-menu-trigger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenConvoMenuFor(openConvoMenuFor === conv.id ? null : conv.id);
+            }}
+            aria-label="Chat options"
+            title="Chat options"
+            disabled={isDeleting}
+          >
+            ⋮
+          </button>
+          {openConvoMenuFor === conv.id && (
+            <div className="mp-convo-menu" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="mp-convo-menu-item danger"
+                onClick={() => deleteConversation(conv)}
+                disabled={isDeleting}
+              >
+                🗑 {isDeleting ? "Deleting…" : "Delete chat"}
+              </button>
+            </div>
           )}
         </div>
       </div>
