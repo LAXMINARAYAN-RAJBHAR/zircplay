@@ -200,6 +200,7 @@ const PostCard = ({
   onDelete,
   onEdit,
   onReport,
+  onLikeComment, // NEW: like/unlike a single comment
 }) => {
   const [commentText, setCommentText] = useState("");
   const [showPicker, setShowPicker] = useState(false);
@@ -354,6 +355,18 @@ const PostCard = ({
     }
     setShowReportModal(true);
     setShowMenu(false);
+  };
+
+  // NEW: like/unlike an individual comment. Guards against logged-out
+  // users the same way every other interactive action on this card
+  // does (Like/Comment/Share), then delegates the actual state update
+  // + Supabase write up to PostFeed via onLikeComment.
+  const handleCommentLikeClick = (commentId) => {
+    if (!currentUser || currentUser === "anonymous") {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
+    onLikeComment(post.id, commentId);
   };
 
   return (
@@ -761,33 +774,58 @@ const PostCard = ({
         {/* ── Comments ── */}
         {!isEditing && post.showComments && (
           <div className="pf-comments-section">
-            {(post.comments || []).map((c) => (
-              <div className="pf-comment" key={c.id}>
-                <Link
-                  to={`/user/${c.username}`}
-                  className="pf-avatar pf-avatar-sm pf-avatar-amber pf-avatar-link"
-                  title={`View ${c.username}'s profile`}
-                >
-                  {(c.username || "?").slice(0, 2).toUpperCase()}
-                </Link>
-                <div className="pf-comment-bubble">
-                  <div className="pf-comment-bubble-header">
-                    <Link
-                      to={`/user/${c.username}`}
-                      className="pf-comment-author-link"
-                    >
-                      <p className="pf-comment-author">{c.username}</p>
-                    </Link>
-                    {c.created_at && (
-                      <span className="pf-comment-time">
-                        {timeAgo(c.created_at)}
-                      </span>
-                    )}
+            {(post.comments || []).map((c) => {
+              // NEW: per-comment like state. liked_by is a text[] column
+              // on post_comments (see migration note) holding the
+              // usernames who've liked this comment.
+              const likedBy = c.liked_by || [];
+              const iLikedComment = likedBy.includes(currentUser);
+
+              return (
+                <div className="pf-comment" key={c.id}>
+                  <Link
+                    to={`/user/${c.username}`}
+                    className="pf-avatar pf-avatar-sm pf-avatar-amber pf-avatar-link"
+                    title={`View ${c.username}'s profile`}
+                  >
+                    {(c.username || "?").slice(0, 2).toUpperCase()}
+                  </Link>
+                  <div className="pf-comment-bubble">
+                    <div className="pf-comment-bubble-header">
+                      <Link
+                        to={`/user/${c.username}`}
+                        className="pf-comment-author-link"
+                      >
+                        <p className="pf-comment-author">{c.username}</p>
+                      </Link>
+                      {c.created_at && (
+                        <span className="pf-comment-time">
+                          {timeAgo(c.created_at)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="pf-comment-text">{c.text}</p>
+
+                    {/* NEW: Like action + count for this comment */}
+                    <div className="pf-comment-actions">
+                      <button
+                        className={`pf-comment-like-btn ${
+                          iLikedComment ? "pf-comment-like-active" : ""
+                        }`}
+                        onClick={() => handleCommentLikeClick(c.id)}
+                      >
+                        👍 Like
+                      </button>
+                      {likedBy.length > 0 && (
+                        <span className="pf-comment-like-count">
+                          {likedBy.length}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="pf-comment-text">{c.text}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             <div className="pf-comment-input-row">
               <div className="pf-avatar pf-avatar-sm">

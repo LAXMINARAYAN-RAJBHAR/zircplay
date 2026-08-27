@@ -390,7 +390,16 @@
   border: 2px solid var(--zx-border);
   border-radius: 16px;
   margin-bottom: 14px;
-  overflow: hidden;
+  /* FIX (emoji picker clipping): this used to be `overflow: hidden`,
+     which kept the card's bottom corners rounded whenever the comments
+     panel was open — but it also clipped anything that visually escapes
+     the card's box, including the comment box's emoji picker
+     (.pf-emoji-picker, position: absolute) whenever it opened near the
+     bottom of the card. Every element that actually needs clipping
+     (image grid, video wrapper) already clips itself below, and
+     .pf-comments-section now supplies its own bottom-corner rounding —
+     see that rule further down — so removing the parent-level clip is
+     safe and the corners still look correct. */
   position: relative;
   transition: border-color 0.2s, box-shadow 0.2s;
   box-shadow: 0 2px 12px rgba(124,58,237,0.05);
@@ -581,6 +590,11 @@
   flex-direction: column;
   gap: 10px;
   background: var(--zx-surface2);
+  /* NEW: since .pf-card no longer clips its own content (see the fix
+     note on .pf-card above), this section now rounds its own bottom
+     corners to match the card's radius, so the visual result is
+     identical to before — just without clipping the emoji picker. */
+  border-radius: 0 0 14px 14px;
 }
 
 .pf-comment { display: flex; gap: 8px; align-items: flex-start; }
@@ -630,6 +644,43 @@
   color: var(--zx-text2);
   line-height: 1.5;
   word-break: break-word; /* FIX */
+}
+
+/* ── NEW: Like action row under each comment's text ── */
+.pf-comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.pf-comment-like-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--zx-text3);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pf-comment-like-btn:hover {
+  color: var(--zx-primary);
+  background: var(--zx-bg);
+}
+
+.pf-comment-like-active {
+  color: var(--zx-primary);
+}
+
+.pf-comment-like-count {
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--zx-text3);
 }
 
 .pf-comment-input-row {
