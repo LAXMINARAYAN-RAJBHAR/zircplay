@@ -90,7 +90,7 @@ const TypingBubble = () => (
 let optimisticCounter = 0;
 const makeTempId = () => `temp-${Date.now()}-${++optimisticCounter}`;
 
-const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
+const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
@@ -100,6 +100,12 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  // ── Group options ("⋮" header menu — currently just Delete Group) ──
+  const [showGroupMenu, setShowGroupMenu] = useState(false);
+  const [deletingGroup, setDeletingGroup] = useState(false);
+  const groupMenuRef = useRef();
+  const groupMenuBtnRef = useRef();
 
   // ── Reply ──
   const [replyTarget, setReplyTarget] = useState(null);
@@ -139,6 +145,10 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
   const inputRef = useRef();
   const membersPanelRef = useRef();
   const membersTriggerRef = useRef();
+
+  // Whether the currently logged-in user is an admin of this group —
+  // gates the Delete Group option in the "⋮" menu below.
+  const isAdmin = members.find((m) => m.username === currentUser)?.is_admin;
 
   const loadMembers = useCallback(() => {
     fetchGroupMembers(group.id).then(setMembers);
@@ -309,6 +319,23 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMembers]);
+
+  // Close the group options "⋮" menu when tapping/clicking outside it.
+  useEffect(() => {
+    if (!showGroupMenu) return;
+    const handleClickOutside = (e) => {
+      if (
+        groupMenuRef.current &&
+        !groupMenuRef.current.contains(e.target) &&
+        groupMenuBtnRef.current &&
+        !groupMenuBtnRef.current.contains(e.target)
+      ) {
+        setShowGroupMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showGroupMenu]);
 
   // Close the "⋮" action menu when tapping/clicking anywhere outside it.
   useEffect(() => {
@@ -508,6 +535,49 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
     onBack();
   };
 
+  // ── Delete group (admins only) ──
+  // Removes the group entirely — all messages, all memberships, and the
+  // group row itself — for EVERY member, not just the person deleting
+  // it. Distinct from "Leave group" (members-panel button above), which
+  // only removes the current user from an otherwise-untouched group.
+  const handleDeleteGroup = async () => {
+    if (deletingGroup) return;
+    const confirmed = window.confirm(
+      `Delete "${group.name}" for everyone? This permanently removes the group and all its messages. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingGroup(true);
+    try {
+      const { error: msgErr } = await supabase
+        .from("group_messages")
+        .delete()
+        .eq("group_id", group.id);
+      if (msgErr) throw msgErr;
+
+      const { error: memberErr } = await supabase
+        .from("group_members")
+        .delete()
+        .eq("group_id", group.id);
+      if (memberErr) throw memberErr;
+
+      const { error: groupErr } = await supabase
+        .from("groups")
+        .delete()
+        .eq("id", group.id);
+      if (groupErr) throw groupErr;
+
+      // Let the parent (MessagesPanel) know so it can close this window
+      // and refresh its group list — the group object it's holding is
+      // now stale.
+      if (onGroupDeleted) onGroupDeleted();
+      else onBack();
+    } catch (err) {
+      setDeletingGroup(false);
+      alert(`Failed to delete group: ${err?.message || "please try again."}`);
+    }
+  };
+
   // ── Reply ──
   const startReply = (m) => {
     setReplyTarget(m);
@@ -549,21 +619,21 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       .maybeSingle();
 
     if (!convo) {
-  // NEW: forwarding to someone you've never talked to is still an
-  // unsolicited first message — starts as a pending request too, same
-  // as MessagesPanel.jsx's loadOrCreate/forwardToConversation.
-  const { data: created } = await supabase
-    .from("conversations")
-    .insert({
-      user_a,
-      user_b,
-      status: "pending",
-      initiated_by: currentUser,
-    })
-    .select()
-    .single();
-  convo = created;
-}
+      // Forwarding to someone you've never talked to is still an
+      // unsolicited first message — starts as a pending request too,
+      // same as MessagesPanel.jsx's loadOrCreate/forwardToConversation.
+      const { data: created } = await supabase
+        .from("conversations")
+        .insert({
+          user_a,
+          user_b,
+          status: "pending",
+          initiated_by: currentUser,
+        })
+        .select()
+        .single();
+      convo = created;
+    }
 
     if (!convo) {
       setForwarding(false);
@@ -748,6 +818,44 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
         >
           👤＋
         </button>
+
+        {/* NEW: group options menu — currently just Delete Group,
+            restricted to admins. Kept separate from the members panel's
+            "Leave group" button since deleting is a much more
+            destructive, everyone-affecting action. */}
+        <div className="gcw-menu-wrap">
+          <button
+            ref={groupMenuBtnRef}
+            className="gcw-header-menu-btn"
+            onClick={() => setShowGroupMenu((v) => !v)}
+            aria-label="Group options"
+            title="More"
+          >
+            ⋮
+          </button>
+          {showGroupMenu && (
+            <div className="gcw-group-menu" ref={groupMenuRef}>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  className="gcw-group-menu-item danger"
+                  onClick={() => {
+                    setShowGroupMenu(false);
+                    handleDeleteGroup();
+                  }}
+                  disabled={deletingGroup}
+                >
+                  🗑 {deletingGroup ? "Deleting…" : "Delete Group"}
+                </button>
+              ) : (
+                <div className="gcw-group-menu-empty">
+                  Only admins can delete this group
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <button className="gcw-close-btn" onClick={onClose} aria-label="Close">✕</button>
       </div>
 
