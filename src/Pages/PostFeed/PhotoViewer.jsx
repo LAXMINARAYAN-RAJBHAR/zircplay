@@ -159,11 +159,7 @@ const PhotoBlock = ({
 
       <img src={src} alt={`Photo ${index + 1}`} className="pv-block-image" />
 
-      {/* stopPropagation here (not on the whole block) so the panel's
-          buttons/input stay usable, while the image above and the
-          empty space around the block still bubble up to pv-overlay's
-          click-to-close handler. */}
-      <div className="pv-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="pv-panel">
         <div className="pv-summary">
           <span>
             {totalReactions > 0 &&
@@ -282,11 +278,6 @@ const PhotoBlock = ({
  *
  * Requires the post_image_reactions / post_image_comments tables — see
  * the accompanying SQL migration.
- *
- * CHANGED: viewer now closes on (1) clicking anywhere on the dark
- * backdrop or on a photo itself, and (2) pressing the browser's back
- * button — instead of the back button navigating away from the page
- * underneath. See the history.pushState / popstate wiring below.
  */
 const PhotoViewer = ({
   images,        // array of URL strings (post.image_urls, or [post.image_url])
@@ -300,12 +291,6 @@ const PhotoViewer = ({
   const [loading, setLoading] = useState(true);
   const blockRefs = useRef([]);
   const scrolledRef = useRef(false);
-  // NEW: tracks whether this viewer is being torn down because of a
-  // popstate (browser back button) event, vs. any other close path
-  // (X button, backdrop/photo click, Escape). Lets the unmount cleanup
-  // below tell the two apart so it doesn't fire a redundant
-  // history.back() after the browser has already navigated back.
-  const closedByPopStateRef = useRef(false);
 
   const loadAllImageData = useCallback(async () => {
     setLoading(true);
@@ -354,80 +339,25 @@ const PhotoViewer = ({
     }
   });
 
-  // NEW: back-button handling. Push one history entry the moment the
-  // viewer opens, so the browser's back gesture/button has something of
-  // ours to pop first instead of immediately leaving the page.
-  //
-  // IMPORTANT: history.back() is called from exactly ONE place — the
-  // cleanup below, and only when we're unmounting for a reason other
-  // than the browser's own back navigation. Every in-app close path
-  // (X button, backdrop click, Escape) calls onClose() directly and
-  // lets that cleanup quietly pop the entry afterwards. Previously,
-  // both the UI close paths AND the cleanup could each independently
-  // trigger a history.back() in quick succession (e.g. a tap
-  // registering as both touchend and a synthetic click on mobile),
-  // which skips past the real previous page and lands on a blank one —
-  // routing every close through a single history.back() call fixes
-  // that.
-  useEffect(() => {
-    window.history.pushState({ photoViewer: true }, "");
-
-    const handlePopState = () => {
-      closedByPopStateRef.current = true;
-      onClose();
-    };
-    window.addEventListener("popstate", handlePopState);
-
-    return () => {
-      // Remove the listener FIRST so that if history.back() below does
-      // fire a popstate, it doesn't loop back into handlePopState (the
-      // component is already unmounting either way).
-      window.removeEventListener("popstate", handlePopState);
-      if (!closedByPopStateRef.current) {
-        window.history.back();
-      }
-    };
-  }, [onClose]);
-
-  // Used by every in-app close path (X button, backdrop/photo click,
-  // Escape). Closes immediately — the effect cleanup above takes care
-  // of popping the history entry we pushed on open, so this never
-  // calls history.back() itself and can't double up with a genuine
-  // back-button press.
-  const closeViewer = useCallback(() => {
-    onClose();
-  }, [onClose]);
-
   useEffect(() => {
     document.body.style.overflow = "hidden";
     const handleKey = (e) => {
-      if (e.key === "Escape") closeViewer();
+      if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleKey);
     return () => {
       document.body.style.overflow = "";
       document.removeEventListener("keydown", handleKey);
     };
-  }, [closeViewer]);
+  }, [onClose]);
 
   return (
-    // NEW: clicking the backdrop (or a photo, since the image itself no
-    // longer stops propagation) closes the viewer. Only the like/
-    // comment/share panel below stops propagation, so those controls
-    // keep working without accidentally closing the viewer.
-    <div className="pv-overlay" onClick={closeViewer}>
-      <button
-        className="pv-close"
-        onClick={(e) => {
-          e.stopPropagation();
-          closeViewer();
-        }}
-        aria-label="Close"
-      >
+    <div className="pv-overlay">
+      <button className="pv-close" onClick={onClose} aria-label="Close">
         ✕
       </button>
 
-      <div className="pv-scroll-stack">
+      <div className="pv-scroll-stack" onClick={(e) => e.stopPropagation()}>
         {images.map((src, i) => (
           <PhotoBlock
             key={i}
