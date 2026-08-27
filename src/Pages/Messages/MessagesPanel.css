@@ -188,6 +188,15 @@
   padding: 12px 14px 4px;
 }
 
+/* ── Message Requests section label — same shape as the normal section
+   label, tinted to draw the eye since it needs action from the user ── */
+.mp-inbox-section-label-request {
+  color: var(--zx-primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .mp-profile-result .mp-convo-avatar {
   background: linear-gradient(135deg, var(--zx-accent3, #06b6d4), var(--zx-primary2));
 }
@@ -218,6 +227,36 @@
 .mp-convo-item.mp-convo-unread .mp-convo-last {
   font-weight: 700;
   color: var(--zx-primary);
+}
+
+/* ── Incoming message-request row — faint tint so the "Message
+   Requests" section reads as visually distinct from regular chats
+   even before the section label registers ── */
+.mp-convo-item.mp-convo-item-request {
+  background: var(--zx-surface2);
+}
+.mp-convo-item.mp-convo-item-request:hover,
+.mp-convo-item.mp-convo-item-request.active {
+  background: var(--zx-bg);
+}
+.mp-convo-item.mp-convo-item-request .mp-convo-name {
+  font-weight: 800;
+}
+
+/* ── "Pending" tag next to your own name in an outgoing request row ── */
+.mp-pending-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--zx-text3);
+  background: var(--zx-bg);
+  border: 1px solid var(--zx-border);
+  border-radius: 6px;
+  padding: 1px 5px;
+  vertical-align: middle;
 }
 
 .mp-convo-avatar {
@@ -287,6 +326,17 @@
   height: 8px;
   border-radius: 50%;
   background: var(--zx-primary);
+  display: inline-block;
+}
+
+/* ── Dot shown on an incoming request row instead of the normal unread
+   dot — same size/position, distinct color so requests never get
+   visually confused with plain unread messages ── */
+.mp-request-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--zx-accent2);
   display: inline-block;
 }
 
@@ -369,6 +419,97 @@
 }
 .mp-chat-status.offline {
   color: #ef4444;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MESSAGE REQUEST BANNERS + ACTIONS
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Sits directly under the chat header, above the message list. Shared
+   base for both the incoming ("they want to message you") and outgoing
+   ("waiting on them") variants — the outgoing modifier just lightens it. */
+.mp-request-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--zx-surface2);
+  border-bottom: 2px solid var(--zx-border);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--zx-text2);
+}
+
+.mp-request-banner-outgoing {
+  background: var(--zx-bg);
+  color: var(--zx-text3);
+}
+
+.mp-request-banner-icon {
+  flex-shrink: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.mp-request-banner-text strong {
+  color: var(--zx-text);
+  font-weight: 800;
+}
+.mp-request-banner-outgoing .mp-request-banner-text strong {
+  color: var(--zx-text2);
+}
+
+/* Replaces the entire compose row while a request is incoming and
+   unaccepted — same footprint/border as .mp-chat-input-row so the
+   layout doesn't jump between the two states. */
+.mp-request-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 2px solid var(--zx-border);
+  background: var(--zx-surface);
+}
+
+.mp-request-decline-btn,
+.mp-request-accept-btn {
+  flex: 1;
+  border: none;
+  border-radius: 20px;
+  padding: 10px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.mp-request-decline-btn:active,
+.mp-request-accept-btn:active {
+  transform: scale(0.98);
+}
+.mp-request-decline-btn:disabled,
+.mp-request-accept-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mp-request-decline-btn {
+  background: var(--zx-bg);
+  color: var(--zx-text2);
+  border: 2px solid var(--zx-border);
+}
+.mp-request-decline-btn:hover:not(:disabled) {
+  background: var(--zx-surface2);
+  border-color: var(--zx-primary);
+  color: var(--zx-primary);
+}
+
+.mp-request-accept-btn {
+  background: var(--zx-primary);
+  color: #fff;
+}
+.mp-request-accept-btn:hover:not(:disabled) {
+  background: var(--zx-accent1);
 }
 
 .mp-chat-body {
