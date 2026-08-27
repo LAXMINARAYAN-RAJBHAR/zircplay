@@ -201,6 +201,7 @@ const PostCard = ({
   onEdit,
   onReport,
   onLikeComment, // NEW: like/unlike a single comment
+  onDislikeComment, // NEW: dislike/undislike a single comment
 }) => {
   const [commentText, setCommentText] = useState("");
   const [showPicker, setShowPicker] = useState(false);
@@ -357,16 +358,17 @@ const PostCard = ({
     setShowMenu(false);
   };
 
-  // NEW: like/unlike an individual comment. Guards against logged-out
+  // NEW: like/dislike an individual comment. Guards against logged-out
   // users the same way every other interactive action on this card
   // does (Like/Comment/Share), then delegates the actual state update
-  // + Supabase write up to PostFeed via onLikeComment.
-  const handleCommentLikeClick = (commentId) => {
+  // + Supabase write up to PostFeed via the passed-in callback
+  // (onLikeComment or onDislikeComment).
+  const handleCommentReactionClick = (commentId, callback) => {
     if (!currentUser || currentUser === "anonymous") {
       window.dispatchEvent(new CustomEvent("openLogin"));
       return;
     }
-    onLikeComment(post.id, commentId);
+    callback(post.id, commentId);
   };
 
   return (
@@ -775,11 +777,15 @@ const PostCard = ({
         {!isEditing && post.showComments && (
           <div className="pf-comments-section">
             {(post.comments || []).map((c) => {
-              // NEW: per-comment like state. liked_by is a text[] column
-              // on post_comments (see migration note) holding the
-              // usernames who've liked this comment.
+              // NEW: per-comment like/dislike state. liked_by and
+              // disliked_by are text[] columns on post_comments (see
+              // migration note) holding the usernames who've liked /
+              // disliked this comment. The two are mutually exclusive
+              // per-user, enforced server-side in handleCommentReaction.
               const likedBy = c.liked_by || [];
+              const dislikedBy = c.disliked_by || [];
               const iLikedComment = likedBy.includes(currentUser);
+              const iDislikedComment = dislikedBy.includes(currentUser);
 
               return (
                 <div className="pf-comment" key={c.id}>
@@ -806,19 +812,37 @@ const PostCard = ({
                     </div>
                     <p className="pf-comment-text">{c.text}</p>
 
-                    {/* NEW: Like action + count for this comment */}
+                    {/* NEW: Like + Dislike actions with counts for this comment */}
                     <div className="pf-comment-actions">
                       <button
                         className={`pf-comment-like-btn ${
                           iLikedComment ? "pf-comment-like-active" : ""
                         }`}
-                        onClick={() => handleCommentLikeClick(c.id)}
+                        onClick={() =>
+                          handleCommentReactionClick(c.id, onLikeComment)
+                        }
                       >
                         👍 Like
                       </button>
                       {likedBy.length > 0 && (
                         <span className="pf-comment-like-count">
                           {likedBy.length}
+                        </span>
+                      )}
+
+                      <button
+                        className={`pf-comment-dislike-btn ${
+                          iDislikedComment ? "pf-comment-dislike-active" : ""
+                        }`}
+                        onClick={() =>
+                          handleCommentReactionClick(c.id, onDislikeComment)
+                        }
+                      >
+                        👎 Dislike
+                      </button>
+                      {dislikedBy.length > 0 && (
+                        <span className="pf-comment-like-count">
+                          {dislikedBy.length}
                         </span>
                       )}
                     </div>

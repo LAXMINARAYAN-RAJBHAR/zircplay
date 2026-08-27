@@ -70,7 +70,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
           *,
           post_reactions ( type, username ),
           post_comments (
-            id, text, username, created_at, liked_by
+            id, text, username, created_at, liked_by, disliked_by
           )
         `)
         .order("created_at", { ascending: false })
@@ -118,7 +118,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         .select(`
           *,
           post_reactions ( type, username ),
-          post_comments ( id, text, username, created_at, liked_by )
+          post_comments ( id, text, username, created_at, liked_by, disliked_by )
         `)
         .eq("id", newId)
         .maybeSingle();
@@ -195,7 +195,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         .select(`
           *,
           post_reactions ( type, username ),
-          post_comments ( id, text, username, created_at, liked_by )
+          post_comments ( id, text, username, created_at, liked_by, disliked_by )
         `)
         .eq("id", sharedPostId)
         .maybeSingle();
@@ -351,17 +351,23 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     }
   };
 
-  // NEW: like/unlike a single comment.
-  // Mirrors handleReaction's pattern (optimistic local update first,
-  // then persist, then roll back with a re-fetch if the write fails).
-  // Storage model: post_comments.liked_by is a text[] column holding
-  // the usernames who currently like that comment — no separate join
-  // table needed since a comment's like list is small and only ever
-  // read alongside the comment itself.
+  // NEW: like/dislike a single comment. `type` is "like" or "dislike";
+  // the two are mutually exclusive per-user — picking one removes you
+  // from the other list, same relationship as post reactions vs. their
+  // opposite. Mirrors handleReaction's pattern (optimistic local update
+  // first, then persist, then roll back with a re-fetch if the write
+  // fails).
+  //
+  // Storage model: post_comments.liked_by / disliked_by are text[]
+  // columns holding the usernames who currently like/dislike that
+  // comment — no separate join table needed since a comment's
+  // like/dislike lists are small and only ever read alongside the
+  // comment itself.
   //
   // Migration required once, in Supabase SQL editor:
   //   alter table post_comments add column liked_by text[] default '{}';
-  const handleLikeComment = async (postId, commentId) => {
+  //   alter table post_comments add column disliked_by text[] default '{}';
+  const handleCommentReaction = async (postId, commentId, type) => {
     if (!currentUser || currentUser === "anonymous") {
       window.dispatchEvent(new CustomEvent("openLogin"));
       return;
@@ -372,10 +378,23 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     if (!comment) return;
 
     const likedBy = comment.liked_by || [];
-    const alreadyLiked = likedBy.includes(currentUser);
-    const nextLikedBy = alreadyLiked
-      ? likedBy.filter((u) => u !== currentUser)
-      : [...likedBy, currentUser];
+    const dislikedBy = comment.disliked_by || [];
+
+    const isLike = type === "like";
+    const sameList = isLike ? likedBy : dislikedBy;
+    const otherList = isLike ? dislikedBy : likedBy;
+    const alreadyActive = sameList.includes(currentUser);
+
+    // Toggling the same reaction off just removes you from that list.
+    // Picking the opposite reaction removes you from the other list too
+    // (you can't like AND dislike the same comment at once).
+    const nextSameList = alreadyActive
+      ? sameList.filter((u) => u !== currentUser)
+      : [...sameList, currentUser];
+    const nextOtherList = otherList.filter((u) => u !== currentUser);
+
+    const nextLikedBy = isLike ? nextSameList : nextOtherList;
+    const nextDislikedBy = isLike ? nextOtherList : nextSameList;
 
     // Optimistic update
     setPosts((all) =>
@@ -385,7 +404,9 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
           : {
               ...p,
               comments: p.comments.map((c) =>
-                c.id === commentId ? { ...c, liked_by: nextLikedBy } : c
+                c.id === commentId
+                  ? { ...c, liked_by: nextLikedBy, disliked_by: nextDislikedBy }
+                  : c
               ),
             }
       )
@@ -393,7 +414,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
 
     const { error: err } = await supabase
       .from("post_comments")
-      .update({ liked_by: nextLikedBy })
+      .update({ liked_by: nextLikedBy, disliked_by: nextDislikedBy })
       .eq("id", commentId);
 
     if (err) {
@@ -402,9 +423,15 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
       return;
     }
 
-    // Notify the comment's author, only on a genuinely new like (not on
-    // unliking) and never for liking your own comment.
-    if (!alreadyLiked && comment.username && comment.username !== currentUser) {
+    // Notify the comment's author only on a genuinely new LIKE (not on
+    // unliking, not on dislikes, and never for reacting to your own
+    // comment) — matches how post reactions only notify on a new like.
+    if (
+      isLike &&
+      !alreadyActive &&
+      comment.username &&
+      comment.username !== currentUser
+    ) {
       notifyUser({
         recipientUsername: comment.username,
         senderUsername: currentUser,
@@ -611,7 +638,12 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
                 onDelete={handleDeletePost}
                 onEdit={handleEditPost}
                 onReport={handleReportPost}
-                onLikeComment={handleLikeComment}
+                onLikeComment={(postId, commentId) =>
+                  handleCommentReaction(postId, commentId, "like")
+                }
+                onDislikeComment={(postId, commentId) =>
+                  handleCommentReaction(postId, commentId, "dislike")
+                }
               />
             </div>
             {(index + 1) % 5 === 0 && (
