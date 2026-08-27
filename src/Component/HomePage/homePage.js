@@ -3374,7 +3374,14 @@ const HomePage = ({ sideNavbar }) => {
   id: v.id,
   short_id: v.short_id,
   src: v.video_url,
-  thumbnail: v.thumbnail_url,
+  // FIX: previously fell back to nothing when thumbnail_url was empty
+  // (a common outcome when client-side captureThumbnail() in
+  // videoUpload.js times out or fails). An empty src makes the <img>
+  // fail to load, and the browser renders the alt text (the video
+  // title) as large plain link-styled text instead of an image. Seed
+  // a per-video fallback with the video's own id so a missing
+  // thumbnail shows a distinct placeholder instead of broken alt text.
+  thumbnail: v.thumbnail_url || `https://picsum.photos/640/360?random=${v.id}`,
   title: v.title,
   duration: v.duration || "00:00",
   channel: v.channel,
@@ -3422,7 +3429,10 @@ const HomePage = ({ sideNavbar }) => {
           const newVideo = {
             id: v.id,
             src: v.video_url,
-            thumbnail: v.thumbnail_url,
+            // FIX: same per-video fallback as fetchDbVideos above,
+            // applied to realtime INSERTs too, so a freshly uploaded
+            // video without a thumbnail doesn't render as raw alt text.
+            thumbnail: v.thumbnail_url || `https://picsum.photos/640/360?random=${v.id}`,
             title: v.title,
             duration: v.duration || "00:00",
             channel: v.channel,
