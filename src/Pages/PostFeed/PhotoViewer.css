@@ -5,14 +5,11 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.92);
   z-index: 999999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   overflow: hidden;
 }
 
 .pv-close {
-  position: absolute;
+  position: fixed;
   top: 16px;
   right: 20px;
   width: 40px;
@@ -23,58 +20,63 @@
   color: #fff;
   font-size: 20px;
   cursor: pointer;
-  z-index: 3;
+  z-index: 10;
 }
 
-.pv-counter {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  color: #fff;
-  font-family: "Nunito", sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.12);
-  padding: 4px 12px;
-  border-radius: 12px;
-  z-index: 3;
-}
-
-.pv-arrow {
-  position: absolute;
-  top: 45%;
-  transform: translateY(-50%);
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  font-size: 26px;
-  cursor: pointer;
-  z-index: 3;
-}
-.pv-arrow-l { left: 14px; }
-.pv-arrow-r { right: 14px; }
-
-.pv-stage {
+/* ── Vertical stack — every photo in the post, one below another.
+   Scrolls the whole overlay; each PhotoBlock is a natural-height row
+   rather than a fixed-height slide, so tall/short photos and open
+   comment panels don't fight for space like a fixed viewport would. ── */
+.pv-scroll-stack {
+  height: 100%;
+  overflow-y: auto;
+  scroll-behavior: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 92vw;
-  max-height: 92vh;
+  gap: 14px;
+  padding: 70px 0 40px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+.pv-scroll-stack::-webkit-scrollbar { width: 6px; }
+.pv-scroll-stack::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
 }
 
-.pv-image {
-  max-width: 92vw;
-  max-height: 62vh;
+.pv-block {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(92vw, 480px);
+  scroll-margin-top: 70px; /* keeps scrollIntoView from tucking under pv-close */
+}
+
+.pv-block-counter {
+  align-self: flex-start;
+  color: #fff;
+  font-family: "Nunito", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 3px 10px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.pv-block-image {
+  width: 100%;
+  max-height: 70vh;
   object-fit: contain;
   border-radius: 8px 8px 0 0;
   display: block;
+  background: #000;
 }
 
 .pv-panel {
-  width: min(92vw, 480px);
+  width: 100%;
   background: #1c1c1c;
   border-radius: 0 0 12px 12px;
   color: #fff;
@@ -185,6 +187,7 @@
 }
 
 @media (max-width: 480px) {
-  .pv-panel { width: 100vw; border-radius: 0; }
-  .pv-image { max-height: 55vh; border-radius: 0; }
+  .pv-block { width: 100vw; }
+  .pv-block-image { max-height: 60vh; border-radius: 0; }
+  .pv-panel { border-radius: 0; }
 }
