@@ -356,12 +356,19 @@ const PhotoViewer = ({
 
   // NEW: back-button handling. Push one history entry the moment the
   // viewer opens, so the browser's back gesture/button has something of
-  // ours to pop first instead of immediately leaving the page. Every
-  // in-app close path (X button, backdrop click, Escape) triggers that
-  // pop via history.back() rather than calling onClose directly — the
-  // popstate listener below is the single place that actually unmounts
-  // the viewer, so however it's closed, the browser history stays
-  // consistent with what's on screen.
+  // ours to pop first instead of immediately leaving the page.
+  //
+  // IMPORTANT: history.back() is called from exactly ONE place — the
+  // cleanup below, and only when we're unmounting for a reason other
+  // than the browser's own back navigation. Every in-app close path
+  // (X button, backdrop click, Escape) calls onClose() directly and
+  // lets that cleanup quietly pop the entry afterwards. Previously,
+  // both the UI close paths AND the cleanup could each independently
+  // trigger a history.back() in quick succession (e.g. a tap
+  // registering as both touchend and a synthetic click on mobile),
+  // which skips past the real previous page and lands on a blank one —
+  // routing every close through a single history.back() call fixes
+  // that.
   useEffect(() => {
     window.history.pushState({ photoViewer: true }, "");
 
@@ -372,24 +379,24 @@ const PhotoViewer = ({
     window.addEventListener("popstate", handlePopState);
 
     return () => {
+      // Remove the listener FIRST so that if history.back() below does
+      // fire a popstate, it doesn't loop back into handlePopState (the
+      // component is already unmounting either way).
       window.removeEventListener("popstate", handlePopState);
-      // If we're unmounting for some other reason than the back
-      // button itself firing (e.g. a parent-level state change), the
-      // history entry we pushed on open is still sitting there. Pop it
-      // so a later back press doesn't land the user back on a closed
-      // viewer instead of the previous real page.
       if (!closedByPopStateRef.current) {
         window.history.back();
       }
     };
   }, [onClose]);
 
-  // Routes every non-popstate close path through history.back() so the
-  // popstate handler above is the only place onClose actually fires —
-  // keeps a single source of truth for "the viewer is closing".
+  // Used by every in-app close path (X button, backdrop/photo click,
+  // Escape). Closes immediately — the effect cleanup above takes care
+  // of popping the history entry we pushed on open, so this never
+  // calls history.back() itself and can't double up with a genuine
+  // back-button press.
   const closeViewer = useCallback(() => {
-    window.history.back();
-  }, []);
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
