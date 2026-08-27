@@ -549,13 +549,21 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose }) => {
       .maybeSingle();
 
     if (!convo) {
-      const { data: created } = await supabase
-        .from("conversations")
-        .insert({ user_a, user_b })
-        .select()
-        .single();
-      convo = created;
-    }
+  // NEW: forwarding to someone you've never talked to is still an
+  // unsolicited first message — starts as a pending request too, same
+  // as MessagesPanel.jsx's loadOrCreate/forwardToConversation.
+  const { data: created } = await supabase
+    .from("conversations")
+    .insert({
+      user_a,
+      user_b,
+      status: "pending",
+      initiated_by: currentUser,
+    })
+    .select()
+    .single();
+  convo = created;
+}
 
     if (!convo) {
       setForwarding(false);
