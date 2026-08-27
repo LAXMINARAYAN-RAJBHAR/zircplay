@@ -150,142 +150,39 @@ const PostVideo = ({ src }) => {
 };
 
 /* ─────────────────────────────────────────
-   IMAGE CAROUSEL
-───────────────────────────────────────── */
-const ImageCarousel = ({ images, onOpenViewer }) => {
-  const [idx, setIdx] = useState(0);
-  const trackRef = useRef();
-  const startXRef = useRef(0);
-  const dragXRef = useRef(0);
-  const isDraggingRef = useRef(false);
-
-  const goTo = (i) => {
-    const next = (i + images.length) % images.length;
-    setIdx(next);
-    if (trackRef.current) {
-      trackRef.current.style.transition = "transform 0.3s ease";
-      trackRef.current.style.transform = `translateX(-${next * 100}%)`;
-    }
-  };
-
-  const applyDrag = (dx) => {
-    if (trackRef.current) {
-      trackRef.current.style.transition = "none";
-      trackRef.current.style.transform = `translateX(calc(-${idx * 100}% + ${dx}px))`;
-    }
-  };
-
-  const onMouseDown = (e) => {
-    isDraggingRef.current = true;
-    startXRef.current = e.clientX;
-    dragXRef.current = 0;
-  };
-
-  const onMouseMove = (e) => {
-    if (!isDraggingRef.current) return;
-    dragXRef.current = e.clientX - startXRef.current;
-    applyDrag(dragXRef.current);
-  };
-
-  const onMouseUp = () => {
-    if (!isDraggingRef.current) return;
-    isDraggingRef.current = false;
-    const dx = dragXRef.current;
-    if (dx < -50) goTo(idx + 1);
-    else if (dx > 50) goTo(idx - 1);
-    else goTo(idx);
-  };
-
-  const onTouchStart = (e) => {
-    startXRef.current = e.touches[0].clientX;
-    dragXRef.current = 0;
-  };
-
-  const onTouchMove = (e) => {
-    dragXRef.current = e.touches[0].clientX - startXRef.current;
-    applyDrag(dragXRef.current);
-  };
-
-  const onTouchEnd = () => {
-    const dx = dragXRef.current;
-    if (dx < -50) goTo(idx + 1);
-    else if (dx > 50) goTo(idx - 1);
-    else goTo(idx);
-  };
-
-  const handleClick = () => {
-    if (Math.abs(dragXRef.current) < 8) {
-      onOpenViewer(idx);
-    }
-  };
+   IMAGE GRID — Facebook-style collage for multi-image posts.
+   Replaces the old in-feed ImageCarousel. Layout is driven entirely by
+   the existing .pf-img-grid / .pf-img-grid-1..4 CSS in PostFeed.css
+   (which was already written but never wired to any component):
+     1 photo  → full-width single tile
+     2 photos → two tiles side by side
+     3 photos → one large + two stacked small
+     4 photos → 2x2 grid
+     5+       → same 2x2 grid, with a "+N" overlay on the 4th tile
+                showing how many more photos aren't shown here
+   Tapping ANY tile opens the full-screen, swipeable PhotoViewer
+   starting at that tile's actual index in the full image_urls array —
+   so tapping the "+N" tile still lands you on photo #4, and swiping
+   from there reveals the rest, exactly like Facebook. ── */
+const ImageGrid = ({ images, onOpenViewer }) => {
+  const count = images.length;
+  const displayCount = Math.min(count, 4);
+  const remaining = count - displayCount;
 
   return (
-    <div
-      className="pf-carousel-wrap"
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      onClick={handleClick}
-    >
-      <div className="pf-carousel-track" ref={trackRef}>
-        {images.map((url, i) => (
-          <div className="pf-carousel-slide" key={i}>
-            <img
-              src={url}
-              alt={`Image ${i + 1}`}
-              loading="lazy"
-              draggable={false}
-            />
-          </div>
-        ))}
-      </div>
-
-      {images.length > 1 && (
-        <>
-          <span className="pf-carousel-counter">
-            {idx + 1} / {images.length}
-          </span>
-
-          <button
-            className="pf-carousel-arrow pf-carousel-arrow-l"
-            onClick={(e) => {
-              e.stopPropagation();
-              goTo(idx - 1);
-            }}
-            aria-label="Previous image"
-          >
-            ‹
-          </button>
-          <button
-            className="pf-carousel-arrow pf-carousel-arrow-r"
-            onClick={(e) => {
-              e.stopPropagation();
-              goTo(idx + 1);
-            }}
-            aria-label="Next image"
-          >
-            ›
-          </button>
-
-          <div className="pf-carousel-dots">
-            {images.map((_, i) => (
-              <button
-                key={i}
-                className={`pf-carousel-dot${i === idx ? " active" : ""}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  goTo(i);
-                }}
-                aria-label={`Go to image ${i + 1}`}
-              />
-            ))}
-          </div>
-        </>
-      )}
+    <div className={`pf-img-grid pf-img-grid-${displayCount}`}>
+      {images.slice(0, displayCount).map((url, i) => (
+        <div
+          className="pf-img-grid-item"
+          key={i}
+          onClick={() => onOpenViewer(i)}
+        >
+          <img src={url} alt={`Image ${i + 1}`} loading="lazy" />
+          {i === displayCount - 1 && remaining > 0 && (
+            <div className="pf-img-grid-more">+{remaining}</div>
+          )}
+        </div>
+      ))}
     </div>
   );
 };
@@ -461,9 +358,8 @@ const PostCard = ({
 
   return (
     <>
-      {/* CHANGED: PhotoViewer replaces the old view-only Lightbox — same
-          {images, startIndex} shape driving it, but now with per-photo
-          like/comment/share/copy-link built in. */}
+      {/* PhotoViewer — same {images, startIndex} shape as before, now
+          launched from ImageGrid taps instead of ImageCarousel drags. */}
       {photoViewerData && (
         <PhotoViewer
           images={photoViewerData.images}
@@ -665,8 +561,13 @@ const PostCard = ({
               </p>
             )}
 
+            {/* CHANGED: ImageCarousel → ImageGrid. Multi-image (and
+                single-image, via image_urls) posts now render as a
+                Facebook-style collage in the feed instead of a
+                one-at-a-time carousel — tapping any tile opens
+                PhotoViewer at that tile's index. */}
             {post.image_urls && post.image_urls.length > 0 ? (
-              <ImageCarousel
+              <ImageGrid
                 images={post.image_urls}
                 onOpenViewer={(startIndex) =>
                   setPhotoViewerData({ images: post.image_urls, startIndex })
