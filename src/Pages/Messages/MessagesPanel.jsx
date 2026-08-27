@@ -389,6 +389,17 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
 
+  // ── Message requests ──
+  // A conversation starts life as status:"pending" the first time either
+  // side messages someone they don't already have an accepted thread
+  // with (see loadOrCreate / forwardToConversation below). The person
+  // who did NOT initiate it sees an Accept/Decline gate instead of the
+  // normal input row until they accept — mirrors Instagram/Facebook
+  // "Message Requests". Existing conversations are unaffected: the
+  // "status" column defaults to "accepted" in the migration, so nothing
+  // that was already chatting gets retroactively locked.
+  const [requestActionBusy, setRequestActionBusy] = useState(false);
+
   // ── Presence / last-seen ──
   const { onlineUsers, getLastSeen } = usePresence();
   const [activeUserLastSeen, setActiveUserLastSeen] = useState(null);
@@ -725,12 +736,12 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     fetchConversations();
 
     // Fires on every conversation change (new conversation created, or
-    // last_message_* updated by a new message). If the message wasn't
-    // sent by us AND isn't for the conversation currently open (that
-    // conversation's own dm-panel listener already plays the inline
-    // "receive" pop — we don't want to double-chime for the same
-    // message), play the louder background notification chime and show
-    // a browser notification.
+    // last_message_* updated by a new message, or a request being
+    // accepted/declined). If the message wasn't sent by us AND isn't for
+    // the conversation currently open (that conversation's own dm-panel
+    // listener already plays the inline "receive" pop — we don't want to
+    // double-chime for the same message), play the louder background
+    // notification chime and show a browser notification.
     const handleConversationRealtime = (convRow) => {
       fetchConversations();
       if (!convRow.last_message_sender || convRow.last_message_sender === currentUser) return;
@@ -859,9 +870,22 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         .maybeSingle();
 
       if (!convo) {
+        // NEW: every brand-new conversation starts as a "message
+        // request" — status: "pending", with initiated_by recording
+        // who's actually reaching out first. The other side has to
+        // Accept (see acceptRequest below) before real back-and-forth
+        // chatting opens up. Existing conversations are untouched by
+        // this — the "status" column defaults to "accepted" in the
+        // migration, so this branch only ever fires for genuinely new
+        // pairs of users who've never messaged before.
         const { data: created } = await supabase
           .from("conversations")
-          .insert({ user_a, user_b })
+          .insert({
+            user_a,
+            user_b,
+            status: "pending",
+            initiated_by: currentUser,
+          })
           .select()
           .single();
         convo = created;
@@ -953,6 +977,29 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
     return () => supabase.removeChannel(channel);
   }, [activeConvo]);
+
+  // Keeps the open chat window's accept/decline gate in sync the instant
+  // EITHER side accepts — without this, the sender's own open window
+  // would keep showing the "waiting for them to accept" banner until
+  // they closed and reopened the conversation, even after the other
+  // person had already accepted.
+  useEffect(() => {
+    if (!activeConvo) return;
+    const channel = supabase
+      .channel(`conversation-status-${activeConvo.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversations",
+          filter: `id=eq.${activeConvo.id}`,
+        },
+        (payload) => setActiveConvo(payload.new),
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [activeConvo?.id]);
 
   // ── Typing indicator: broadcast channel scoped to this conversation ──
   useEffect(() => {
@@ -1184,12 +1231,62 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setRecordingSeconds(0);
   };
 
+  // ── Message request gate ──
+  // A conversation is a "request TO ME" when it's pending and I'm NOT
+  // the one who started it — that's the case where sending must be
+  // blocked until I explicitly accept.
+  const isPendingRequest = activeConvo?.status === "pending";
+  const isRequestInitiator = activeConvo?.initiated_by === currentUser;
+  const isIncomingRequest = isPendingRequest && !isRequestInitiator;
+  const isOutgoingPendingRequest = isPendingRequest && isRequestInitiator;
+
+  const acceptRequest = async () => {
+    if (!activeConvo || requestActionBusy) return;
+    setRequestActionBusy(true);
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("conversations")
+      .update({ status: "accepted", accepted_at: nowIso })
+      .eq("id", activeConvo.id)
+      .select()
+      .single();
+    setRequestActionBusy(false);
+    if (!error && data) {
+      setActiveConvo(data);
+      setConversations((prev) =>
+        prev.map((c) => (c.id === data.id ? data : c)),
+      );
+    }
+  };
+
+  const declineRequest = async () => {
+    if (!activeConvo || requestActionBusy) return;
+    const confirmed = window.confirm(
+      `Decline the message request from ${activeUsername}? This deletes the conversation.`,
+    );
+    if (!confirmed) return;
+    setRequestActionBusy(true);
+    await supabase
+      .from("direct_messages")
+      .delete()
+      .eq("conversation_id", activeConvo.id);
+    await supabase.from("conversations").delete().eq("id", activeConvo.id);
+    setRequestActionBusy(false);
+    setConversations((prev) => prev.filter((c) => c.id !== activeConvo.id));
+    closeDetail();
+  };
+
   const handleSend = async () => {
     if (
       (!text.trim() && !pendingAttachment) ||
       !activeConvo ||
       sending ||
-      uploading
+      uploading ||
+      // Defense-in-depth: the input row is hidden entirely for an
+      // incoming, not-yet-accepted request (see the render below), but
+      // guard the actual send path too in case this is ever reachable
+      // some other way.
+      isIncomingRequest
     )
       return;
     setSending(true);
@@ -1446,9 +1543,17 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       .maybeSingle();
 
     if (!convo) {
+      // NEW: same message-request treatment as loadOrCreate above —
+      // forwarding to someone you've never talked to is still an
+      // unsolicited first message, so it starts as a pending request too.
       const { data: created } = await supabase
         .from("conversations")
-        .insert({ user_a, user_b })
+        .insert({
+          user_a,
+          user_b,
+          status: "pending",
+          initiated_by: currentUser,
+        })
         .select()
         .single();
       convo = created;
@@ -1581,6 +1686,18 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       })
     : conversations;
 
+  // NEW: split the inbox into incoming message requests (pending,
+  // someone ELSE started it) vs. everything else (accepted chats, plus
+  // any of MY OWN pending outgoing requests — those stay in the regular
+  // list with a small "Pending" tag, same as Instagram showing your own
+  // sent requests inline rather than in a separate folder).
+  const incomingRequests = filteredConversations.filter(
+    (c) => c.status === "pending" && c.initiated_by !== currentUser,
+  );
+  const regularConversations = filteredConversations.filter(
+    (c) => !(c.status === "pending" && c.initiated_by !== currentUser),
+  );
+
   const existingUsernames = new Set(conversations.map((c) => getOtherUser(c)));
   const newProfileResults = profileResults.filter(
     (p) => !existingUsernames.has(p.username),
@@ -1625,6 +1742,50 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   };
 
   const anyDetailOpen = !!(activeUsername || activeGroup || activeBroadcast);
+
+  // Shared render for a single conversation row in the inbox list —
+  // used for both the "Message Requests" section and the regular list,
+  // so the two stay visually consistent apart from the request badge.
+  const renderConvoItem = (conv, isRequestItem) => {
+    const other = getOtherUser(conv);
+    const isActive = other === activeUsername;
+    const isOnline = onlineUsers.has(other);
+    const unread = isConvoUnread(conv);
+    const isMyPending = conv.status === "pending" && conv.initiated_by === currentUser;
+    return (
+      <div
+        key={conv.id}
+        className={`mp-convo-item ${isActive ? "active" : ""} ${unread ? "mp-convo-unread" : ""} ${isRequestItem ? "mp-convo-item-request" : ""}`}
+        onClick={() => openConversation(other)}
+      >
+        <div className="mp-convo-avatar">
+          {other.slice(0, 2).toUpperCase()}
+          <span
+            className={`mp-status-dot ${isOnline ? "online" : "offline"}`}
+          />
+        </div>
+        <div className="mp-convo-meta">
+          <div className="mp-convo-name">
+            {other}
+            {isMyPending && <span className="mp-pending-tag">Pending</span>}
+          </div>
+          <div className="mp-convo-last">
+            {conv.last_message || "No messages yet"}
+          </div>
+        </div>
+        <div className="mp-convo-right">
+          <div className="mp-convo-time">
+            {timeAgo(conv.last_message_at)}
+          </div>
+          {isRequestItem ? (
+            <span className="mp-request-dot" />
+          ) : (
+            unread && <span className="mp-unread-dot" />
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -1763,38 +1924,21 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                     <p className="mp-empty">No matches for "{inboxSearch}"</p>
                   ) : (
                     <>
-                      {filteredConversations.map((conv) => {
-                        const other = getOtherUser(conv);
-                        const isActive = other === activeUsername;
-                        const isOnline = onlineUsers.has(other);
-                        const unread = isConvoUnread(conv);
-                        return (
-                          <div
-                            key={conv.id}
-                            className={`mp-convo-item ${isActive ? "active" : ""} ${unread ? "mp-convo-unread" : ""}`}
-                            onClick={() => openConversation(other)}
-                          >
-                            <div className="mp-convo-avatar">
-                              {other.slice(0, 2).toUpperCase()}
-                              <span
-                                className={`mp-status-dot ${isOnline ? "online" : "offline"}`}
-                              />
-                            </div>
-                            <div className="mp-convo-meta">
-                              <div className="mp-convo-name">{other}</div>
-                              <div className="mp-convo-last">
-                                {conv.last_message || "No messages yet"}
-                              </div>
-                            </div>
-                            <div className="mp-convo-right">
-                              <div className="mp-convo-time">
-                                {timeAgo(conv.last_message_at)}
-                              </div>
-                              {unread && <span className="mp-unread-dot" />}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {incomingRequests.length > 0 && (
+                        <div className="mp-inbox-section-label mp-inbox-section-label-request">
+                          Message Requests ({incomingRequests.length})
+                        </div>
+                      )}
+                      {incomingRequests.map((conv) => renderConvoItem(conv, true))}
+
+                      {incomingRequests.length > 0 &&
+                        (regularConversations.length > 0 ||
+                          (!normalizedSearch &&
+                            (groups.length > 0 || broadcastLists.length > 0))) && (
+                          <div className="mp-inbox-section-label">Chats</div>
+                        )}
+
+                      {regularConversations.map((conv) => renderConvoItem(conv, false))}
 
                       {!normalizedSearch &&
                         groups.map((g) => (
@@ -1953,6 +2097,29 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                       ✕
                     </button>
                   </div>
+
+                  {/* NEW: message-request banners. Shown to the RECEIVER
+                      of an unaccepted request, and separately (in a
+                      lighter tone) to the SENDER while they wait. */}
+                  {isIncomingRequest && (
+                    <div className="mp-request-banner">
+                      <span className="mp-request-banner-icon">✋</span>
+                      <span className="mp-request-banner-text">
+                        <strong>{activeUsername}</strong> wants to send you a
+                        message. Accept to reply, or decline to remove this
+                        request.
+                      </span>
+                    </div>
+                  )}
+                  {isOutgoingPendingRequest && (
+                    <div className="mp-request-banner mp-request-banner-outgoing">
+                      <span className="mp-request-banner-icon">⏳</span>
+                      <span className="mp-request-banner-text">
+                        Message request sent to <strong>{activeUsername}</strong>.
+                        They need to accept before you can chat freely.
+                      </span>
+                    </div>
+                  )}
 
                   <div className="mp-chat-body">
                     {loadingMessages ? (
@@ -2307,188 +2474,216 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                     <div ref={bottomRef} />
                   </div>
 
-                  {replyTarget && (
-                    <div className="mp-reply-preview">
-                      <div className="mp-reply-preview-bar" />
-                      <div className="mp-reply-preview-content">
-                        <span className="mp-reply-preview-sender">
-                          Replying to{" "}
-                          {replyTarget.sender_username === currentUser
-                            ? "yourself"
-                            : replyTarget.sender_username}
-                        </span>
-                        <span className="mp-reply-preview-text">
-                          {replyTarget.text
-                            ? replyTarget.text.slice(0, 80)
-                            : attachmentPreviewLabel(
-                                replyTarget.attachment_type,
-                                replyTarget.attachment_name,
-                              )}
-                        </span>
-                      </div>
+                  {/* NEW: while this is an incoming, unaccepted request,
+                      the entire compose area (reply preview, attachment
+                      preview, text input, mic, emoji, attach) is replaced
+                      with a simple Accept/Decline row — there's nothing
+                      to type into until the request is accepted. */}
+                  {isIncomingRequest ? (
+                    <div className="mp-request-actions-row">
                       <button
                         type="button"
-                        className="mp-reply-preview-close"
-                        onClick={cancelReply}
-                        aria-label="Cancel reply"
+                        className="mp-request-decline-btn"
+                        onClick={declineRequest}
+                        disabled={requestActionBusy}
                       >
-                        ✕
+                        Decline
                       </button>
-                    </div>
-                  )}
-
-                  {pendingAttachment && (
-                    <div className="mp-pending-attachment">
-                      {pendingAttachment.type === "image" && (
-                        <img src={pendingAttachment.previewUrl} alt="preview" />
-                      )}
-                      {pendingAttachment.type === "video" && (
-                        <video src={pendingAttachment.previewUrl} />
-                      )}
-                      {pendingAttachment.type === "voice" && (
-                        <div className="mp-pending-voice">
-                          <VoiceMessagePlayer
-                            src={pendingAttachment.previewUrl}
-                            mine={false}
-                            initialDuration={pendingAttachment.duration}
-                          />
-                          <span className="mp-pending-voice-label">
-                            🎤 Voice message
-                          </span>
-                        </div>
-                      )}
-                      {pendingAttachment.type === "file" &&
-                        (() => {
-                          const info = getFileTypeInfo(pendingAttachment.name);
-                          return (
-                            <span
-                              className="mp-pending-file-name"
-                              style={{ "--file-color": info.color }}
-                            >
-                              <span className="mp-file-icon">{info.icon}</span>
-                              {pendingAttachment.name}
-                              <span className="mp-file-sub">
-                                {" "}
-                                · {info.label} ·{" "}
-                                {formatFileSize(pendingAttachment.size)}
-                              </span>
-                            </span>
-                          );
-                        })()}
                       <button
-                        className="mp-pending-remove"
-                        onClick={clearPendingAttachment}
-                        aria-label="Remove attachment"
+                        type="button"
+                        className="mp-request-accept-btn"
+                        onClick={acceptRequest}
+                        disabled={requestActionBusy}
                       >
-                        ✕
+                        {requestActionBusy ? "…" : "Accept"}
                       </button>
-                      {uploading && (
-                        <span className="mp-pending-uploading">Uploading…</span>
-                      )}
                     </div>
-                  )}
-
-                  <div className="mp-chat-input-row">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      style={{ display: "none" }}
-                      onChange={handleFileSelect}
-                      accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv"
-                    />
-
-                    {recording ? (
-                      <div className="mp-recording-row">
-                        <span className="mp-recording-dot" />
-                        <span className="mp-recording-time">
-                          {formatDuration(recordingSeconds)}
-                        </span>
-                        <span className="mp-recording-label">Recording…</span>
-                        <button
-                          type="button"
-                          className="mp-icon-btn mp-recording-cancel"
-                          onClick={cancelRecording}
-                          aria-label="Cancel recording"
-                        >
-                          🗑
-                        </button>
-                        <button
-                          className="mp-send-btn"
-                          onClick={stopRecording}
-                          aria-label="Stop and preview recording"
-                        >
-                          ⏹
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="mp-icon-btn"
-                          onClick={() => fileInputRef.current?.click()}
-                          aria-label="Attach file"
-                        >
-                          📎
-                        </button>
-
-                        <button
-                          type="button"
-                          ref={emojiBtnRef}
-                          className="mp-icon-btn"
-                          onClick={() => setShowEmojiPicker((v) => !v)}
-                          aria-label="Emoji"
-                        >
-                          😀
-                        </button>
-
-                        {showEmojiPicker && (
-                          <div className="mp-emoji-picker" ref={emojiPickerRef}>
-                            {EMOJI_LIST.map((emoji) => (
-                              <button
-                                key={emoji}
-                                type="button"
-                                className="mp-emoji-btn"
-                                onClick={() => insertEmoji(emoji)}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
+                  ) : (
+                    <>
+                      {replyTarget && (
+                        <div className="mp-reply-preview">
+                          <div className="mp-reply-preview-bar" />
+                          <div className="mp-reply-preview-content">
+                            <span className="mp-reply-preview-sender">
+                              Replying to{" "}
+                              {replyTarget.sender_username === currentUser
+                                ? "yourself"
+                                : replyTarget.sender_username}
+                            </span>
+                            <span className="mp-reply-preview-text">
+                              {replyTarget.text
+                                ? replyTarget.text.slice(0, 80)
+                                : attachmentPreviewLabel(
+                                    replyTarget.attachment_type,
+                                    replyTarget.attachment_name,
+                                  )}
+                            </span>
                           </div>
-                        )}
-
-                        <input
-                          ref={inputRef}
-                          className="mp-chat-input"
-                          placeholder="Type a message…"
-                          value={text}
-                          onChange={(e) => {
-                            setText(e.target.value);
-                            handleTypingInput();
-                          }}
-                          onKeyDown={handleKeyDown}
-                        />
-
-                        {text.trim() || pendingAttachment ? (
-                          <button
-                            className="mp-send-btn"
-                            onClick={handleSend}
-                            disabled={sending || uploading}
-                          >
-                            ➤
-                          </button>
-                        ) : (
                           <button
                             type="button"
-                            className="mp-icon-btn mp-mic-btn"
-                            onClick={startRecording}
-                            aria-label="Record voice message"
+                            className="mp-reply-preview-close"
+                            onClick={cancelReply}
+                            aria-label="Cancel reply"
                           >
-                            🎤
+                            ✕
                           </button>
+                        </div>
+                      )}
+
+                      {pendingAttachment && (
+                        <div className="mp-pending-attachment">
+                          {pendingAttachment.type === "image" && (
+                            <img src={pendingAttachment.previewUrl} alt="preview" />
+                          )}
+                          {pendingAttachment.type === "video" && (
+                            <video src={pendingAttachment.previewUrl} />
+                          )}
+                          {pendingAttachment.type === "voice" && (
+                            <div className="mp-pending-voice">
+                              <VoiceMessagePlayer
+                                src={pendingAttachment.previewUrl}
+                                mine={false}
+                                initialDuration={pendingAttachment.duration}
+                              />
+                              <span className="mp-pending-voice-label">
+                                🎤 Voice message
+                              </span>
+                            </div>
+                          )}
+                          {pendingAttachment.type === "file" &&
+                            (() => {
+                              const info = getFileTypeInfo(pendingAttachment.name);
+                              return (
+                                <span
+                                  className="mp-pending-file-name"
+                                  style={{ "--file-color": info.color }}
+                                >
+                                  <span className="mp-file-icon">{info.icon}</span>
+                                  {pendingAttachment.name}
+                                  <span className="mp-file-sub">
+                                    {" "}
+                                    · {info.label} ·{" "}
+                                    {formatFileSize(pendingAttachment.size)}
+                                  </span>
+                                </span>
+                              );
+                            })()}
+                          <button
+                            className="mp-pending-remove"
+                            onClick={clearPendingAttachment}
+                            aria-label="Remove attachment"
+                          >
+                            ✕
+                          </button>
+                          {uploading && (
+                            <span className="mp-pending-uploading">Uploading…</span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mp-chat-input-row">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          style={{ display: "none" }}
+                          onChange={handleFileSelect}
+                          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv"
+                        />
+
+                        {recording ? (
+                          <div className="mp-recording-row">
+                            <span className="mp-recording-dot" />
+                            <span className="mp-recording-time">
+                              {formatDuration(recordingSeconds)}
+                            </span>
+                            <span className="mp-recording-label">Recording…</span>
+                            <button
+                              type="button"
+                              className="mp-icon-btn mp-recording-cancel"
+                              onClick={cancelRecording}
+                              aria-label="Cancel recording"
+                            >
+                              🗑
+                            </button>
+                            <button
+                              className="mp-send-btn"
+                              onClick={stopRecording}
+                              aria-label="Stop and preview recording"
+                            >
+                              ⏹
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="mp-icon-btn"
+                              onClick={() => fileInputRef.current?.click()}
+                              aria-label="Attach file"
+                            >
+                              📎
+                            </button>
+
+                            <button
+                              type="button"
+                              ref={emojiBtnRef}
+                              className="mp-icon-btn"
+                              onClick={() => setShowEmojiPicker((v) => !v)}
+                              aria-label="Emoji"
+                            >
+                              😀
+                            </button>
+
+                            {showEmojiPicker && (
+                              <div className="mp-emoji-picker" ref={emojiPickerRef}>
+                                {EMOJI_LIST.map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    className="mp-emoji-btn"
+                                    onClick={() => insertEmoji(emoji)}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            <input
+                              ref={inputRef}
+                              className="mp-chat-input"
+                              placeholder="Type a message…"
+                              value={text}
+                              onChange={(e) => {
+                                setText(e.target.value);
+                                handleTypingInput();
+                              }}
+                              onKeyDown={handleKeyDown}
+                            />
+
+                            {text.trim() || pendingAttachment ? (
+                              <button
+                                className="mp-send-btn"
+                                onClick={handleSend}
+                                disabled={sending || uploading}
+                              >
+                                ➤
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="mp-icon-btn mp-mic-btn"
+                                onClick={startRecording}
+                                aria-label="Record voice message"
+                              >
+                                🎤
+                              </button>
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
-                  </div>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
