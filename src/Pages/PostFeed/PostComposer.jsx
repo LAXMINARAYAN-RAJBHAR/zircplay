@@ -4,7 +4,11 @@ import axios from "axios";
 import EmojiPicker from "./EmojiPicker";
 import { uploadToR2, buildTransformUrl, uploadVideoToR2 } from "../../utils/mediaUpload";
 
-const MAX_IMAGES = 6;
+// NOTE: no cap on image count anymore — ImageGrid/HomeImageGrid already
+// render any number of images fine (4 visible tiles + a "+N" overlay for
+// the rest, and PhotoViewer swipes through the full array). Uploads now
+// go out sequentially regardless of count; a very large batch will just
+// take proportionally longer and move the progress bar more slowly.
 const MAX_VIDEO_MB = 100; // adjust as needed — R2 has no per-request size ceiling like Vercel's function body did
 const LINK_PREVIEW_DEBOUNCE_MS = 600;
 
@@ -59,19 +63,8 @@ const PostComposer = ({ currentUser, onPost }) => {
       return;
     }
 
-    const remainingSlots = MAX_IMAGES - imageFiles.length;
-    if (remainingSlots <= 0) {
-      setError(`You can attach up to ${MAX_IMAGES} images.`);
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
-
-    const filesToAdd = files.slice(0, remainingSlots);
-    if (files.length > remainingSlots) {
-      setError(`Only ${remainingSlots} more image(s) can be added (max ${MAX_IMAGES}).`);
-    }
-
-    filesToAdd.forEach((file) => {
+    // No cap — every selected file gets added.
+    files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         setImageFiles((prev) => [...prev, { file, preview: ev.target.result }]);
@@ -377,7 +370,7 @@ const PostComposer = ({ currentUser, onPost }) => {
               multiple
               style={{ display: "none" }}
               onChange={handleImageSelect}
-              disabled={imageFiles.length >= MAX_IMAGES || !!videoFile}
+              disabled={!!videoFile}
             />
           </label>
 
@@ -426,7 +419,7 @@ const PostComposer = ({ currentUser, onPost }) => {
           </div>
 
           {imageFiles.length > 0 && (
-            <span className="pf-image-count">{imageFiles.length}/{MAX_IMAGES}</span>
+            <span className="pf-image-count">{imageFiles.length} selected</span>
           )}
         </div>
 

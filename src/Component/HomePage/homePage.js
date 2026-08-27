@@ -543,10 +543,44 @@ const ShortsRow = ({
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HomeImageGrid — Facebook-style collage for multi-image posts, mirroring
+// ImageGrid in Posts/PostCard.jsx (see .pf-img-grid there). Unlike that
+// version, tapping a tile has no dedicated onOpenViewer/PhotoViewer here —
+// the whole card is already wrapped in a <Link to={`/feed?post=...`}> in
+// PostCard below, so any tap on any tile just navigates to the full post
+// (where PhotoViewer lives) exactly like tapping anywhere else on the card.
+//   1 photo  → single tile (handled by the caller instead of this grid)
+//   2 photos → two tiles side by side
+//   3 photos → one large + two stacked small
+//   4+       → 2x2 grid, with a "+N" overlay on the 4th tile when there
+//              are more than 4 images
+// ─────────────────────────────────────────────────────────────────────────────
+const HomeImageGrid = ({ images }) => {
+  const count = images.length;
+  const displayCount = Math.min(count, 4);
+  const remaining = count - displayCount;
+
+  return (
+    <div className={`homePage_postImgGrid homePage_postImgGrid-${displayCount}`}>
+      {images.slice(0, displayCount).map((url, i) => (
+        <div className="homePage_postImgGridItem" key={i}>
+          <img src={url} alt={`Image ${i + 1}`} loading="lazy" />
+          {i === displayCount - 1 && remaining > 0 && (
+            <div className="homePage_postImgGridMore">+{remaining}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PostCard / PostsRow — mirrors the ExploreGrid post-card behaviour:
-// shows the post's image if it has one; if not (a video-only post), the
-// thumbnail becomes hover-previewable on desktop and auto-previews on
-// mobile once scrolled into view, same as usePostPreview above.
+// shows the post's image(s) if it has any — as a Facebook-style ImageGrid
+// collage for multi-image posts, or a single thumbnail for one image — and
+// if not (a video-only post), the thumbnail becomes hover-previewable on
+// desktop and auto-previews on mobile once scrolled into view, same as
+// usePostPreview above.
 //
 // Shows each post's OWN like/comment counts (sourced from the
 // post_reactions/post_comments joined in fetchDbPosts below) — not a
@@ -554,8 +588,18 @@ const ShortsRow = ({
 // description/caption first, stats row underneath.
 // ─────────────────────────────────────────────────────────────────────────────
 const PostCard = ({ post, isMobile, onReport, loggedInUsername, onDeletePost }) => {
-  const media = post.image_urls?.[0] || post.image_url || null;
-  const previewSrc = media ? null : post.video_url || null;
+  // CHANGED: was a single `media` string (post.image_urls?.[0] ||
+  // post.image_url). Now an `images` array so multi-image posts can
+  // render the same ImageGrid collage used in the Posts tab's PostCard,
+  // instead of only ever showing the first photo.
+  const images =
+    post.image_urls && post.image_urls.length > 0
+      ? post.image_urls
+      : post.image_url
+        ? [post.image_url]
+        : [];
+  const hasImages = images.length > 0;
+  const previewSrc = hasImages ? null : post.video_url || null;
   const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
     isMobile,
     !!previewSrc,
@@ -588,8 +632,12 @@ const PostCard = ({ post, isMobile, onReport, loggedInUsername, onDeletePost }) 
             playsInline
             preload="none"
           />
-        ) : media ? (
-          <img src={media} alt="" className="homePage_postThumbImg" loading="lazy" />
+        ) : hasImages ? (
+          images.length > 1 ? (
+            <HomeImageGrid images={images} />
+          ) : (
+            <img src={images[0]} alt="" className="homePage_postThumbImg" loading="lazy" />
+          )
         ) : post.video_url ? (
           <video
             src={post.video_url}
