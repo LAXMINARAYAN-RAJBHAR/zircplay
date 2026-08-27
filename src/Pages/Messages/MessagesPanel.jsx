@@ -371,6 +371,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   // ── Per-message "⋮" action menu (Reply / Forward / Edit / Report / Delete) ──
   const [openMenuFor, setOpenMenuFor] = useState(null); // message id
 
+  // ── Per-conversation "⋮" menu in the inbox list (Delete chat) ──
+  const [openConvoMenuFor, setOpenConvoMenuFor] = useState(null); // conversation id
+  const [deletingConvoId, setDeletingConvoId] = useState(null);
+
   // ── Reply ──
   // The message currently being replied to (shown as a preview above the
   // input, and attached to the outgoing message via reply_to_* columns).
@@ -399,12 +403,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   // "status" column defaults to "accepted" in the migration, so nothing
   // that was already chatting gets retroactively locked.
   const [requestActionBusy, setRequestActionBusy] = useState(false);
-
-  // ── Group list-item "⋮" menu (Delete Group, right from the inbox
-  // row — no need to open the group first). Mirrors the header "⋮"
-  // menu inside GroupChatWindow.jsx, but lives at the list level.
-  const [openGroupListMenuId, setOpenGroupListMenuId] = useState(null);
-  const [deletingGroupId, setDeletingGroupId] = useState(null);
 
   // ── Presence / last-seen ──
   const { onlineUsers, getLastSeen } = usePresence();
@@ -666,20 +664,20 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openMenuFor]);
 
-  // Close the per-group list-item "⋮" menu when clicking outside it
+  // Close the per-conversation "⋮" menu (Delete chat) when clicking outside it
   useEffect(() => {
-    if (!openGroupListMenuId) return;
+    if (!openConvoMenuFor) return;
     const handleClickOutside = (e) => {
       if (
-        !e.target.closest(".mp-convo-list-menu") &&
-        !e.target.closest(".mp-convo-list-menu-btn")
+        !e.target.closest(".mp-convo-menu") &&
+        !e.target.closest(".mp-convo-menu-trigger")
       ) {
-        setOpenGroupListMenuId(null);
+        setOpenConvoMenuFor(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [openGroupListMenuId]);
+  }, [openConvoMenuFor]);
 
   // Close the "New" menu (New Group / New Broadcast) when clicking outside it
   useEffect(() => {
@@ -783,6 +781,25 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "conversations" },
         (payload) => handleConversationRealtime(payload.new),
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "conversations" },
+        (payload) => {
+          // Keep the inbox in sync if the OTHER person deletes the shared
+          // conversation row (our current schema deletes it for both
+          // sides — see deleteConversation below).
+          setConversations((prev) => prev.filter((c) => c.id !== payload.old.id));
+          if (activeUsernameRef.current) {
+            const other = activeUsernameRef.current;
+            if (
+              (payload.old.user_a === currentUser && payload.old.user_b === other) ||
+              (payload.old.user_b === currentUser && payload.old.user_a === other)
+            ) {
+              setActiveUsername(null);
+            }
+          }
+        },
       )
       .subscribe();
 
@@ -1297,6 +1314,48 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     closeDetail();
   };
 
+  // ── Delete chat (from the inbox list "⋮" menu) ──
+  // Deletes the conversation and all of its messages outright. Since the
+  // current schema has no per-user "hidden" flag, this removes the chat
+  // for BOTH people — same behavior as declineRequest above. The other
+  // person's inbox is kept in sync via the "conversations" DELETE
+  // realtime listener registered further up.
+  const deleteConversation = async (conv) => {
+    const other = getOtherUser(conv);
+    const confirmed = window.confirm(
+      `Delete your chat with ${other}? This removes the conversation and its messages.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingConvoId(conv.id);
+    setOpenConvoMenuFor(null);
+
+    const { error: msgErr } = await supabase
+      .from("direct_messages")
+      .delete()
+      .eq("conversation_id", conv.id);
+
+    const { error: convErr } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", conv.id);
+
+    setDeletingConvoId(null);
+
+    if (msgErr || convErr) {
+      alert(
+        `Couldn't delete this chat: ${msgErr?.message || convErr?.message || "please try again."}`,
+      );
+      return;
+    }
+
+    setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+
+    if (other === activeUsername) {
+      closeDetail();
+    }
+  };
+
   const handleSend = async () => {
     if (
       (!text.trim() && !pendingAttachment) ||
@@ -1756,63 +1815,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setActiveGroup(group);
   };
 
-  // ── Delete a group directly from its inbox row ──
-  // Mirrors GroupChatWindow.jsx's handleDeleteGroup, but is reachable
-  // without opening the group first. Admin status is checked live here
-  // (rather than trusting whatever fields fetchUserGroups happened to
-  // return on the row) so this stays correct regardless of that util's
-  // exact shape, and can't be spoofed by stale client state.
-  const handleDeleteGroupFromList = async (group) => {
-    if (deletingGroupId) return;
-
-    const { data: membership, error: membershipErr } = await supabase
-      .from("group_members")
-      .select("is_admin")
-      .eq("group_id", group.id)
-      .eq("username", currentUser)
-      .maybeSingle();
-
-    if (membershipErr || !membership?.is_admin) {
-      alert("Only group admins can delete this group.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Delete "${group.name}" for everyone? This permanently removes the group and all its messages. This cannot be undone.`,
-    );
-    if (!confirmed) return;
-
-    setDeletingGroupId(group.id);
-    try {
-      const { error: msgErr } = await supabase
-        .from("group_messages")
-        .delete()
-        .eq("group_id", group.id);
-      if (msgErr) throw msgErr;
-
-      const { error: memberErr } = await supabase
-        .from("group_members")
-        .delete()
-        .eq("group_id", group.id);
-      if (memberErr) throw memberErr;
-
-      const { error: groupErr } = await supabase
-        .from("groups")
-        .delete()
-        .eq("id", group.id);
-      if (groupErr) throw groupErr;
-
-      setGroups((prev) => prev.filter((g) => g.id !== group.id));
-      // If this group happened to be open when deleted from the list,
-      // close its detail view too instead of leaving a dangling window.
-      if (activeGroup?.id === group.id) closeDetail();
-    } catch (err) {
-      alert(`Failed to delete group: ${err?.message || "please try again."}`);
-    } finally {
-      setDeletingGroupId(null);
-    }
-  };
-
   const openBroadcast = (list) => {
     setActiveUsername(null);
     setActiveGroup(null);
@@ -1824,12 +1826,15 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   // Shared render for a single conversation row in the inbox list —
   // used for both the "Message Requests" section and the regular list,
   // so the two stay visually consistent apart from the request badge.
+  // Now also renders a "⋮" menu at the end of the row with a
+  // "Delete chat" action (see deleteConversation above).
   const renderConvoItem = (conv, isRequestItem) => {
     const other = getOtherUser(conv);
     const isActive = other === activeUsername;
     const isOnline = onlineUsers.has(other);
     const unread = isConvoUnread(conv);
     const isMyPending = conv.status === "pending" && conv.initiated_by === currentUser;
+    const isDeleting = deletingConvoId === conv.id;
     return (
       <div
         key={conv.id}
@@ -1859,6 +1864,34 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
             <span className="mp-request-dot" />
           ) : (
             unread && <span className="mp-unread-dot" />
+          )}
+        </div>
+
+        <div className="mp-convo-menu-wrap">
+          <button
+            type="button"
+            className="mp-convo-menu-trigger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenConvoMenuFor(openConvoMenuFor === conv.id ? null : conv.id);
+            }}
+            aria-label="Chat options"
+            title="Chat options"
+            disabled={isDeleting}
+          >
+            ⋮
+          </button>
+          {openConvoMenuFor === conv.id && (
+            <div className="mp-convo-menu" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="mp-convo-menu-item danger"
+                onClick={() => deleteConversation(conv)}
+                disabled={isDeleting}
+              >
+                🗑 {isDeleting ? "Deleting…" : "Delete chat"}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -2036,46 +2069,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                   : "No messages yet"}
                               </div>
                             </div>
-
-                            {/* NEW: per-row "⋮" menu — lets an admin
-                                delete the group straight from the list,
-                                without opening it first. */}
-                            <div
-                              className="mp-convo-list-menu-wrap"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                type="button"
-                                className="mp-convo-list-menu-btn"
-                                onClick={() =>
-                                  setOpenGroupListMenuId(
-                                    openGroupListMenuId === g.id ? null : g.id,
-                                  )
-                                }
-                                aria-label="Group options"
-                                title="More"
-                              >
-                                ⋮
-                              </button>
-                              {openGroupListMenuId === g.id && (
-                                <div className="mp-convo-list-menu">
-                                  <button
-                                    type="button"
-                                    className="mp-convo-list-menu-item danger"
-                                    onClick={() => {
-                                      setOpenGroupListMenuId(null);
-                                      handleDeleteGroupFromList(g);
-                                    }}
-                                    disabled={deletingGroupId === g.id}
-                                  >
-                                    🗑{" "}
-                                    {deletingGroupId === g.id
-                                      ? "Deleting…"
-                                      : "Delete Group"}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
                           </div>
                         ))}
 
@@ -2150,12 +2143,6 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                   currentUser={currentUser}
                   onBack={closeDetail}
                   onClose={closePanel}
-                  onGroupDeleted={() => {
-                    setGroups((prev) =>
-                      prev.filter((g) => g.id !== activeGroup.id),
-                    );
-                    closeDetail();
-                  }}
                 />
               ) : activeBroadcast ? (
                 <BroadcastComposeWindow
