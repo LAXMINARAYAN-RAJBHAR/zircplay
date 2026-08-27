@@ -1452,3 +1452,65 @@
 @media (max-width: 768px) {
   .mp-menu { opacity: 1; }
 }
+
+.mp-convo-item {
+  position: relative;
+}
+
+.mp-convo-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.mp-convo-menu-trigger {
+  background: transparent;
+  border: none;
+  color: var(--zx-text3);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.mp-convo-item:hover .mp-convo-menu-trigger { opacity: 1; }
+.mp-convo-menu-trigger:hover {
+  background: var(--zx-bg);
+  color: var(--zx-primary);
+}
+
+.mp-convo-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--zx-surface);
+  border: 1.5px solid var(--zx-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  min-width: 140px;
+  overflow: hidden;
+  padding: 4px 0;
+  z-index: 10;
+}
+
+.mp-convo-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  font-family: 'Outfit', sans-serif;
+  color: var(--zx-text);
+}
+.mp-convo-menu-item:hover { background: var(--zx-bg); }
+.mp-convo-menu-item.danger { color: var(--zx-primary); }
+
+@media (max-width: 768px) {
+  .mp-convo-menu-trigger { opacity: 1; } /* no hover on touch, always visible */
+}
