@@ -476,12 +476,21 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
   const isMobile = () => window.innerWidth <= 768;
 
   // ── Keyboard-aware viewport tracking ─────────────────────────────────
-  // Two things have to track the on-screen keyboard, not just one:
+  // Three things have to track the real visible viewport, not just one:
   //   1. HEIGHT — visualViewport.height shrinks when the keyboard opens.
   //      (--mp-vh below drives the panel's height/max-height in CSS.)
-  //   2. OFFSET — opening the keyboard also scrolls the layout viewport,
+  //   2. WIDTH — a plain `100vw` in CSS reflects the LAYOUT viewport,
+  //      which on some mobile browsers (depending on address-bar state,
+  //      pinch-zoom, or gesture-nav chrome) doesn't exactly match the
+  //      visible width. When it's even slightly off, the panel ends up
+  //      narrower than the actual screen, leaving a sliver of the
+  //      underlying page visible on the right edge. Tracking
+  //      visualViewport.width into --mp-vw and sizing the panel off
+  //      that (instead of raw vw units) keeps it pinned to the width
+  //      that's actually on screen.
+  //   3. OFFSET — opening the keyboard also scrolls the layout viewport,
   //      so visualViewport.offsetTop/offsetLeft become nonzero. A panel
-  //      that only reacts to (1) shrinks correctly but stays pinned to
+  //      that only reacts to (1)/(2) sizes correctly but stays pinned to
   //      its old position in the document — which is exactly what left
   //      a strip of empty space ("the gap") between the input bar and
   //      the keyboard. Pinning the panel's top/left to the visualViewport
@@ -496,7 +505,9 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
       const panel = panelRef.current;
       if (!panel) return;
       const height = vv?.height || window.innerHeight;
+      const width = vv?.width || window.innerWidth;
       panel.style.setProperty("--mp-vh", `${height * 0.01}px`);
+      panel.style.setProperty("--mp-vw", `${width * 0.01}px`);
       if (vv) {
         panel.style.top = `${vv.offsetTop}px`;
         panel.style.left = `${vv.offsetLeft}px`;

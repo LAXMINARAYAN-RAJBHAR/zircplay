@@ -660,7 +660,17 @@
         gap. `!important` is dropped from top/left specifically so the
         inline style set by JS can override this rule. ── */
   .mp-panel:not(.mp-panel-login) {
-    width: 100vw;
+    /* FIX: right-side gap — the base .mp-panel rule sets
+       `max-width: 95vw` for the desktop floating window. That rule
+       still applies unless explicitly cleared here, which was leaving
+       a ~5% sliver of the underlying page visible on the right edge
+       on mobile. `max-width: none` removes that ceiling; sizing off
+       --mp-vw (the JS-measured visualViewport width, see the effect
+       above) instead of a raw `100vw` keeps the panel pinned to
+       whatever width is actually visible, the same way --mp-vh
+       already fixed the keyboard height mismatch. */
+    width: calc(var(--mp-vw, 1vw) * 100);
+    max-width: none;
     height: calc(var(--mp-vh, 1vh) * 100);
     max-height: calc(var(--mp-vh, 1vh) * 100);
     border-radius: 0;
