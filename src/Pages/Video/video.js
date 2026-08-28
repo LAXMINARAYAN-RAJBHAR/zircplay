@@ -79,33 +79,6 @@ const isUnsupportedFormat = (src) => {
   return ["avi", "wmv", "mkv", "flv"].includes(ext);
 };
 
-// NEW: rewrites the handful of containers no browser can natively demux
-// (mkv/avi/wmv/flv) to their .mp4 counterpart, REGARDLESS of host.
-//
-// Previously this rewrite only ran for Cloudinary URLs — every other host
-// (R2, our own CDN, etc.) passed `video.src` straight through unchanged
-// into the <source> tag, while `type` was hardcoded to "video/mp4". That
-// meant a raw .mkv file got served with a `type="video/mp4"` lie attached:
-// the browser was never told the truth about the container, and native
-// <video> can't demux Matroska regardless of what `type` claims — so
-// playback failed with no useful error, and the file appeared to "not
-// exist" from the player's point of view.
-//
-// This assumes the same transcoding pipeline that already produces a
-// .mp4 for Cloudinary assets is applied uniformly on upload for every
-// host (i.e. an .mp4 exists at the same path/key as the original .mkv).
-// If that transcoded file doesn't exist yet for a given host, this will
-// now fail cleanly (404 → onError → the orange "could not be played"
-// banner) instead of silently mislabeling raw MKV bytes as MP4.
-//
-// webm/mov are deliberately left untouched — most modern browsers can
-// already play those natively, so rewriting them could break sources
-// that currently work fine.
-const getPlayableSrc = (src) => {
-  if (!src) return src;
-  return src.replace(/\.(avi|wmv|mkv|flv)(\?.*)?$/i, ".mp4");
-};
-
 const QUALITY_LABELS = {
   low: "240p",
   medium: "360p",
@@ -871,12 +844,6 @@ const Video = ({ sideNavbar }) => {
 
   const overlayVisible = isMobile ? mobileOverlayVisible : showControls;
 
-  // NEW: computed once per render — the URL actually handed to the
-  // <source> tag, after the mkv/avi/wmv/flv → mp4 rewrite. Reused for
-  // both `src` and `type` below so they never fall out of sync with
-  // each other again.
-  const playableSrc = getPlayableSrc(video.src);
-
   return (
     <div className="video">
       <div className="videoPostSection">
@@ -1014,17 +981,14 @@ const Video = ({ sideNavbar }) => {
             preload="metadata"
             poster={video.thumbnail}
           >
-            {/* CHANGED: `src` now runs through getPlayableSrc() for EVERY
-                host, not just Cloudinary, so mkv/avi/wmv/flv sources get
-                the same .mp4 rewrite regardless of where they're hosted.
-                `type` is now derived from that same rewritten URL via
-                getVideoType() instead of being hardcoded to "video/mp4" —
-                so the browser is always told the truth about what it's
-                about to fetch, and unsupported/missing files fail cleanly
-                into onError → the orange banner, instead of hanging. */}
             <source
-              src={getAdaptiveVideoSrc(playableSrc, quality)}
-              type={getVideoType(playableSrc)}
+              src={getAdaptiveVideoSrc(
+                video.src && video.src.includes("cloudinary.com")
+                  ? video.src.replace(/\.(webm|mov|avi|mkv)(\?.*)?$/i, ".mp4")
+                  : video.src,
+                quality,
+              )}
+              type="video/mp4"
             />
             Your browser does not support the video tag.
           </video>
