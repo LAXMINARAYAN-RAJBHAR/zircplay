@@ -475,23 +475,44 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
 
   const isMobile = () => window.innerWidth <= 768;
 
-  // ── Keyboard-aware viewport height ──────────────────────────────────────
+  // ── Keyboard-aware viewport tracking ─────────────────────────────────
+  // Two things have to track the on-screen keyboard, not just one:
+  //   1. HEIGHT — visualViewport.height shrinks when the keyboard opens.
+  //      (--mp-vh below drives the panel's height/max-height in CSS.)
+  //   2. OFFSET — opening the keyboard also scrolls the layout viewport,
+  //      so visualViewport.offsetTop/offsetLeft become nonzero. A panel
+  //      that only reacts to (1) shrinks correctly but stays pinned to
+  //      its old position in the document — which is exactly what left
+  //      a strip of empty space ("the gap") between the input bar and
+  //      the keyboard. Pinning the panel's top/left to the visualViewport
+  //      offset (via inline style, applied only on mobile) keeps it glued
+  //      to the visible area the way WhatsApp's input bar behaves.
   useEffect(() => {
     if (!isMobile()) return;
 
-    const setVh = () => {
-      const vh = (window.visualViewport?.height || window.innerHeight) * 0.01;
-      panelRef.current?.style.setProperty("--mp-vh", `${vh}px`);
+    const vv = window.visualViewport;
+
+    const applyViewport = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const height = vv?.height || window.innerHeight;
+      panel.style.setProperty("--mp-vh", `${height * 0.01}px`);
+      if (vv) {
+        panel.style.top = `${vv.offsetTop}px`;
+        panel.style.left = `${vv.offsetLeft}px`;
+      }
     };
 
-    setVh();
-    window.visualViewport?.addEventListener("resize", setVh);
-    window.addEventListener("resize", setVh);
-    window.addEventListener("orientationchange", setVh);
+    applyViewport();
+    vv?.addEventListener("resize", applyViewport);
+    vv?.addEventListener("scroll", applyViewport);
+    window.addEventListener("resize", applyViewport);
+    window.addEventListener("orientationchange", applyViewport);
     return () => {
-      window.visualViewport?.removeEventListener("resize", setVh);
-      window.removeEventListener("resize", setVh);
-      window.removeEventListener("orientationchange", setVh);
+      vv?.removeEventListener("resize", applyViewport);
+      vv?.removeEventListener("scroll", applyViewport);
+      window.removeEventListener("resize", applyViewport);
+      window.removeEventListener("orientationchange", applyViewport);
     };
   }, []);
 

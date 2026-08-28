@@ -639,22 +639,34 @@
     background: rgba(0,0,0,0.25);
     pointer-events: auto;
   }
-  /* ── FIX: use the JS-measured visual-viewport height (--mp-vh, set by
-     MessagesPanel's resize/visualViewport listener) instead of raw vh
-     units. 100vh reflects the LAYOUT viewport and does not shrink when
-     the on-screen keyboard opens, so the chat body kept sizing itself
-     against stale, too-tall dimensions while typing/sending — new
-     messages were appended to the DOM correctly but rendered off-screen
-     behind the keyboard until a reload forced a relayout. Falls back to
-     1vh so nothing breaks before the JS var is set on first mount. ── */
+  /* ── FIX: keyboard "gap" between input bar and keyboard ──────────────
+     Two things have to track the on-screen keyboard, not just one:
+
+     1. HEIGHT — the panel is sized against --mp-vh (set by
+        MessagesPanel's visualViewport listener) instead of raw vh
+        units, since 100vh reflects the LAYOUT viewport and does not
+        shrink when the keyboard opens.
+
+     2. POSITION — shrinking height alone isn't enough. Opening the
+        keyboard also scrolls the layout viewport, so
+        visualViewport.offsetTop becomes nonzero. A panel that only
+        reacts to (1) shrinks correctly but stays pinned to its old
+        `top`/`left` in the document, leaving a strip of empty space
+        (the reported "gap") between the shrunk panel and the keyboard.
+        Switching to `position: fixed` and letting the JS effect set
+        `top`/`left` inline (to visualViewport.offsetTop/offsetLeft on
+        every resize/scroll) keeps the panel glued to the visible area,
+        matching how WhatsApp's input bar tracks the keyboard with zero
+        gap. `!important` is dropped from top/left specifically so the
+        inline style set by JS can override this rule. ── */
   .mp-panel:not(.mp-panel-login) {
     width: 100vw;
     height: calc(var(--mp-vh, 1vh) * 100);
     max-height: calc(var(--mp-vh, 1vh) * 100);
     border-radius: 0;
-    position: static !important;
-    left: auto !important;
-    top: auto !important;
+    position: fixed !important;
+    left: 0;
+    top: 0;
     /* Keep the compose row (and header) clear of notches / rounded
        corners / gesture bars on edge-to-edge phones. Falls back to 0
        on devices that don't report safe-area insets. */
@@ -1228,17 +1240,12 @@
    TYPING INDICATOR
    ══════════════════════════════════════════════════════════════════════ */
 
-/* Header status text turns accent-colored + italic while the other
-   person is typing, distinguishing it from the plain Online/Offline
-   states without needing a different layout. */
 .mp-chat-status.typing {
   color: var(--zx-primary);
   font-style: italic;
   font-weight: 700;
 }
 
-/* Three-dot bubble shown in the message thread, styled to match the
-   other person's message bubble (left-aligned, same border/radius). */
 .mp-typing-bubble {
   display: inline-flex;
   align-items: center;
@@ -1582,4 +1589,3 @@
 @media (max-width: 768px) {
   .mp-convo-menu-trigger { opacity: 1; } /* no hover on touch, always visible */
 }
-
