@@ -180,30 +180,31 @@ const VideoUpload = () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // captureThumbnail — HARDENED VERSION
+  // captureThumbnail — FIXED VERSION
   //
-  // The previous implementation seeked exactly once, driven off
-  // `loadedmetadata`, and gave up after 6s. That failed silently and
-  // often for phone-recorded reels: some codecs/containers (notably
-  // certain H.265/.mov clips) report `video.duration` as NaN or
-  // Infinity right when `loadedmetadata` first fires, which broke the
-  // `dur > 2` branch and could leave `currentTime` set to a value the
-  // browser just ignores — so `onseeked` never fires and the whole
-  // capture times out with no visible error to the user (it's caught
-  // and swallowed by the caller, see uploadVideo()).
+  // ROOT CAUSE OF THE BLACK THUMBNAIL BUG:
+  // The video element was created with document.createElement("video") but
+  // NEVER attached to the DOM. In Chrome (and most browsers), an off-DOM
+  // video element can fire `seeked` and report a "successful" seek without
+  // actually having decoded a real frame at that position yet — so
+  // ctx.drawImage(video, ...) captures whatever was last in the decode
+  // buffer, which is usually just black. This happens consistently,
+  // regardless of file size or codec — matching what was observed (hover
+  // preview, which uses a real in-DOM <video>, always worked fine; the
+  // off-DOM capture never did).
   //
-  // Fixes:
-  //  1. Seeking is now attempted from THREE events (loadedmetadata,
-  //     durationchange, loadeddata) via trySeek(), which bails out
-  //     harmlessly if duration still isn't finite yet and simply waits
-  //     for the next event to retry.
-  //  2. A 3s safety net force-grabs whatever frame is currently decoded
-  //     if no seek ever actually started (readyState >= 2 means a frame
-  //     is available even without a successful seek).
-  //  3. Guards against a zero-dimension canvas, another silent failure
-  //     mode with some codecs.
-  //  4. Final timeout extended 6s → 10s to give mobile files more room
-  //     to decode before giving up entirely.
+  // THE FIX:
+  //  1. Attach the video element to the DOM (positioned off-screen, NOT
+  //     display:none — some browsers pause/skip decoding for display:none
+  //     elements too).
+  //  2. Briefly call video.play() then immediately pause() after seeking —
+  //     this forces the browser to actually decode and render the frame,
+  //     which a pure seek() sometimes won't guarantee off-screen.
+  //  3. Always remove the element from the DOM in cleanup, whether it
+  //     succeeds or fails, so nothing leaks.
+  //
+  // Everything else (multi-event seek retry, 3s force-grab safety net,
+  // 10s final timeout) is unchanged from before.
   // ─────────────────────────────────────────────────────────────────────────
   const captureThumbnail = (file) => new Promise((resolve, reject) => {
     const video  = document.createElement("video");
@@ -211,10 +212,24 @@ const VideoUpload = () => {
     video.preload    = "auto";
     video.muted      = true;
     video.playsInline = true;
+
+    // ── KEY FIX #1: attach off-screen instead of leaving detached ──
+    video.style.position = "fixed";
+    video.style.top = "-9999px";
+    video.style.left = "-9999px";
+    video.style.width = "1px";
+    video.style.height = "1px";
+    video.setAttribute("aria-hidden", "true");
+    document.body.appendChild(video);
+
     let settled = false;
     let seekAttempted = false;
 
-    const cleanup = () => URL.revokeObjectURL(video.src);
+    const cleanup = () => {
+      URL.revokeObjectURL(video.src);
+      // KEY FIX #3: always remove from DOM
+      if (video.parentNode) video.parentNode.removeChild(video);
+    };
     const finish  = (result, err) => {
       if (settled) return;
       settled = true; cleanup();
@@ -265,8 +280,36 @@ const VideoUpload = () => {
     video.onloadeddata = trySeek;
 
     video.onseeked = () => {
-      if ("requestVideoFrameCallback" in video) video.requestVideoFrameCallback(() => grabFrame());
-      else setTimeout(grabFrame, 200);
+      // ── KEY FIX #2: force a decode by briefly playing, then pause ──
+      // A seek alone can leave an off-screen video's decode pipeline
+      // "behind" — play() forces the browser to actually push a decoded
+      // frame to the compositor before we grab it.
+      const grabAfterDecode = () => {
+        if ("requestVideoFrameCallback" in video) {
+          video.requestVideoFrameCallback(() => grabFrame());
+        } else {
+          setTimeout(grabFrame, 200);
+        }
+      };
+
+      const playAttempt = video.play();
+      if (playAttempt && typeof playAttempt.then === "function") {
+        playAttempt
+          .then(() => {
+            // Give it a tick to actually render, then pause + grab.
+            setTimeout(() => {
+              try { video.pause(); } catch (_) {}
+              grabAfterDecode();
+            }, 50);
+          })
+          .catch(() => {
+            // Autoplay blocked or similar — fall back to grabbing
+            // whatever frame is available anyway.
+            grabAfterDecode();
+          });
+      } else {
+        grabAfterDecode();
+      }
     };
 
     video.onerror = () => finish(null, new Error("Failed to load video for thumbnail."));
@@ -277,8 +320,7 @@ const VideoUpload = () => {
       if (!settled && !seekAttempted && video.readyState >= 2) grabFrame();
     }, 3000);
 
-    // Final fallback if nothing above worked. Longer than the original
-    // 6s — mobile files / slower decode need more room.
+    // Final fallback if nothing above worked.
     setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 10000);
 
     video.src = URL.createObjectURL(file);
