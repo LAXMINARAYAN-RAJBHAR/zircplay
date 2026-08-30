@@ -448,24 +448,52 @@ const ShortCard = ({
         navigate={navigate}
       />
       <div className="homePage_shortThumbnail">
-        <img
-          src={short.thumbnail}
-          alt={short.title || short.user}
-          className="homePage_shortImg"
-          style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
-        />
-        {canPreview && isPreviewing && (
+        {short.thumbnail ? (
+          <>
+            <img
+              src={short.thumbnail}
+              alt={short.title || short.user}
+              className="homePage_shortImg"
+              style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
+            />
+            {canPreview && isPreviewing && (
+              <video
+                ref={videoRef}
+                src={short.src}
+                className="homePage_shortImg"
+                muted
+                autoPlay
+                loop
+                playsInline
+                preload="metadata"
+                style={{ position: "absolute", inset: 0, objectFit: "cover" }}
+                onCanPlay={(e) => e.target.play().catch(() => {})}
+              />
+            )}
+          </>
+        ) : short.src ? (
+          // CHANGED: no stored thumbnail — mirror Posts' PostVideo,
+          // which has no separate thumbnail image at all and just shows
+          // the video's own first frame via preload="metadata". One
+          // <video> element does double duty here: paused on frame 0 by
+          // default, and this SAME ref is what usePostPreview's
+          // isPreviewing effect plays/pauses on hover (desktop) or
+          // scroll-into-view (mobile) — no second overlay video needed.
           <video
             ref={videoRef}
             src={short.src}
             className="homePage_shortImg"
             muted
-            autoPlay
             loop
             playsInline
             preload="metadata"
-            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
-            onCanPlay={(e) => e.target.play().catch(() => {})}
+          />
+        ) : (
+          // Last resort — no thumbnail AND no video src (a broken row).
+          <img
+            src={makePlaceholderThumb(short.dbId ?? short.id)}
+            alt={short.title || short.user}
+            className="homePage_shortImg"
           />
         )}
         <div className="homePage_shortPlay">▶</div>
@@ -874,24 +902,50 @@ const VideoCard = ({
           if (isUploaded) incrementView(video.id, "video");
         }}
       >
-        <img
-          src={video.thumbnail}
-          alt={video.title}
-          className="youtube_thumbnailPic"
-          style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
-        />
-        {canPreview && isPreviewing && (
+        {video.thumbnail ? (
+          <>
+            <img
+              src={video.thumbnail}
+              alt={video.title}
+              className="youtube_thumbnailPic"
+              style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
+            />
+            {canPreview && isPreviewing && (
+              <video
+                ref={videoRef}
+                src={video.src}
+                className="youtube_thumbnailPic"
+                muted
+                autoPlay
+                loop
+                playsInline
+                preload="metadata"
+                style={{ position: "absolute", inset: 0, objectFit: "cover" }}
+                onCanPlay={(e) => e.target.play().catch(() => {})}
+              />
+            )}
+          </>
+        ) : video.src ? (
+          // CHANGED: no stored thumbnail_url — mirror Posts' PostVideo:
+          // show the video's own first frame via preload="metadata"
+          // instead of a generic placeholder. Same single-<video>
+          // pattern as ShortCard above — usePostPreview's effect plays/
+          // pauses this exact element on hover.
           <video
             ref={videoRef}
             src={video.src}
             className="youtube_thumbnailPic"
             muted
-            autoPlay
             loop
             playsInline
             preload="metadata"
-            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
-            onCanPlay={(e) => e.target.play().catch(() => {})}
+          />
+        ) : (
+          // Last resort — no thumbnail AND no video src (a broken row).
+          <img
+            src={makePlaceholderThumb(video.id)}
+            alt={video.title}
+            className="youtube_thumbnailPic"
           />
         )}
         <div className="youtube_timingThumbnail">{video.duration}</div>
@@ -1795,6 +1849,30 @@ const TrendingCard = ({
     : desktopHover.isPreviewing;
   const { videoRef, onMouseEnter, onMouseLeave } = desktopHover;
 
+  // NEW: needed for the "no stored thumbnail" fallback below, which
+  // keeps a single <video> element persistently mounted (instead of
+  // mounting/unmounting an overlay <video autoPlay> on hover, like the
+  // thumbnail branch does). useHoverPreview itself never played/paused
+  // anything — it relied on the overlay video's autoPlay attribute
+  // firing on mount and disappearing on unmount. A persistent element
+  // needs an explicit effect to start/stop playback as isPreviewing
+  // changes. No-ops harmlessly for the thumbnail branch too, since
+  // videoRef.current is null there whenever this fires.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isPreviewing) {
+      try { v.currentTime = 0; } catch (_) {}
+      const p = v.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } else {
+      try {
+        v.pause();
+        v.currentTime = 0;
+      } catch (_) {}
+    }
+  }, [isPreviewing, videoRef]);
+
   const abs = Math.abs(offset);
   // dragDeltaX moves every visible card together in real time while the
   // user is dragging — the same clamp is applied to every card so the
@@ -1833,32 +1911,59 @@ const TrendingCard = ({
       </span>
       <span className="zx-dramatic-card-rank">#{index + 1}</span>
       <div className="zx-dramatic-card-imgwrap">
-        <img
-          key={isActive ? `active-img-${cycleKey}` : "img"}
-          src={item.thumbnail}
-          alt={item.title}
-          className={
-            "zx-dramatic-card-img" +
-            (isActive && !isPreviewing ? " kenburns" : "")
-          }
-          style={{
-            opacity: canPreview && isPreviewing ? 0 : 1,
-            transition: "opacity 0.25s",
-          }}
-          draggable={false}
-        />
-        {canPreview && isPreviewing && (
+        {item.thumbnail ? (
+          <>
+            <img
+              key={isActive ? `active-img-${cycleKey}` : "img"}
+              src={item.thumbnail}
+              alt={item.title}
+              className={
+                "zx-dramatic-card-img" +
+                (isActive && !isPreviewing ? " kenburns" : "")
+              }
+              style={{
+                opacity: canPreview && isPreviewing ? 0 : 1,
+                transition: "opacity 0.25s",
+              }}
+              draggable={false}
+            />
+            {canPreview && isPreviewing && (
+              <video
+                ref={videoRef}
+                src={item.src}
+                className="zx-dramatic-card-img"
+                muted
+                autoPlay
+                loop
+                playsInline
+                preload="metadata"
+                style={{ position: "absolute", inset: 0, objectFit: "cover" }}
+                onCanPlay={(e) => e.target.play().catch(() => {})}
+              />
+            )}
+          </>
+        ) : item.src ? (
+          // CHANGED: no stored thumbnail — same fallback approach as
+          // VideoCard/ShortCard: show the clip's own first frame via
+          // preload="metadata" instead of a generic placeholder. Skips
+          // the Ken Burns zoom class since that's tuned for a static
+          // image, not a video element.
           <video
             ref={videoRef}
             src={item.src}
             className="zx-dramatic-card-img"
             muted
-            autoPlay
             loop
             playsInline
             preload="metadata"
-            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
-            onCanPlay={(e) => e.target.play().catch(() => {})}
+          />
+        ) : (
+          // Last resort — no thumbnail AND no video src (a broken row).
+          <img
+            src={makePlaceholderThumb(item.id)}
+            alt={item.title}
+            className="zx-dramatic-card-img"
+            draggable={false}
           />
         )}
         <div className="zx-dramatic-card-gradient" />
@@ -3466,12 +3571,14 @@ const HomePage = ({ sideNavbar }) => {
   id: v.id,
   short_id: v.short_id,
   src: v.video_url,
-  // FIX: previously `thumbnail: v.thumbnail_url` with no fallback at
-  // all — if client-side auto thumbnail capture failed during upload
-  // (see VideoUpload.jsx), thumbnail_url was saved as an empty string,
-  // and <img src=""> renders nothing. Now falls back to a self-hosted
-  // placeholder, matching what reels already did below.
-  thumbnail: v.thumbnail_url || makePlaceholderThumb(v.id),
+  // CHANGED: no longer force a placeholder image here. If
+  // thumbnail_url is empty (client-side auto capture failed during
+  // upload — see VideoUpload.jsx), VideoCard now falls back to
+  // rendering the video's own first frame via a <video preload="metadata">
+  // element, the same approach Posts already used (PostVideo in
+  // Posts/PostCard.jsx) — see VideoCard below. makePlaceholderThumb is
+  // now only used as a last resort when there's no video src either.
+  thumbnail: v.thumbnail_url || null,
   title: v.title,
   duration: v.duration || "00:00",
   channel: v.channel,
@@ -3519,9 +3626,9 @@ const HomePage = ({ sideNavbar }) => {
           const newVideo = {
             id: v.id,
             src: v.video_url,
-            // FIX: same fallback as fetchDbVideos above, applied to
-            // realtime INSERTs too.
-            thumbnail: v.thumbnail_url || makePlaceholderThumb(v.id),
+            // CHANGED: same as fetchDbVideos above — leave thumbnail_url
+            // as-is (possibly null); VideoCard handles the fallback now.
+            thumbnail: v.thumbnail_url || null,
             title: v.title,
             duration: v.duration || "00:00",
             channel: v.channel,
@@ -3557,14 +3664,14 @@ const HomePage = ({ sideNavbar }) => {
           id: "db_" + r.id,
           dbId: r.id,
           src: r.video_url,
-          // FIX: previously fell back to picsum.photos — an external
-          // domain that ad blockers / network filters commonly block,
-          // which just swaps one blank thumbnail for another blank one.
-          // Now falls back to a self-hosted data: URI placeholder (see
-          // makePlaceholderThumb above), which has no network dependency
-          // and always renders. Still seeded per-reel-id so each
-          // fallback is visually distinct rather than identical.
-          thumbnail: r.thumbnail || makePlaceholderThumb(r.id),
+          // CHANGED: no longer falls back to picsum.photos (an external
+          // domain that ad blockers / network filters commonly block —
+          // just swapping one blank thumbnail for another). ShortCard
+          // now falls back to rendering the reel's own first frame via
+          // a <video preload="metadata"> element when this is null,
+          // same approach as Posts' PostVideo. makePlaceholderThumb is
+          // only used as a last resort when there's no video src either.
+          thumbnail: r.thumbnail || null,
           title: r.title || "Untitled",
           duration: r.duration || "00:00",
           user: r.user || r.username || "Unknown",
@@ -3596,9 +3703,9 @@ const HomePage = ({ sideNavbar }) => {
             id: "db_" + r.id,
             dbId: r.id,
             src: r.video_url,
-            // FIX: same self-hosted placeholder fallback as fetchDbReels
-            // above, applied to realtime INSERTs too.
-            thumbnail: r.thumbnail || makePlaceholderThumb(r.id),
+            // CHANGED: same as fetchDbReels above — leave thumbnail
+            // as-is (possibly null); ShortCard handles the fallback now.
+            thumbnail: r.thumbnail || null,
             title: r.title || "Untitled",
             duration: r.duration || "00:00",
             user: r.user || r.username || "Unknown",
