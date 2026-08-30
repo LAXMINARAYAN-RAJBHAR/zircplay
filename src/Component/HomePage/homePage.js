@@ -586,8 +586,22 @@ const HomeImageGrid = ({ images }) => {
 // post_reactions/post_comments joined in fetchDbPosts below) — not a
 // site-wide total. This is the layout VideoCard below now mirrors:
 // description/caption first, stats row underneath.
+//
+// NEW: also shows a view count, sourced from the same viewCounts map /
+// incrementView helper HomePage already uses for videos and reels — see
+// content_type: "post" entries in viewCounts, keyed "post_<id>". A post
+// card counts as "viewed" once it's scrolled ≥60% into view, exactly
+// like ShortCard's reel-view tracking below.
 // ─────────────────────────────────────────────────────────────────────────────
-const PostCard = ({ post, isMobile, onReport, loggedInUsername, onDeletePost }) => {
+const PostCard = ({
+  post,
+  isMobile,
+  onReport,
+  loggedInUsername,
+  onDeletePost,
+  incrementView,
+  viewCounts = {},
+}) => {
   // CHANGED: was a single `media` string (post.image_urls?.[0] ||
   // post.image_url). Now an `images` array so multi-image posts can
   // render the same ImageGrid collage used in the Posts tab's PostCard,
@@ -613,8 +627,43 @@ const PostCard = ({ post, isMobile, onReport, loggedInUsername, onDeletePost }) 
   const likesCount = post.post_reactions?.length || 0;
   const commentsCount = post.post_comments?.length || 0;
 
+  // NEW: view count for this post, and the card-level IntersectionObserver
+  // that fires incrementView() once per mount when the card is ≥60%
+  // scrolled into view — same threshold/pattern as ShortCard's reel-view
+  // tracking above.
+  const cardRef = useRef(null);
+  const viewFiredRef = useRef(false);
+  const vcKey = post.id ? "post_" + post.id : null;
+  const viewCount = vcKey ? (viewCounts[vcKey] ?? 0) : 0;
+
+  useEffect(() => {
+    if (!post.id || !incrementView) return;
+    viewFiredRef.current = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry.isIntersecting &&
+          entry.intersectionRatio >= 0.6 &&
+          !viewFiredRef.current
+        ) {
+          viewFiredRef.current = true;
+          incrementView(String(post.id), "post");
+        }
+      },
+      { threshold: 0.6 },
+    );
+    const el = cardRef.current;
+    if (el) observer.observe(el);
+    return () => observer.disconnect();
+  }, [post.id, incrementView]);
+
   return (
-    <Link to={`/feed?post=${post.id}`} className="homePage_postCard" style={{ position: "relative" }}>
+    <Link
+      ref={cardRef}
+      to={`/feed?post=${post.id}`}
+      className="homePage_postCard"
+      style={{ position: "relative" }}
+    >
       <PostMenuButton
         post={post}
         loggedInUsername={loggedInUsername}
@@ -657,6 +706,7 @@ const PostCard = ({ post, isMobile, onReport, loggedInUsername, onDeletePost }) 
         <div className="homePage_postFooter">
           <p className="homePage_postUser">@{post.username}</p>
           <span className="homePage_postStats">
+            <span>👁 {formatViews(viewCount)}</span>
             <span>👍 {likesCount}</span>
             <span>💬 {commentsCount}</span>
           </span>
@@ -669,7 +719,16 @@ const PostCard = ({ post, isMobile, onReport, loggedInUsername, onDeletePost }) 
 // One row of Post cards — same visual pattern as ShortsRow (small "Z"
 // label + grid), used repeatedly by buildContentRows below rather than
 // as a single top spotlight.
-const PostsRow = ({ data, title, isMobile, onReport, loggedInUsername, onDeletePost }) => (
+const PostsRow = ({
+  data,
+  title,
+  isMobile,
+  onReport,
+  loggedInUsername,
+  onDeletePost,
+  incrementView,
+  viewCounts,
+}) => (
   <div className="homePage_postsSection">
     <div className="homePage_postsSectionHeader">
       <span className="homePage_postsSectionTitle">
@@ -686,6 +745,8 @@ const PostsRow = ({ data, title, isMobile, onReport, loggedInUsername, onDeleteP
           onReport={onReport}
           loggedInUsername={loggedInUsername}
           onDeletePost={onDeletePost}
+          incrementView={incrementView}
+          viewCounts={viewCounts}
         />
       ))}
     </div>
@@ -3537,6 +3598,10 @@ const HomePage = ({ sideNavbar }) => {
   //
   // Joins post_reactions/post_comments so each post card can show its
   // OWN like/comment counts (see PostCard above).
+  //
+  // NEW: also seeds this post's initial view count into `viewCounts`
+  // (keyed "post_<id>"), same as fetchDbVideos/fetchDbReels do for
+  // videos/reels — see fetchViewCounts(..., "post") calls below.
   useEffect(() => {
     const fetchDbPosts = async () => {
       const { data, error } = await supabase
@@ -3544,7 +3609,13 @@ const HomePage = ({ sideNavbar }) => {
         .select("*, post_reactions(type), post_comments(id)")
         .order("created_at", { ascending: false })
         .limit(30);
-      if (!error && data) setDbPosts(data);
+      if (!error && data) {
+        setDbPosts(data);
+        fetchViewCounts(
+          data.map((p) => p.id),
+          "post",
+        );
+      }
     };
     fetchDbPosts();
 
@@ -3562,6 +3633,7 @@ const HomePage = ({ sideNavbar }) => {
             { ...payload.new, post_reactions: [], post_comments: [] },
             ...prev,
           ]);
+          fetchViewCounts([payload.new.id], "post");
         },
       )
       .on(
@@ -4057,6 +4129,8 @@ const HomePage = ({ sideNavbar }) => {
                           onReport={openReport}
                           loggedInUsername={loggedInUsername}
                           onDeletePost={handleDeletePost}
+                          incrementView={incrementView}
+                          viewCounts={viewCounts}
                         />
                       );
                     }
