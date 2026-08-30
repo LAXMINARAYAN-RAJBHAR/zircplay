@@ -1615,3 +1615,28 @@
     transition: none !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   NEW: POST VIEW COUNT — append to the BOTTOM of PostFeed.css.
+   Supports the 👁 view-count label added next to the comment-count
+   button in PostCard.jsx's .pf-reaction-summary row.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Wraps the view-count + comment-count button together on the right
+   side of the reaction summary row, so the existing
+   `justify-content: space-between` on .pf-reaction-summary still works
+   with three total items (emojis+likes on the left, this group on the
+   right) instead of needing to restructure that row. */
+.pf-reaction-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pf-view-count {
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--zx-text3);
+  white-space: nowrap;
+}

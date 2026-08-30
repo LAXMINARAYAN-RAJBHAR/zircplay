@@ -27,6 +27,12 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
   const [error, setError] = useState("");
   const [highlightedPostId, setHighlightedPostId] = useState(null);
   const [postNotFound, setPostNotFound] = useState(false);
+  // NEW: per-post view counts, keyed by post id (string) → count.
+  // Populated by fetchViewCounts() and bumped locally (then persisted)
+  // by incrementView(), mirroring the viewCounts state + incrementView/
+  // fetchViewCounts pattern already used for videos/reels on the
+  // homepage (see homePage.js) — same "views" table, content_type: "post".
+  const [viewCounts, setViewCounts] = useState({});
   const PAGE_SIZE = 10;
   const offsetRef = useRef(0);
 
@@ -61,6 +67,59 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     [currentUser]
   );
 
+  // ── NEW: view-count helpers, mirroring homePage.js's fetchViewCounts /
+  // incrementView exactly (same "views" table, same upsert conflict
+  // target, same 24h-per-user de-dupe via localStorage) but scoped to
+  // content_type: "post". ──
+
+  const fetchViewCounts = async (ids) => {
+    if (!ids || !ids.length) return;
+    try {
+      const { data, error: err } = await supabase
+        .from("views")
+        .select("content_id")
+        .eq("content_type", "post")
+        .in("content_id", ids.map(String));
+      const map = {};
+      ids.forEach((id) => {
+        map[String(id)] = 0;
+      });
+      if (!err && data) {
+        data.forEach((r) => {
+          map[r.content_id] = (map[r.content_id] || 0) + 1;
+        });
+      }
+      setViewCounts((prev) => ({ ...prev, ...map }));
+    } catch (_) {}
+  };
+
+  const incrementView = useCallback(async (postId) => {
+    const storageKey = `lastViewed_post_${postId}`;
+    const lastViewed = localStorage.getItem(storageKey);
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    if (lastViewed && now - parseInt(lastViewed, 10) < TWENTY_FOUR_HOURS)
+      return;
+    localStorage.setItem(storageKey, String(now));
+
+    const key = String(postId);
+    setViewCounts((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+
+    try {
+      const userId = localStorage.getItem("userId");
+      if (!userId) return;
+      await supabase.from("views").upsert(
+        {
+          user_id: userId,
+          content_id: key,
+          content_type: "post",
+          viewed_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,content_id,content_type" },
+      );
+    } catch (_) {}
+  }, []);
+
   const fetchPosts = useCallback(async (reset = false) => {
     try {
       const offset = reset ? 0 : offsetRef.current;
@@ -87,6 +146,9 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         setPosts((prev) => [...prev, ...enriched]);
         offsetRef.current += enriched.length;
       }
+
+      // NEW: pull view counts for whichever page of posts just loaded.
+      fetchViewCounts(enriched.map((p) => p.id));
 
       setHasMore((data || []).length === PAGE_SIZE);
     } catch (err) {
@@ -131,6 +193,9 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         if (prev.some((p) => p.id === newId)) return prev;
         return [enrichedPost, ...prev];
       });
+
+      // NEW: seed a view-count entry (0) for the freshly inserted post.
+      fetchViewCounts([newId]);
     },
     [enrichPost]
   );
@@ -212,6 +277,10 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         if (current.some((p) => p.id === sharedPostId)) return current;
         return [enrichedPost, ...current];
       });
+
+      // NEW: make sure a directly-linked-to post also gets its view
+      // count loaded, since it may not have come through fetchPosts.
+      fetchViewCounts([sharedPostId]);
     };
 
     ensurePostLoaded();
@@ -247,6 +316,8 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
 
   const handleNewPost = async (post) => {
     setPosts((prev) => [post, ...prev]);
+    // NEW: seed a view-count entry for a post the current user just made.
+    fetchViewCounts([post.id]);
 
     const uploaderUsername = currentUser;
     await notifySubscribers(uploaderUsername, {
@@ -490,6 +561,9 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         },
         ...prev,
       ]);
+
+      // NEW: seed a view-count entry for the newly-created shared post.
+      fetchViewCounts([data.id]);
     } catch (err) {
       console.error("Share to feed failed:", err);
       setError(
@@ -644,6 +718,8 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
                 onDislikeComment={(postId, commentId) =>
                   handleCommentReaction(postId, commentId, "dislike")
                 }
+                viewCount={viewCounts[String(post.id)] ?? 0}
+                onView={incrementView}
               />
             </div>
             {(index + 1) % 5 === 0 && (

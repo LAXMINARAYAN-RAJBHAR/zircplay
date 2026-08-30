@@ -32,6 +32,15 @@ const timeAgo = (dateStr) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
+// ── View count formatting — mirrors formatViews() in homePage.js so
+// posts, videos, and reels all display counts the same way. ──
+const formatViews = (n) => {
+  if (!n || n === 0) return "0 views";
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M views";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "K views";
+  return n + " views";
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // useIsMobile — same pattern used on HomePage's video/reel/trending cards,
 // duplicated here at module scope since PostCard lives in its own file.
@@ -202,6 +211,8 @@ const PostCard = ({
   onReport,
   onLikeComment, // NEW: like/unlike a single comment
   onDislikeComment, // NEW: dislike/undislike a single comment
+  viewCount = 0, // NEW: this post's total view count, from PostFeed's viewCounts map
+  onView, // NEW: (postId) => void — called once per mount when the card scrolls into view
 }) => {
   const [commentText, setCommentText] = useState("");
   const [showPicker, setShowPicker] = useState(false);
@@ -239,6 +250,13 @@ const PostCard = ({
   const shareRef = useRef();
   const menuRef = useRef();
 
+  // NEW: root card ref + one-shot guard for the view-count
+  // IntersectionObserver below. Mirrors ShortCard's viewFiredRef pattern
+  // on the homepage — fires at most once per mount, once the card is
+  // at least 60% visible.
+  const cardRef = useRef(null);
+  const viewFiredRef = useRef(false);
+
   const navigate = useNavigate();
 
   const initials = (post.username || "?").slice(0, 2).toUpperCase();
@@ -275,6 +293,31 @@ const PostCard = ({
       prevTotalRef.current = totalReactions;
     }
   }, [totalReactions]);
+
+  // NEW: view-count tracking. Same 60%-visible threshold used by
+  // ShortCard/VideoCard on the homepage — counts a "view" once the post
+  // has genuinely scrolled into the viewport, not just rendered
+  // off-screen in a long feed. onView() itself (in PostFeed) handles
+  // the 24h-per-user de-duplication, same as incrementView() there.
+  useEffect(() => {
+    viewFiredRef.current = false;
+    if (!cardRef.current || !onView) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry.isIntersecting &&
+          entry.intersectionRatio >= 0.6 &&
+          !viewFiredRef.current
+        ) {
+          viewFiredRef.current = true;
+          onView(post.id);
+        }
+      },
+      { threshold: 0.6 },
+    );
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [post.id, onView]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -394,7 +437,7 @@ const PostCard = ({
         />
       )}
 
-      <div className="pf-card">
+      <div className="pf-card" ref={cardRef}>
         {/* ── Header ── */}
         <div className="pf-card-header">
           <Link
@@ -637,7 +680,12 @@ const PostCard = ({
             always renders per post, and the like-count/comment-count
             each show independently — a post can display "0 Likes" next
             to "3 comments" (or vice versa) instead of hiding one because
-            the other is zero. */}
+            the other is zero.
+
+            NEW: view count now sits alongside the comment-count button,
+            on the right side of the row, showing total views for this
+            post — same 👁 formatting used on the homepage's video/reel
+            cards. */}
         {!isEditing && (
           <div className="pf-reaction-summary">
             <div className="pf-reaction-emojis">
@@ -654,12 +702,15 @@ const PostCard = ({
                 {totalReactions} {totalReactions === 1 ? "Like" : "Likes"}
               </span>
             </div>
-            <button
-              className="pf-text-btn"
-              onClick={() => onToggleComments(post.id)}
-            >
-              {totalComments} comment{totalComments !== 1 ? "s" : ""}
-            </button>
+            <div className="pf-reaction-summary-right">
+              <span className="pf-view-count">👁 {formatViews(viewCount)}</span>
+              <button
+                className="pf-text-btn"
+                onClick={() => onToggleComments(post.id)}
+              >
+                {totalComments} comment{totalComments !== 1 ? "s" : ""}
+              </button>
+            </div>
           </div>
         )}
 
