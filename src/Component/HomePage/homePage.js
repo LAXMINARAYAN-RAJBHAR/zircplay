@@ -135,6 +135,37 @@ const isWatched = (contentType, contentId, watchedContentIds) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// makePlaceholderThumb — FIX: self-hosted (data: URI) fallback thumbnail,
+// used whenever a video/reel row has no thumbnail_url/thumbnail yet (e.g.
+// the client-side auto-capture in VideoUpload.jsx silently failed and left
+// the column as an empty string). This replaces the old picsum.photos
+// fallback, which depends on an external domain that ad blockers / network
+// filters commonly block — swapping one blank thumbnail for another blank
+// thumbnail. A data: URI has ZERO network dependency, so it always renders
+// regardless of the viewer's browser/network setup. Deterministic per id
+// (same id always gets the same color), so it doesn't flicker between
+// renders/re-fetches.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLACEHOLDER_HUES = [352, 262, 199, 32, 152, 45, 280, 18];
+const makePlaceholderThumb = (seed) => {
+  const str = String(seed ?? "z");
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  const hue = PLACEHOLDER_HUES[hash % PLACEHOLDER_HUES.length];
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0%" stop-color="hsl(${hue},70%,42%)"/>` +
+    `<stop offset="100%" stop-color="hsl(${(hue + 40) % 360},70%,28%)"/>` +
+    `</linearGradient></defs>` +
+    `<rect width="100%" height="100%" fill="url(#g)"/>` +
+    `<circle cx="200" cy="200" r="46" fill="rgba(255,255,255,0.22)"/>` +
+    `<path d="M186 178 L228 200 L186 222 Z" fill="rgba(255,255,255,0.85)"/>` +
+    `</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Share + Report — shared helpers used by every three-dots menu (videos,
 // reels, posts). buildShareUrl mirrors the existing video share link
 // pattern (zixplon.in/api/og) so og:tags render correctly for whichever
@@ -3435,7 +3466,12 @@ const HomePage = ({ sideNavbar }) => {
   id: v.id,
   short_id: v.short_id,
   src: v.video_url,
-  thumbnail: v.thumbnail_url,
+  // FIX: previously `thumbnail: v.thumbnail_url` with no fallback at
+  // all — if client-side auto thumbnail capture failed during upload
+  // (see VideoUpload.jsx), thumbnail_url was saved as an empty string,
+  // and <img src=""> renders nothing. Now falls back to a self-hosted
+  // placeholder, matching what reels already did below.
+  thumbnail: v.thumbnail_url || makePlaceholderThumb(v.id),
   title: v.title,
   duration: v.duration || "00:00",
   channel: v.channel,
@@ -3483,7 +3519,9 @@ const HomePage = ({ sideNavbar }) => {
           const newVideo = {
             id: v.id,
             src: v.video_url,
-            thumbnail: v.thumbnail_url,
+            // FIX: same fallback as fetchDbVideos above, applied to
+            // realtime INSERTs too.
+            thumbnail: v.thumbnail_url || makePlaceholderThumb(v.id),
             title: v.title,
             duration: v.duration || "00:00",
             channel: v.channel,
@@ -3519,16 +3557,14 @@ const HomePage = ({ sideNavbar }) => {
           id: "db_" + r.id,
           dbId: r.id,
           src: r.video_url,
-          // FIX: previously fell back to a single hardcoded picsum URL
-          // ("random=99") for EVERY reel missing a thumbnail. Since the
-          // URL was byte-for-byte identical each time, the browser/CDN
-          // served the exact same cached image for every reel that
-          // lacked its own thumbnail — making it look like most reels
-          // shared one placeholder photo instead of being distinct.
-          // Seeding with the reel's own id keeps each fallback distinct.
-          thumbnail:
-            r.thumbnail ||
-            `https://picsum.photos/200/350?random=${r.id}`,
+          // FIX: previously fell back to picsum.photos — an external
+          // domain that ad blockers / network filters commonly block,
+          // which just swaps one blank thumbnail for another blank one.
+          // Now falls back to a self-hosted data: URI placeholder (see
+          // makePlaceholderThumb above), which has no network dependency
+          // and always renders. Still seeded per-reel-id so each
+          // fallback is visually distinct rather than identical.
+          thumbnail: r.thumbnail || makePlaceholderThumb(r.id),
           title: r.title || "Untitled",
           duration: r.duration || "00:00",
           user: r.user || r.username || "Unknown",
@@ -3560,12 +3596,9 @@ const HomePage = ({ sideNavbar }) => {
             id: "db_" + r.id,
             dbId: r.id,
             src: r.video_url,
-            // FIX: same per-reel seed as fetchDbReels above, applied to
-            // realtime INSERTs too, so a freshly uploaded reel without a
-            // thumbnail doesn't collide with the same shared placeholder.
-            thumbnail:
-              r.thumbnail ||
-              `https://picsum.photos/200/350?random=${r.id}`,
+            // FIX: same self-hosted placeholder fallback as fetchDbReels
+            // above, applied to realtime INSERTs too.
+            thumbnail: r.thumbnail || makePlaceholderThumb(r.id),
             title: r.title || "Untitled",
             duration: r.duration || "00:00",
             user: r.user || r.username || "Unknown",
