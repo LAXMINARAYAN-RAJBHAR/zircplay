@@ -1,763 +1,4346 @@
-import React, { useState, useRef, useEffect } from "react";
-import "./videoUpload.css";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import React, { useState, useEffect, useRef } from "react";
+import "./homePage.css";
+import { reelsData } from "../Reels/reels";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import CircularProgress from "@mui/material/CircularProgress";
-import Box from "@mui/material/Box";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import axios from "axios";
 import { supabase } from "../../config/supabase";
-import RecordModal from "../RecordModal/RecordModal";
-import { checkContent } from "../../Component/Moderation/useModerationFilter";
-import { notifySubscribers } from "../../utils/notifications";
-import { uploadToR2, buildTransformUrl, uploadVideoToR2 } from "../../utils/mediaUpload";
+import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
+import BookmarkIcon from "@mui/icons-material/Bookmark";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
+import CheckIcon from "@mui/icons-material/Check";
+import AddIcon from "@mui/icons-material/Add";
+import CloseIcon from "@mui/icons-material/Close";
+import { createPortal } from "react-dom";
+import LiveBrowser from "../Live/LiveViewer";
+import AdUnit from "../../Component/Ads/AdUnit";
+// NEW: shared notification helper — see src/utils/notifications.js
+import { notifyUser } from "../../utils/notifications";
 
-const INITIAL_FIELDS = {
-  title: "",
-  description: "",
-  videoLink: "",
-  thumbnail: "",
-  videoType: "",
+const API_KEYS = [
+  process.env.REACT_APP_YOUTUBE_KEY_1,
+  process.env.REACT_APP_YOUTUBE_KEY_2,
+  process.env.REACT_APP_YOUTUBE_KEY_3,
+  process.env.REACT_APP_YOUTUBE_KEY_4,
+  process.env.REACT_APP_YOUTUBE_KEY_5,
+  process.env.REACT_APP_YOUTUBE_KEY_6,
+];
+let currentKeyIndex = 0;
+
+const MOCK_COMMENTS = [
+  {
+    id: 1,
+    user: "Ravi Kumar",
+    avatar: "RK",
+    text: "This is absolutely amazing content! Keep it up 🔥",
+    likes: 142,
+    time: "2 days ago",
+  },
+  {
+    id: 2,
+    user: "Priya Sharma",
+    avatar: "PS",
+    text: "Really informative, learned so much from this video.",
+    likes: 87,
+    time: "1 day ago",
+  },
+  {
+    id: 3,
+    user: "Arjun Mehta",
+    avatar: "AM",
+    text: "The editing on this is top notch. Subscribed!",
+    likes: 56,
+    time: "5 hours ago",
+  },
+  {
+    id: 4,
+    user: "Sneha Patel",
+    avatar: "SP",
+    text: "Been waiting for a video like this!",
+    likes: 34,
+    time: "3 hours ago",
+  },
+  {
+    id: 5,
+    user: "Dev_Codes",
+    avatar: "DC",
+    text: "Bookmarked this. Will rewatch multiple times 📌",
+    likes: 29,
+    time: "1 hour ago",
+  },
+  {
+    id: 6,
+    user: "NatureLover99",
+    avatar: "NL",
+    text: "The visuals are stunning. What camera do you use?",
+    likes: 18,
+    time: "45 mins ago",
+  },
+  {
+    id: 7,
+    user: "TechWithVik",
+    avatar: "TV",
+    text: "Explained in the simplest way possible. Respect 🙏",
+    likes: 11,
+    time: "20 mins ago",
+  },
+];
+
+const avatarColors = [
+  "#7c3aed",
+  "#f43f5e",
+  "#f97316",
+  "#06b6d4",
+  "#10b981",
+  "#eab308",
+  "#a855f7",
+  "#3b82f6",
+  "#ec4899",
+  "#14b8a6",
+];
+const getColor = (str) =>
+  avatarColors[(str || "A").charCodeAt(0) % avatarColors.length];
+
+const formatViews = (n) => {
+  if (!n || n === 0) return "0 views";
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M views";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "K views";
+  return n + " views";
 };
 
-const resolveFeature = (state) => {
-  if (!state) return { mode: null, data: null };
-  if (state.remixData)       return { mode: "remix",       data: state.remixData };
-  if (state.soundData)       return { mode: "sound",       data: state.soundData };
-  if (state.collabData)      return { mode: "collab",      data: state.collabData };
-  if (state.greenScreenData) return { mode: "greenscreen", data: state.greenScreenData };
-  if (state.cutData)         return { mode: "cut",         data: state.cutData };
-  return { mode: null, data: null };
+const formatTimeAgo = (dateString) => {
+  if (!dateString) return null;
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  const diffMonth = Math.floor(diffDay / 30);
+  const diffYear = Math.floor(diffDay / 365);
+  if (diffSec < 60) return "Just now";
+  if (diffMin < 60)
+    return diffMin + (diffMin === 1 ? " minute ago" : " minutes ago");
+  if (diffHour < 24)
+    return diffHour + (diffHour === 1 ? " hour ago" : " hours ago");
+  if (diffDay < 30) return diffDay + (diffDay === 1 ? " day ago" : " days ago");
+  if (diffMonth < 12)
+    return diffMonth + (diffMonth === 1 ? " month ago" : " months ago");
+  return diffYear + (diffYear === 1 ? " year ago" : " years ago");
 };
 
-const featureDefaults = (mode, data) => {
-  switch (mode) {
-    case "remix":       return { title: `Remix of "${data.remixed_from_title}"`,        description: `🎬 Remixed from @${data.remixed_from_username}` };
-    case "sound":       return { title: `Using sound from "${data.sound_from_title}"`,  description: `🎵 Sound by @${data.sound_from_username}` };
-    case "collab":      return { title: `Collab with @${data.collab_with_username}`,    description: `🤝 Collab response to "${data.collab_with_title}"` };
-    case "greenscreen": return { title: `Green Screen — "${data.bg_reel_title}"`,       description: `💚 Using background from @${data.bg_reel_username}` };
-    case "cut":         return { title: `Cut from "${data.cut_from_title}"`,            description: `✂️ Cut by @${data.cut_from_username}` };
-    default:            return { title: "", description: "" };
+const isWatched = (contentType, contentId, watchedContentIds) => {
+  const localKey = `viewed_${contentType}_${contentId}`;
+  if (localStorage.getItem(localKey) === "true") return true;
+  return watchedContentIds.has(`${contentType}_${String(contentId)}`);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// makePlaceholderThumb — FIX: self-hosted (data: URI) fallback thumbnail,
+// used whenever a video/reel row has no thumbnail_url/thumbnail yet (e.g.
+// the client-side auto-capture in VideoUpload.jsx silently failed and left
+// the column as an empty string). This replaces the old picsum.photos
+// fallback, which depends on an external domain that ad blockers / network
+// filters commonly block — swapping one blank thumbnail for another blank
+// thumbnail. A data: URI has ZERO network dependency, so it always renders
+// regardless of the viewer's browser/network setup. Deterministic per id
+// (same id always gets the same color), so it doesn't flicker between
+// renders/re-fetches.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLACEHOLDER_HUES = [352, 262, 199, 32, 152, 45, 280, 18];
+const makePlaceholderThumb = (seed) => {
+  const str = String(seed ?? "z");
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  const hue = PLACEHOLDER_HUES[hash % PLACEHOLDER_HUES.length];
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0%" stop-color="hsl(${hue},70%,42%)"/>` +
+    `<stop offset="100%" stop-color="hsl(${(hue + 40) % 360},70%,28%)"/>` +
+    `</linearGradient></defs>` +
+    `<rect width="100%" height="100%" fill="url(#g)"/>` +
+    `<circle cx="200" cy="200" r="46" fill="rgba(255,255,255,0.22)"/>` +
+    `<path d="M186 178 L228 200 L186 222 Z" fill="rgba(255,255,255,0.85)"/>` +
+    `</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Share + Report — shared helpers used by every three-dots menu (videos,
+// reels, posts). buildShareUrl mirrors the existing video share link
+// pattern (zixplon.in/api/og) so og:tags render correctly for whichever
+// content type is being shared.
+// ─────────────────────────────────────────────────────────────────────────────
+const buildShareUrl = (contentType, contentId) =>
+  `https://zixplon.in/api/og?type=${contentType}&id=${contentId}`;
+
+const shareContent = ({ contentType, contentId, title, text }) => {
+  const url = buildShareUrl(contentType, contentId);
+  if (navigator.share) {
+    navigator
+      .share({ title: title || "Zixplon", text: text || title || "Check this out on Zixplon", url })
+      .catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url);
+    alert("Link copied!");
   }
 };
 
-const featureBanner = (mode, data) => {
-  switch (mode) {
-    case "remix":       return { emoji: "🎬", label: "Remixing",        title: `"${data.remixed_from_title}"`, by: `@${data.remixed_from_username}`, thumb: data.remixed_from_thumbnail, color: "#a855f7", hint: "Upload your own video response. Your remix will credit the original creator." };
-    case "sound":       return { emoji: "🎵", label: "Using Sound From", title: `"${data.sound_from_title}"`,  by: `@${data.sound_from_username}`,    thumb: data.sound_from_thumbnail,    color: "#f97316", hint: "Upload your video. The original sound will be credited automatically." };
-    case "collab":      return { emoji: "🤝", label: "Collabing With",   title: `"${data.collab_with_title}"`, by: `@${data.collab_with_username}`,   thumb: data.collab_with_thumbnail,   color: "#06b6d4", hint: "Upload your side of the collab. Both creators will be credited." };
-    case "greenscreen": return { emoji: "💚", label: "Green Screen BG",  title: `"${data.bg_reel_title}"`,     by: `@${data.bg_reel_username}`,       thumb: data.bg_reel_thumbnail,       color: "#22c55e", hint: "Upload your video recorded against the green screen background." };
-    case "cut":         return { emoji: "✂️", label: "Cutting From",     title: `"${data.cut_from_title}"`,    by: `@${data.cut_from_username}`,      thumb: data.cut_from_thumbnail,      color: "#f43f5e", hint: "Upload your edited cut. Original creator will be credited." };
-    default:            return null;
-  }
+const REPORT_REASONS = [
+  "Spam or misleading",
+  "Nudity or sexual content",
+  "Violent or graphic content",
+  "Harassment or bullying",
+  "Hate speech or symbols",
+  "False information",
+  "Copyright infringement",
+  "Something else",
+];
+
+const useIsMobile = () => {
+  const [mobile, setMobile] = useState(() => window.innerWidth <= 768);
+  useEffect(() => {
+    const fn = () => setMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return mobile;
 };
 
-const VideoUpload = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const { mode: featureMode, data: featureData } = resolveFeature(location.state);
-  const isFeatureMode = !!featureMode;
-  const banner        = featureBanner(featureMode, featureData);
-  const defaults      = featureDefaults(featureMode, featureData);
-  const remixData     = featureMode === "remix" ? featureData : null;
-
-  useEffect(() => {
-    const user = localStorage.getItem("username");
-    if (!user) navigate("/signup");
-  }, []);
-
-  const [uploadMode,      setUploadMode]      = useState(isFeatureMode ? "reel" : "video");
-  const [showRecordModal, setShowRecordModal] = useState(false);
-  const currentUser = localStorage.getItem("username") || "";
-
-  const [inputField, setInputField] = useState({
-    ...INITIAL_FIELDS,
-    title:       defaults.title,
-    description: defaults.description,
+// ─────────────────────────────────────────────────────────────────────────────
+// mergeRefs — combine multiple refs (a component's own ref + a hook's ref)
+// onto a single DOM node. Needed wherever a card already owns a ref (e.g.
+// ShortCard's view-count IntersectionObserver) but also needs to hand that
+// same node to usePostPreview's wrapRef.
+// ─────────────────────────────────────────────────────────────────────────────
+const mergeRefs = (...refs) => (node) => {
+  refs.forEach((ref) => {
+    if (!ref) return;
+    if (typeof ref === "function") ref(node);
+    else ref.current = node;
   });
+};
 
-  const [loader,          setLoader]          = useState(false);
-  const [thumbLoader,     setThumbLoader]     = useState(false);
-  const [videoUploaded,   setVideoUploaded]   = useState(false);
-  const [imageUploaded,   setImageUploaded]   = useState(false);
-  const [submitted,       setSubmitted]       = useState(false);
-  const [error,           setError]           = useState("");
-  const [saving,          setSaving]          = useState(false);
-  const [thumbSource,     setThumbSource]     = useState("");
-  const [uploadProgress,  setUploadProgress]  = useState(0);
-  const [uploadSpeed,     setUploadSpeed]     = useState(0);
-  const [timeRemaining,   setTimeRemaining]   = useState("");
-  // ── Local, client-side preview of the picked video file. This is
-  // independent of server-side thumbnail capture/upload, so the user
-  // always gets a visual "your video is in" confirmation the moment
-  // it finishes uploading — even if auto thumbnail capture fails. ──
-  const [localPreviewUrl, setLocalPreviewUrl] = useState("");
+// ─────────────────────────────────────────────────────────────────────────────
+// useHoverPreview — after a short delay, swap the thumbnail image for a
+// muted, looping <video> of the actual clip. Mirrors the YouTube/Instagram
+// "hover to preview" behaviour. Callers pass `canPreview` (e.g. false on
+// mobile, or when there's no real video URL) to disable it entirely.
+// ─────────────────────────────────────────────────────────────────────────────
+const HOVER_PREVIEW_DELAY = 450; // ms — avoids firing on quick mouse passes
 
-  const uploadStartTime  = useRef(null);
-  const uploadedBytesRef = useRef(0);
-  const durationRef      = useRef("00:00");
-  const wakeLockRef      = useRef(null);
-  const localPreviewRef  = useRef(""); // mirrors localPreviewUrl for safe cleanup
+const useHoverPreview = (canPreview) => {
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const timeoutRef = useRef(null);
+  const videoRef = useRef(null);
 
-  const requestWakeLock = async () => {
-    try {
-      if ("wakeLock" in navigator) wakeLockRef.current = await navigator.wakeLock.request("screen");
-    } catch (err) { console.warn("Wake Lock not available:", err.message); }
+  const cancelTimer = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
   };
 
-  const releaseWakeLock = () => {
-    if (wakeLockRef.current) { wakeLockRef.current.release(); wakeLockRef.current = null; }
+  const onMouseEnter = () => {
+    if (!canPreview) return;
+    cancelTimer();
+    timeoutRef.current = setTimeout(() => setIsPreviewing(true), HOVER_PREVIEW_DELAY);
   };
 
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === "visible" && loader && wakeLockRef.current === null)
-        await requestWakeLock();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [loader]);
-
-  // Revoke any local blob preview URL on unmount to avoid leaking memory.
-  useEffect(() => {
-    return () => {
-      if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
-    };
-  }, []);
-
-  const clearLocalPreview = () => {
-    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
-    localPreviewRef.current = "";
-    setLocalPreviewUrl("");
-  };
-
-  const resetState = () => {
-    setInputField({ ...INITIAL_FIELDS });
-    setVideoUploaded(false);
-    setImageUploaded(false);
-    setThumbSource("");
-    setError("");
-    setUploadProgress(0);
-    setUploadSpeed(0);
-    setTimeRemaining("");
-    uploadStartTime.current  = null;
-    uploadedBytesRef.current = 0;
-    durationRef.current      = "00:00";
-    clearLocalPreview();
-  };
-
-  const switchMode = (mode) => { setUploadMode(mode); resetState(); };
-
-  const updateSpeedAndETA = (loadedBytes, totalBytes) => {
-    if (!uploadStartTime.current) return;
-    const elapsed    = (Date.now() - uploadStartTime.current) / 1000;
-    if (elapsed < 1) return;
-    const speedBps   = loadedBytes / elapsed;
-    const speedMBps  = speedBps / (1024 * 1024);
-    const remaining  = totalBytes - loadedBytes;
-    const remainSecs = remaining / speedBps;
-    setUploadSpeed(speedMBps.toFixed(1));
-    if (remainSecs > 3600)    setTimeRemaining(`~${Math.ceil(remainSecs / 3600)}h remaining`);
-    else if (remainSecs > 60) setTimeRemaining(`~${Math.ceil(remainSecs / 60)} min remaining`);
-    else                       setTimeRemaining(`~${Math.ceil(remainSecs)} sec remaining`);
-  };
-
-  const getVideoDuration = (file) => new Promise((resolve) => {
-    const videoEl = document.createElement("video");
-    videoEl.preload = "metadata";
-    videoEl.onloadedmetadata = () => {
-      window.URL.revokeObjectURL(videoEl.src);
-      const totalSec = Math.floor(videoEl.duration);
-      const hrs  = Math.floor(totalSec / 3600);
-      const mins = Math.floor((totalSec % 3600) / 60);
-      const secs = totalSec % 60;
-      durationRef.current = hrs > 0
-        ? `${String(hrs).padStart(2,"0")}:${String(mins).padStart(2,"0")}:${String(secs).padStart(2,"0")}`
-        : `${String(mins).padStart(2,"0")}:${String(secs).padStart(2,"0")}`;
-      resolve(durationRef.current);
-    };
-    videoEl.src = URL.createObjectURL(file);
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // captureThumbnail — FIXED VERSION
-  //
-  // ROOT CAUSE OF THE BLACK THUMBNAIL BUG:
-  // The video element was created with document.createElement("video") but
-  // NEVER attached to the DOM. In Chrome (and most browsers), an off-DOM
-  // video element can fire `seeked` and report a "successful" seek without
-  // actually having decoded a real frame at that position yet — so
-  // ctx.drawImage(video, ...) captures whatever was last in the decode
-  // buffer, which is usually just black. This happens consistently,
-  // regardless of file size or codec — matching what was observed (hover
-  // preview, which uses a real in-DOM <video>, always worked fine; the
-  // off-DOM capture never did).
-  //
-  // THE FIX:
-  //  1. Attach the video element to the DOM (positioned off-screen, NOT
-  //     display:none — some browsers pause/skip decoding for display:none
-  //     elements too).
-  //  2. Briefly call video.play() then immediately pause() after seeking —
-  //     this forces the browser to actually decode and render the frame,
-  //     which a pure seek() sometimes won't guarantee off-screen.
-  //  3. Always remove the element from the DOM in cleanup, whether it
-  //     succeeds or fails, so nothing leaks.
-  //
-  // Everything else (multi-event seek retry, 3s force-grab safety net,
-  // 10s final timeout) is unchanged from before.
-  // ─────────────────────────────────────────────────────────────────────────
-  const captureThumbnail = (file) => new Promise((resolve, reject) => {
-    const video  = document.createElement("video");
-    const canvas = document.createElement("canvas");
-    video.preload    = "auto";
-    video.muted      = true;
-    video.playsInline = true;
-
-    // ── KEY FIX #1: attach off-screen instead of leaving detached ──
-    video.style.position = "fixed";
-    video.style.top = "-9999px";
-    video.style.left = "-9999px";
-    video.style.width = "1px";
-    video.style.height = "1px";
-    video.setAttribute("aria-hidden", "true");
-    document.body.appendChild(video);
-
-    let settled = false;
-    let seekAttempted = false;
-
-    const cleanup = () => {
-      URL.revokeObjectURL(video.src);
-      // KEY FIX #3: always remove from DOM
-      if (video.parentNode) video.parentNode.removeChild(video);
-    };
-    const finish  = (result, err) => {
-      if (settled) return;
-      settled = true; cleanup();
-      if (err) reject(err); else resolve(result);
-    };
-
-    const grabFrame = () => {
+  const onMouseLeave = () => {
+    cancelTimer();
+    setIsPreviewing(false);
+    if (videoRef.current) {
       try {
-        canvas.width  = video.videoWidth  || 320;
-        canvas.height = video.videoHeight || 180;
-        if (canvas.width === 0 || canvas.height === 0) {
-          finish(null, new Error("Video has no dimensions yet."));
-          return;
-        }
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => {
-          if (!blob) { finish(null, new Error("Thumbnail capture failed.")); return; }
-          finish(blob, null);
-        }, "image/jpeg", 0.85);
-      } catch (err) { finish(null, err); }
-    };
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
+      } catch (_) {}
+    }
+  };
 
-    // Try to seek once we actually have a usable duration. Some codecs
-    // (common on phone-recorded reels) report duration as NaN or
-    // Infinity right when `loadedmetadata` first fires — in that case
-    // we wait for `durationchange`/`loadeddata` instead of giving up,
-    // rather than silently failing the whole capture.
-    const trySeek = () => {
-      if (seekAttempted || settled) return;
-      const dur = video.duration;
-      if (!isFinite(dur) || dur <= 0) return; // not ready yet — wait for next event
-      seekAttempted = true;
-      const seekTo = dur > 2 ? 1 : dur / 2;
+  useEffect(() => () => cancelTimer(), []);
+
+  return { isPreviewing, videoRef, onMouseEnter, onMouseLeave };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// usePostPreview — same idea as useHoverPreview, but works on BOTH desktop
+// and mobile: desktop still hovers-to-preview after HOVER_PREVIEW_DELAY;
+// mobile has no hover, so a card previews automatically once ~60% of it is
+// scrolled into view (and pauses again the instant it scrolls back out).
+// This is now the shared preview hook for Posts, Reels, and Videos so all
+// three get the same scroll-to-preview behaviour on mobile.
+// ─────────────────────────────────────────────────────────────────────────────
+const usePostPreview = (isMobile, canPreview) => {
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const wrapRef = useRef(null);
+  const timeoutRef = useRef(null);
+  const videoRef = useRef(null);
+
+  const cancelTimer = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
+  const onMouseEnter = () => {
+    if (!canPreview || isMobile) return;
+    cancelTimer();
+    timeoutRef.current = setTimeout(() => setIsPreviewing(true), HOVER_PREVIEW_DELAY);
+  };
+
+  const onMouseLeave = () => {
+    if (isMobile) return;
+    cancelTimer();
+    setIsPreviewing(false);
+  };
+
+  // Mobile: autoplay preview as the card scrolls into view, pause on exit.
+  useEffect(() => {
+    if (!canPreview || !isMobile) return;
+    const node = wrapRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsPreviewing(entry.isIntersecting),
+      { threshold: 0.6 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [canPreview, isMobile]);
+
+  // Keep the underlying <video> element in sync with isPreviewing on both
+  // platforms — desktop's hover handlers only toggle state, this effect is
+  // what actually starts/stops playback and resets position on exit.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isPreviewing) {
+      try { v.currentTime = 0; } catch (_) {}
+      const p = v.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } else {
       try {
-        video.currentTime = seekTo || 0.1;
-      } catch (_) {
-        grabFrame();
+        v.pause();
+        v.currentTime = 0;
+      } catch (_) {}
+    }
+  }, [isPreviewing]);
+
+  useEffect(() => () => cancelTimer(), []);
+
+  return {
+    isPreviewing: canPreview ? isPreviewing : false,
+    wrapRef,
+    videoRef,
+    hoverHandlers: isMobile ? {} : { onMouseEnter, onMouseLeave },
+  };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ShortCard
+// ─────────────────────────────────────────────────────────────────────────────
+const ShortCard = ({
+  short,
+  incrementView,
+  viewCounts,
+  handleDeleteReel,
+  navigate,
+  watchedContentIds,
+  onReport,
+  loggedInUsername,
+}) => {
+  const cardRef = useRef(null);
+  const firedRef = useRef(false);
+
+  // ── Preview setup: hover on desktop, scroll-into-view on mobile ──
+  const isMobile = useIsMobile();
+  const canPreview = !!short.src;
+  const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
+    isMobile,
+    canPreview,
+  );
+
+  const [showNew, setShowNew] = useState(() => {
+    if (!short.dbId) return false;
+    if (isWatched("reel", short.dbId, watchedContentIds)) return false;
+    if (short.created_at) {
+      const age = Date.now() - new Date(short.created_at).getTime();
+      return age <= 7 * 24 * 60 * 60 * 1000;
+    }
+    const fresh = (() => {
+      try {
+        return JSON.parse(
+          sessionStorage.getItem("zixplon_fresh_reels") || "[]",
+        );
+      } catch {
+        return [];
       }
-    };
-
-    video.onloadedmetadata = trySeek;
-    // Fires when the browser updates its knowledge of duration — covers
-    // the case where it was NaN/Infinity at loadedmetadata time.
-    video.ondurationchange = trySeek;
-    // Extra safety net: some browsers only reliably expose a valid
-    // duration once actual frame data is available.
-    video.onloadeddata = trySeek;
-
-    video.onseeked = () => {
-      // ── KEY FIX #2: force a decode by briefly playing, then pause ──
-      // A seek alone can leave an off-screen video's decode pipeline
-      // "behind" — play() forces the browser to actually push a decoded
-      // frame to the compositor before we grab it.
-      const grabAfterDecode = () => {
-        if ("requestVideoFrameCallback" in video) {
-          video.requestVideoFrameCallback(() => grabFrame());
-        } else {
-          setTimeout(grabFrame, 200);
-        }
-      };
-
-      const playAttempt = video.play();
-      if (playAttempt && typeof playAttempt.then === "function") {
-        playAttempt
-          .then(() => {
-            // Give it a tick to actually render, then pause + grab.
-            setTimeout(() => {
-              try { video.pause(); } catch (_) {}
-              grabAfterDecode();
-            }, 50);
-          })
-          .catch(() => {
-            // Autoplay blocked or similar — fall back to grabbing
-            // whatever frame is available anyway.
-            grabAfterDecode();
-          });
-      } else {
-        grabAfterDecode();
-      }
-    };
-
-    video.onerror = () => finish(null, new Error("Failed to load video for thumbnail."));
-
-    // If duration never resolves and no seek ever happens, force a grab
-    // from whatever frame is currently loaded rather than failing outright.
-    setTimeout(() => {
-      if (!settled && !seekAttempted && video.readyState >= 2) grabFrame();
-    }, 3000);
-
-    // Final fallback if nothing above worked.
-    setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 10000);
-
-    video.src = URL.createObjectURL(file);
-    video.load();
+    })();
+    return fresh.includes(String("db_" + short.dbId));
   });
 
-  // ── Thumbnail upload — goes through R2 (small file, fine for /api/upload) ──
-  const uploadThumbnail = async (blob) => {
-    const file = new File([blob], "thumbnail.jpg", { type: "image/jpeg" });
-    const { url } = await uploadToR2(file);
-    // format: "jpeg" is required here (not the default "webp") because this
-    // thumbnail becomes the og:image for shared video/reel links, and
-    // WhatsApp's link-preview crawler does not render webp images.
-    const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover", format: "jpeg" });
-    return transformedUrl;
-  };
-
-  const handleOnChangeInput = (event, name) => {
-    setInputField((prev) => ({ ...prev, [name]: event.target.value }));
-    setError("");
-  };
-
-  const uploadVideo = async (e) => {
-    setLoader(true); setError(""); setUploadProgress(0); setUploadSpeed(0); setTimeRemaining("");
-    uploadStartTime.current  = Date.now();
-    uploadedBytesRef.current = 0;
-    await requestWakeLock();
-    const files = e.target.files;
-    if (!files || files.length === 0) { setLoader(false); return; }
-    const file = files[0];
-    if (file.size > 4 * 1024 * 1024 * 1024) { setError("File too large. Maximum size is 4GB."); setLoader(false); return; }
-
-    // Show a confirmation preview immediately from the local file — this
-    // does not depend on captureThumbnail() or any network call, so it
-    // always shows up the moment the upload finishes.
-    clearLocalPreview();
-    const localUrl = URL.createObjectURL(file);
-    localPreviewRef.current = localUrl;
-    setLocalPreviewUrl(localUrl);
-
-    try {
-      const [, thumbnailBlob] = await Promise.all([
-        getVideoDuration(file),
-        captureThumbnail(file).catch((err) => { console.warn("Client-side thumbnail capture failed:", err.message); return null; }),
-      ]);
-
-      const { url: videoUrl } = await uploadVideoToR2(file, (pct) => {
-        setUploadProgress(pct);
-        updateSpeedAndETA((pct / 100) * file.size, file.size);
-      });
-
-      let thumbnailUrl = inputField.thumbnail;
-      if (!imageUploaded) {
-        if (thumbnailBlob) {
-          thumbnailUrl = await uploadThumbnail(thumbnailBlob);
-          setThumbSource("auto");
-        } else {
-          // Server-side auto thumbnail capture failed (no Cloudinary
-          // fallback since the move to R2). We still have localPreviewUrl
-          // to show the user their video, so the confirmation preview
-          // isn't lost — it just won't be the DB thumbnail_url yet.
-          console.warn("Auto thumbnail capture failed; showing local preview instead.");
+  useEffect(() => {
+    if (!short.dbId) return;
+    firedRef.current = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry.isIntersecting &&
+          entry.intersectionRatio >= 0.6 &&
+          !firedRef.current
+        ) {
+          firedRef.current = true;
+          localStorage.setItem(`viewed_reel_${short.dbId}`, "true");
+          localStorage.setItem(
+            `lastViewed_reel_${short.dbId}`,
+            String(Date.now()),
+          );
+          setShowNew(false);
+          incrementView(String(short.dbId), "reel");
         }
-      }
+      },
+      { threshold: 0.6 },
+    );
+    const el = cardRef.current;
+    if (el) observer.observe(el);
+    return () => observer.disconnect();
+  }, [short.dbId, incrementView]);
 
-      setInputField((prev) => ({ ...prev, videoLink: videoUrl, thumbnail: thumbnailUrl }));
-      setVideoUploaded(true); setUploadProgress(100); setLoader(false); releaseWakeLock();
-    } catch (err) {
-      setLoader(false); setUploadProgress(0); setTimeRemaining("");
-      setError(err.message || "Upload failed. Please try again.");
-      console.error("Upload error:", err); releaseWakeLock();
+  useEffect(() => {
+    if (!short.dbId) return;
+    if (isWatched("reel", short.dbId, watchedContentIds)) {
+      setShowNew(false);
+      return;
     }
-  };
-
-  // ── Manual thumbnail upload — goes to R2 ──
-  const uploadManualThumbnail = async (e) => {
-    setThumbLoader(true); setError("");
-    const files = e.target.files;
-    if (!files || files.length === 0) { setThumbLoader(false); return; }
-    try {
-      const { url } = await uploadToR2(files[0]);
-      // format: "jpeg" — same reasoning as uploadThumbnail() above, this
-      // also ends up as the shared-link og:image.
-      const transformedUrl = buildTransformUrl(url, { width: 640, height: 360, fit: "cover", format: "jpeg" });
-      setInputField((prev) => ({ ...prev, thumbnail: transformedUrl }));
-      setImageUploaded(true); setThumbSource("manual"); setThumbLoader(false);
-    } catch (err) {
-      setThumbLoader(false);
-      setError("Thumbnail upload failed. Please try again.");
+    if (short.created_at) {
+      const age = Date.now() - new Date(short.created_at).getTime();
+      setShowNew(age <= 7 * 24 * 60 * 60 * 1000);
     }
-  };
+  }, [watchedContentIds, short.dbId]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Subscriber notifications on upload now go through the SHARED helper
-  // (src/utils/notifications.js) instead of a locally duplicated copy —
-  // see notifySubscribers(...) calls inside handleSubmit below. This keeps
-  // the UUID-vs-username subscriber resolution logic in exactly one place
-  // so future fixes (RLS issues, resolution edge cases, etc.) don't have
-  // to be made twice and can't silently drift apart between call sites.
-  // ─────────────────────────────────────────────────────────────────────────
+  const vcKey = short.id ? "reel_" + short.id : null;
 
-  const notifyRemixedCreator = async (title, contentId) => {
-    if (!remixData) return;
-    const remixerUsername = localStorage.getItem("username");
-    await supabase.from("notifications").insert({
-      recipient_username: remixData.remixed_from_username,
-      sender_username:    remixerUsername,
-      type:               "upload",
-      message:            `@${remixerUsername} remixed your reel "${remixData.remixed_from_title}" with "${title}" 🎬`,
-      is_read:            false,
-      content_id:         contentId,
-      content_type:       "reel",
-    });
-  };
-
-  const notifyFeatureCreator = async (title, contentId) => {
-    const senderUsername = localStorage.getItem("username");
-    const notifMap = {
-      sound:       { to: featureData?.sound_from_username,  msg: `@${senderUsername} used your sound in "${title}" 🎵` },
-      collab:      { to: featureData?.collab_with_username, msg: `@${senderUsername} posted a collab response to "${featureData?.collab_with_title}": "${title}" 🤝` },
-      greenscreen: { to: featureData?.bg_reel_username,     msg: `@${senderUsername} used your reel as a green screen background in "${title}" 💚` },
-      cut:         { to: featureData?.cut_from_username,    msg: `@${senderUsername} cut your reel into "${title}" ✂️` },
-    };
-    const notif = notifMap[featureMode];
-    if (!notif || !notif.to || notif.to === senderUsername) return;
-    await supabase.from("notifications").insert({
-      recipient_username: notif.to,
-      sender_username:    senderUsername,
-      type:               "upload",
-      message:            notif.msg,
-      is_read:            false,
-      content_id:         contentId,
-      content_type:       "reel",
-    });
-  };
-
-  // ── handleSubmit — with moderation check INSIDE the function ──────────────
-  const handleSubmit = async () => {
-    if (!inputField.title)       return setError("Please enter a title.");
-    if (!inputField.description) return setError("Please enter a description.");
-    if (!inputField.videoLink)   return setError("Please upload a video first.");
-    if (uploadMode === "video" && !isFeatureMode && !inputField.videoType)
-      return setError("Please enter a category.");
-
-    setSaving(true);
-    setError("");
-
-    try {
-      const { isClean, violatingWord } = await checkContent(
-        inputField.title,
-        inputField.description,
-        inputField.videoType || ""
-      );
-      if (!isClean) {
-        setSaving(false);
-        setError(`❌ Content violates community guidelines (contains "${violatingWord}"). Please review our Community Guidelines before uploading.`);
-        return;
-      }
-    } catch (moderationErr) {
-      console.warn("Moderation check failed, proceeding:", moderationErr);
-    }
-
-    try {
-      const uploaderUsername = localStorage.getItem("username") || "anonymous";
-
-      if (uploadMode === "video" && !isFeatureMode) {
-        const videoPayload = {
-          title:         inputField.title,
-          description:   inputField.description,
-          video_url:     inputField.videoLink,
-          thumbnail_url: inputField.thumbnail,
-          category:      inputField.videoType,
-          channel:       localStorage.getItem("username") || "Anonymous",
-          username:      uploaderUsername,
-          duration:      durationRef.current,
-        };
-
-        const { data: newVideo, error: videoError } = await supabase
-          .from("videos")
-          .insert([videoPayload])
-          .select()
-          .single();
-        if (videoError) throw new Error(videoError.message);
-
-        await notifySubscribers(uploaderUsername, {
-          type: "video",
-          message: `${uploaderUsername} uploaded a new video: "${inputField.title}"`,
-          contentId: newVideo.id,
-          contentType: "video",
-        });
-      } else {
-        const reelPayload = {
-          title:       inputField.title,
-          description: inputField.description,
-          video_url:   inputField.videoLink,
-          thumbnail:   inputField.thumbnail,
-          uploaded_by: localStorage.getItem("username") || "Anonymous",
-          username:    uploaderUsername.toLowerCase().replace(/\s+/g, ""),
-          duration:    durationRef.current,
-          likes:       0,
-          comments:    0,
-        };
-
-        if (featureMode === "remix" && featureData) {
-          reelPayload.remixed_from_id       = featureData.remixed_from_id;
-          reelPayload.remixed_from_username = featureData.remixed_from_username;
+  return (
+    <div
+      ref={mergeRefs(cardRef, wrapRef)}
+      className="homePage_shortCard"
+      style={{ cursor: "pointer", position: "relative" }}
+      onClick={() => {
+        if (short.dbId) {
+          localStorage.setItem(`viewed_reel_${short.dbId}`, "true");
+          localStorage.setItem(
+            `lastViewed_reel_${short.dbId}`,
+            String(Date.now()),
+          );
+          setShowNew(false);
+          incrementView(String(short.dbId), "reel");
         }
-
-        const { data: newReel, error: reelError } = await supabase
-          .from("reels")
-          .insert([reelPayload])
-          .select()
-          .single();
-        if (reelError) throw new Error(reelError.message);
-
-        if (featureMode === "remix") await notifyRemixedCreator(inputField.title, newReel.id);
-        else if (featureMode)        await notifyFeatureCreator(inputField.title, newReel.id);
-
-        await notifySubscribers(uploaderUsername, {
-          type: "reel",
-          message: `${uploaderUsername} uploaded a new reel: "${inputField.title}"`,
-          contentId: newReel.id,
-          contentType: "reel",
-        });
-      }
-
-      setSaving(false);
-      setSubmitted(true);
-    } catch (err) {
-      setSaving(false);
-      setError(err.message || "Failed to save. Please try again.");
-      console.error("Save error:", err);
-    }
-  };
-
-  const uploadLabel = isFeatureMode
-    ? (banner?.emoji + " " + banner?.label)
-    : uploadMode === "reel" ? "Upload Reel" : "Upload Video";
-
-  const submitLabel = saving
-    ? "Saving..."
-    : loader
-      ? `Uploading... ${uploadProgress}%`
-      : isFeatureMode
-        ? `Post ${banner?.emoji}`
-        : `Upload ${uploadMode === "reel" ? "Reel" : "Video"}`;
-
-  // The server-generated thumbnail is a real IMAGE and can go through
-  // an <img> tag. localPreviewUrl is a blob URL of the VIDEO FILE itself
-  // (not an image) — it must be rendered with a <video> element, never
-  // <img>, or the browser shows a broken-image icon.
-  const hasServerThumb = !!inputField.thumbnail;
-
-  if (submitted) return (
-    <div className="videoUpload">
-      <div className="uploadBox">
-        <div className="upload_success_screen">
-          <CheckCircleOutlineIcon sx={{ fontSize: "64px", color: "#4caf50" }} />
-          <h2>{isFeatureMode ? banner?.label : uploadMode === "reel" ? "Reel" : "Video"} Uploaded Successfully!</h2>
-          <p>Your {isFeatureMode ? featureMode : uploadMode === "reel" ? "reel" : "video"} is now live on ZIXPLON&reg;</p>
-          {isFeatureMode && (
-            <p style={{ fontSize: "13px", color: "#7c3aed", fontWeight: 700 }}>
-              {banner?.emoji} {banner?.label} {banner?.by}
-            </p>
-          )}
-          <video src={inputField.videoLink} poster={inputField.thumbnail || undefined} controls className="upload_success_preview" />
-          <h3>{inputField.title}</h3>
-          <p className="upload_success_meta">
-            {uploadMode === "video" && !isFeatureMode ? `${inputField.videoType} • ` : ""}
-            {inputField.description}
-          </p>
-          <div className="uploadBtns">
-            <div className="uploadBtns-form" onClick={() => { setSubmitted(false); resetState(); }}>Upload Another</div>
-            <div className="uploadBtns-form" onClick={() => navigate(isFeatureMode || uploadMode === "reel" ? "/reels" : "/")}>
-              {isFeatureMode || uploadMode === "reel" ? "Go to Reels" : "Go Home"}
-            </div>
+        navigate("/reels/" + short.id, { state: { clickedReel: short } });
+      }}
+      {...hoverHandlers}
+    >
+      <ReelMenuButton
+        short={short}
+        loggedInUsername={loggedInUsername}
+        onDelete={handleDeleteReel}
+        onReport={onReport}
+        navigate={navigate}
+      />
+      <div className="homePage_shortThumbnail">
+        <img
+          src={short.thumbnail}
+          alt={short.title || short.user}
+          className="homePage_shortImg"
+          style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
+        />
+        {canPreview && isPreviewing && (
+          <video
+            ref={videoRef}
+            src={short.src}
+            className="homePage_shortImg"
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="metadata"
+            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
+            onCanPlay={(e) => e.target.play().catch(() => {})}
+          />
+        )}
+        <div className="homePage_shortPlay">▶</div>
+        <div className="homePage_shortDuration">{short.duration}</div>
+        {showNew && (
+          <div
+            style={{
+              position: "absolute",
+              top: "8px",
+              left: "8px",
+              background: "linear-gradient(135deg,#f43f5e,#f97316)",
+              color: "white",
+              fontSize: "10px",
+              fontWeight: "800",
+              padding: "2px 7px",
+              borderRadius: "5px",
+              zIndex: 2,
+            }}
+          >
+            New
           </div>
+        )}
+        {short.dbId && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "4px",
+              left: "4px",
+              background: "rgba(30,27,75,0.82)",
+              color: "white",
+              fontSize: "10px",
+              fontWeight: "700",
+              padding: "2px 6px",
+              borderRadius: "5px",
+            }}
+          >
+            👁 {formatViews(vcKey ? (viewCounts[vcKey] ?? 0) : 0)}
+          </div>
+        )}
+      </div>
+      <div className="homePage_shortTitle">{short.title}</div>
+      <Link
+        to={"/user/" + short.username}
+        onClick={(e) => e.stopPropagation()}
+        style={{ textDecoration: "none", color: "#a855f7", fontSize: "13px" }}
+      >
+        <div className="homePage_shortUser">{short.user}</div>
+      </Link>
+    </div>
+  );
+};
+
+const ShortsRow = ({
+  data,
+  title,
+  incrementView,
+  viewCounts,
+  handleDeleteReel,
+  navigate,
+  watchedContentIds,
+  onReport,
+  loggedInUsername,
+}) => (
+  <div className="homePage_shortsSection">
+    <div className="homePage_shortsHeader">
+      <span className="homePage_shortsTitle">
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "24px",
+            height: "24px",
+            background: "linear-gradient(135deg,#e53935,#f97316)",
+            color: "white",
+            fontWeight: "900",
+            fontSize: "15px",
+            fontFamily: "Arial Black, sans-serif",
+            borderRadius: "6px",
+            marginRight: "0px",
+            flexShrink: 0,
+            verticalAlign: "middle",
+          }}
+        >
+          Z
+        </span>
+        {title}
+      </span>
+    </div>
+    <div className="homePage_shortsRow">
+      {data.map((short) => (
+        <ShortCard
+          key={short.id}
+          short={short}
+          incrementView={incrementView}
+          viewCounts={viewCounts}
+          handleDeleteReel={handleDeleteReel}
+          navigate={navigate}
+          watchedContentIds={watchedContentIds}
+          onReport={onReport}
+          loggedInUsername={loggedInUsername}
+        />
+      ))}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HomeImageGrid — Facebook-style collage for multi-image posts, mirroring
+// ImageGrid in Posts/PostCard.jsx (see .pf-img-grid there). Unlike that
+// version, tapping a tile has no dedicated onOpenViewer/PhotoViewer here —
+// the whole card is already wrapped in a <Link to={`/feed?post=...`}> in
+// PostCard below, so any tap on any tile just navigates to the full post
+// (where PhotoViewer lives) exactly like tapping anywhere else on the card.
+//   1 photo  → single tile (handled by the caller instead of this grid)
+//   2 photos → two tiles side by side
+//   3 photos → one large + two stacked small
+//   4+       → 2x2 grid, with a "+N" overlay on the 4th tile when there
+//              are more than 4 images
+// ─────────────────────────────────────────────────────────────────────────────
+const HomeImageGrid = ({ images }) => {
+  const count = images.length;
+  const displayCount = Math.min(count, 4);
+  const remaining = count - displayCount;
+
+  return (
+    <div className={`homePage_postImgGrid homePage_postImgGrid-${displayCount}`}>
+      {images.slice(0, displayCount).map((url, i) => (
+        <div className="homePage_postImgGridItem" key={i}>
+          <img src={url} alt={`Image ${i + 1}`} loading="lazy" />
+          {i === displayCount - 1 && remaining > 0 && (
+            <div className="homePage_postImgGridMore">+{remaining}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PostCard / PostsRow — mirrors the ExploreGrid post-card behaviour:
+// shows the post's image(s) if it has any — as a Facebook-style ImageGrid
+// collage for multi-image posts, or a single thumbnail for one image — and
+// if not (a video-only post), the thumbnail becomes hover-previewable on
+// desktop and auto-previews on mobile once scrolled into view, same as
+// usePostPreview above.
+//
+// Shows each post's OWN like/comment counts (sourced from the
+// post_reactions/post_comments joined in fetchDbPosts below) — not a
+// site-wide total. This is the layout VideoCard below now mirrors:
+// description/caption first, stats row underneath.
+//
+// NEW: also shows a view count, sourced from the same viewCounts map /
+// incrementView helper HomePage already uses for videos and reels — see
+// content_type: "post" entries in viewCounts, keyed "post_<id>". A post
+// card counts as "viewed" once it's scrolled ≥60% into view, exactly
+// like ShortCard's reel-view tracking below.
+// ─────────────────────────────────────────────────────────────────────────────
+const PostCard = ({
+  post,
+  isMobile,
+  onReport,
+  loggedInUsername,
+  onDeletePost,
+  incrementView,
+  viewCounts = {},
+}) => {
+  // CHANGED: was a single `media` string (post.image_urls?.[0] ||
+  // post.image_url). Now an `images` array so multi-image posts can
+  // render the same ImageGrid collage used in the Posts tab's PostCard,
+  // instead of only ever showing the first photo.
+  const images =
+    post.image_urls && post.image_urls.length > 0
+      ? post.image_urls
+      : post.image_url
+        ? [post.image_url]
+        : [];
+  const hasImages = images.length > 0;
+  const previewSrc = hasImages ? null : post.video_url || null;
+  const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
+    isMobile,
+    !!previewSrc,
+  );
+  const showPreview = isPreviewing && !!previewSrc;
+
+  // Per-post counts — NOT a site-wide total. Sourced from the
+  // post_reactions/post_comments joined onto each post row in
+  // fetchDbPosts (and defaulted to [] for freshly realtime-inserted
+  // posts, which arrive without the joined arrays).
+  const likesCount = post.post_reactions?.length || 0;
+  const commentsCount = post.post_comments?.length || 0;
+
+  // NEW: view count for this post, and the card-level IntersectionObserver
+  // that fires incrementView() once per mount when the card is ≥60%
+  // scrolled into view — same threshold/pattern as ShortCard's reel-view
+  // tracking above.
+  const cardRef = useRef(null);
+  const viewFiredRef = useRef(false);
+  const vcKey = post.id ? "post_" + post.id : null;
+  const viewCount = vcKey ? (viewCounts[vcKey] ?? 0) : 0;
+
+  useEffect(() => {
+    if (!post.id || !incrementView) return;
+    viewFiredRef.current = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry.isIntersecting &&
+          entry.intersectionRatio >= 0.6 &&
+          !viewFiredRef.current
+        ) {
+          viewFiredRef.current = true;
+          incrementView(String(post.id), "post");
+        }
+      },
+      { threshold: 0.6 },
+    );
+    const el = cardRef.current;
+    if (el) observer.observe(el);
+    return () => observer.disconnect();
+  }, [post.id, incrementView]);
+
+  return (
+    <Link
+      ref={cardRef}
+      to={`/feed?post=${post.id}`}
+      className="homePage_postCard"
+      style={{ position: "relative" }}
+    >
+      <PostMenuButton
+        post={post}
+        loggedInUsername={loggedInUsername}
+        onDelete={onDeletePost}
+        onReport={onReport}
+      />
+      <div className="homePage_postThumbWrap" ref={wrapRef} {...hoverHandlers}>
+        {showPreview ? (
+          <video
+            ref={videoRef}
+            src={previewSrc}
+            className="homePage_postThumbImg homePage_postPreviewVideo"
+            muted
+            loop
+            playsInline
+            preload="none"
+          />
+        ) : hasImages ? (
+          images.length > 1 ? (
+            <HomeImageGrid images={images} />
+          ) : (
+            <img src={images[0]} alt="" className="homePage_postThumbImg" loading="lazy" />
+          )
+        ) : post.video_url ? (
+          <video
+            src={post.video_url}
+            className="homePage_postThumbImg"
+            muted
+            preload="metadata"
+          />
+        ) : (
+          <div className="homePage_postThumbText">
+            <p>{post.text}</p>
+          </div>
+        )}
+        <span className="homePage_postBadge">📝 Post</span>
+      </div>
+      <div className="homePage_postMeta">
+        <p className="homePage_postCaption">{post.text || "View post"}</p>
+        <div className="homePage_postFooter">
+          <p className="homePage_postUser">@{post.username}</p>
+          <span className="homePage_postStats">
+            <span>👁 {formatViews(viewCount)}</span>
+            <span>👍 {likesCount}</span>
+            <span>💬 {commentsCount}</span>
+          </span>
         </div>
       </div>
+    </Link>
+  );
+};
+
+// One row of Post cards — same visual pattern as ShortsRow (small "Z"
+// label + grid), used repeatedly by buildContentRows below rather than
+// as a single top spotlight.
+const PostsRow = ({
+  data,
+  title,
+  isMobile,
+  onReport,
+  loggedInUsername,
+  onDeletePost,
+  incrementView,
+  viewCounts,
+}) => (
+  <div className="homePage_postsSection">
+    <div className="homePage_postsSectionHeader">
+      <span className="homePage_postsSectionTitle">
+        <span className="homePage_postsZBadge">Z</span>
+        {title}
+      </span>
     </div>
+    <div className="homePage_postsGrid">
+      {data.map((post) => (
+        <PostCard
+          key={post.id}
+          post={post}
+          isMobile={isMobile}
+          onReport={onReport}
+          loggedInUsername={loggedInUsername}
+          onDeletePost={onDeletePost}
+          incrementView={incrementView}
+          viewCounts={viewCounts}
+        />
+      ))}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildContentRows — interleaves Posts / Reels / Videos into repeating
+// same-type rows: a Post row, then a Reel row, then a Video row, then
+// back to Posts, etc., until every bucket is drained. `sizesByType`
+// controls how many cards land in each row per content type (desktop
+// and mobile pass different sizes; see ROW_SIZES_DESKTOP/MOBILE below).
+// ─────────────────────────────────────────────────────────────────────────────
+const CONTENT_ROW_ORDER = ["post", "reel", "video"];
+const ROW_SIZES_DESKTOP = { post: 4, reel: 9, video: 4 };
+const ROW_SIZES_MOBILE = { post: 1, reel: 2, video: 1 };
+
+function buildContentRows(buckets, sizesByType) {
+  const cursor = { post: 0, reel: 0, video: 0 };
+  const rows = [];
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const type of CONTENT_ROW_ORDER) {
+      const bucket = buckets[type] || [];
+      const size = sizesByType[type];
+      const start = cursor[type];
+      if (start >= bucket.length) continue;
+      const chunk = bucket.slice(start, start + size);
+      cursor[type] += chunk.length;
+      rows.push({ type, key: `${type}-${start}`, items: chunk });
+      progressed = true;
+    }
+  }
+  return rows;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VideoCard — CHANGED: now matches the Posts card layout. Title/
+// description sits at the top, and a single meta row underneath carries
+// the channel/username, view count, like count, and upload age together
+// — instead of the old stacked layout (avatar row on top, title below,
+// views/likes on their own line, date on another line).
+// ─────────────────────────────────────────────────────────────────────────────
+const VideoCard = ({
+  video,
+  isUploaded = false,
+  viewCounts,
+  watchLaterIds,
+  loggedInUsername,
+  handleToggleWatchLater,
+  handleDeleteVideo,
+  handleLikeVideo,
+  watchedContentIds,
+  incrementView,
+  onReport,
+}) => {
+  const showNew =
+    isUploaded && !isWatched("video", video.id, watchedContentIds);
+  const isSaved = watchLaterIds.has(String(video.id));
+
+  // ── Preview setup: hover on desktop, scroll-into-view on mobile ──
+  const isMobile = useIsMobile();
+  const canPreview = isUploaded && !!video.src;
+  const { isPreviewing, wrapRef, videoRef, hoverHandlers } = usePostPreview(
+    isMobile,
+    canPreview,
   );
 
   return (
-    <div className="videoUpload">
-      <div className="uploadBox">
+    <div
+      className="youtube_thumbnailBox"
+      style={{ position: "relative" }}
+      ref={wrapRef}
+      {...hoverHandlers}
+    >
+      {/* Three-dots menu with full dropdown — only for uploaded videos */}
+      {isUploaded && (
+        <SaveMenuButton
+          videoId={video.id}
+          isSaved={isSaved}
+          onToggleWatchLater={handleToggleWatchLater}
+          video={video}
+          loggedInUsername={loggedInUsername}
+          onDelete={handleDeleteVideo}
+          onReport={onReport}
+        />
+      )}
 
-        <div className="uploadVideoTitle">
-          <CloudUploadIcon sx={{ fontSize: "54px", color: "orange" }} />
-          {isFeatureMode ? `${banner?.emoji} ${banner?.label}` : "Upload"}
-        </div>
-
-        {isFeatureMode && banner && (
-          <div className="upload_feature_banner" style={{ "--feature-color": banner.color }}>
-            <img src={banner.thumb} alt="source" className="upload_feature_thumb" />
-            <div className="upload_feature_banner_text">
-              <span className="upload_feature_label" style={{ color: banner.color }}>
-                {banner.emoji} {banner.label}
-              </span>
-              <span className="upload_feature_title">{banner.title}</span>
-              <span className="upload_feature_by">by {banner.by}</span>
-            </div>
-          </div>
-        )}
-
-        {!isFeatureMode && (
-          <div className="upload_mode_toggle">
-            <div className={`upload_mode_btn ${uploadMode === "video" ? "active" : ""}`} onClick={() => switchMode("video")}>🎬 Video</div>
-            <div className={`upload_mode_btn ${uploadMode === "reel"  ? "active" : ""}`} onClick={() => switchMode("reel")}>📱 Shorts</div>
-            <div className="upload_mode_btn" onClick={() => setShowRecordModal(true)} style={{ position:"relative", cursor:"pointer" }}>
-              <span style={{ position:"absolute", top:"-4px", right:"-4px", width:"8px", height:"8px", borderRadius:"50%", background:"#ff0000", animation:"recordPulse 1.2s infinite" }} />
-              🔴 Record / Live
-            </div>
-          </div>
-        )}
-
-        {showRecordModal && <RecordModal onClose={() => setShowRecordModal(false)} currentUser={currentUser} />}
-
-        <style>{`
-          @keyframes recordPulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50%       { opacity: 0.4; transform: scale(1.3); }
-          }
-        `}</style>
-
-        {isFeatureMode && banner?.hint && <p className="upload_mode_hint">{banner.hint}</p>}
-        {!isFeatureMode && uploadMode === "reel" && (
-          <p className="upload_mode_hint">Reels are short vertical videos — they appear in the Reels / Shorts section.</p>
-        )}
-
-        <div className="uploadForm">
-          <input
-            type="text"
-            value={inputField.title}
-            onChange={(e) => handleOnChangeInput(e, "title")}
-            placeholder={isFeatureMode ? `${banner?.emoji} Title` : uploadMode === "reel" ? "Reel Title" : "Title of Video"}
-            className="uploadFormInputs"
+      <Link
+        to={"/video/" + video.id}
+        className="youtube_thumbnailWrapper"
+        onClick={() => {
+          if (isUploaded) incrementView(video.id, "video");
+        }}
+      >
+        <img
+          src={video.thumbnail}
+          alt={video.title}
+          className="youtube_thumbnailPic"
+          style={{ opacity: isPreviewing ? 0 : 1, transition: "opacity 0.25s" }}
+        />
+        {canPreview && isPreviewing && (
+          <video
+            ref={videoRef}
+            src={video.src}
+            className="youtube_thumbnailPic"
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="metadata"
+            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
+            onCanPlay={(e) => e.target.play().catch(() => {})}
           />
-          <input
-            type="text"
-            value={inputField.description}
-            onChange={(e) => handleOnChangeInput(e, "description")}
-            placeholder="Description"
-            className="uploadFormInputs"
-          />
-          {uploadMode === "video" && !isFeatureMode && (
-            <input
-              type="text"
-              value={inputField.videoType}
-              onChange={(e) => handleOnChangeInput(e, "videoType")}
-              placeholder="Category (e.g. Music, Gaming, News)"
-              className="uploadFormInputs"
-            />
-          )}
-
-          <div className="upload_file_row">
-            <span className="upload_file_label">
-              {isFeatureMode ? `${banner?.emoji} Your Video` : uploadMode === "reel" ? "Reel Video" : "Video"}
-            </span>
-            <input type="file" accept="video/mp4,video/webm,video/*" onChange={uploadVideo} style={{ display:"none" }} id="videoInput" />
-            <span className="upload_file_btn" onClick={() => document.getElementById("videoInput").click()}>
-              {videoUploaded ? "✅ Change Video" : "🎬 Choose Video"}
-            </span>
-          </div>
-
-          <div className="upload_file_row">
-            <span className="upload_file_label">
-              Thumbnail
-              <span style={{ color:"#888", fontSize:"0.75rem", marginLeft:"6px" }}>(optional)</span>
-            </span>
-            <input type="file" accept="image/*" onChange={uploadManualThumbnail} style={{ display:"none" }} id="thumbnailInput" />
-            <span className="upload_file_btn" onClick={() => document.getElementById("thumbnailInput").click()}>
-              {imageUploaded ? "✅ Change Thumbnail" : "📷 Choose Image"}
-            </span>
-            {thumbLoader && <CircularProgress size={20} sx={{ color:"orange", ml:1 }} />}
-          </div>
-
-          {(hasServerThumb || localPreviewUrl) && (
-            <div className="upload_thumb_row">
-              {hasServerThumb ? (
-                <img src={inputField.thumbnail} alt="Thumbnail preview" className="upload_thumb_preview" />
-              ) : (
-                <video
-                  src={localPreviewUrl}
-                  className="upload_thumb_preview"
-                  muted
-                  playsInline
-                  preload="metadata"
-                />
-              )}
-              <span style={{ color:"#888", fontSize:"0.78rem", marginTop:"4px" }}>
-                {thumbSource === "manual"
-                  ? "✏️ Custom thumbnail"
-                  : hasServerThumb
-                    ? "🎞️ Auto-captured from video"
-                    : "📼 Preview (auto thumbnail pending/unavailable)"}
-              </span>
-            </div>
-          )}
-
-          {loader && (
-            <Box sx={{ display:"flex", flexDirection:"column", gap:"8px", width:"100%" }}>
-              <Box sx={{ display:"flex", alignItems:"center", gap:"12px" }}>
-                <CircularProgress size={28} sx={{ color:"orange" }} />
-                <span style={{ color:"#aaa", fontSize:"0.9rem" }}>☁️ Uploading to ZIXPLON...</span>
-              </Box>
-              <div style={{ width:"100%", background:"#333", borderRadius:"8px", height:"8px" }}>
-                <div style={{ width:`${uploadProgress}%`, background:"orange", height:"100%", borderRadius:"8px", transition:"width 0.3s" }} />
-              </div>
-              <Box sx={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span style={{ color:"#666", fontSize:"0.8rem" }}>
-                  {uploadProgress}% complete{uploadSpeed > 0 ? ` • ${uploadSpeed} MB/s` : ""}
-                </span>
-                {timeRemaining && <span style={{ color:"orange", fontSize:"0.8rem", fontWeight:500 }}>⏱ {timeRemaining}</span>}
-              </Box>
-            </Box>
-          )}
-
-          {error && <p className="upload_error_msg">{error}</p>}
-        </div>
-
-        <div className="uploadBtns">
+        )}
+        <div className="youtube_timingThumbnail">{video.duration}</div>
+        {showNew && (
           <div
-            className={`uploadBtns-form ${loader || saving || thumbLoader ? "uploadBtns-disabled" : ""}`}
-            onClick={!loader && !saving && !thumbLoader ? handleSubmit : undefined}
+            style={{
+              position: "absolute",
+              top: "8px",
+              left: "8px",
+              background: "linear-gradient(135deg,#f43f5e,#f97316)",
+              color: "white",
+              fontSize: "10px",
+              fontWeight: "800",
+              padding: "2px 7px",
+              borderRadius: "5px",
+              zIndex: 2,
+            }}
           >
-            {submitLabel}
+            New
           </div>
-          {isFeatureMode ? (
-            <div className="uploadBtns-form" onClick={() => navigate(-1)}>Cancel</div>
-          ) : (
-            <Link to={"/"} className="uploadBtns-form">Home</Link>
+        )}
+        <div className="youtube_playOverlay">
+          <div className="youtube_playButton">▶</div>
+        </div>
+      </Link>
+
+      {/* Description/title on top, username + views + likes + age below */}
+      <div className="youtubeTitleBox">
+        <p className="youtube_videoTitle">{video.title}</p>
+        <div className="youtube_videoMetaRow">
+          <div className="youtubeBoxProfile">
+            <img
+              src={
+                "https://api.dicebear.com/7.x/initials/svg?seed=" +
+                video.channel
+              }
+              alt={video.channel}
+              className="youtube_thumbnail_Profile"
+            />
+            <Link
+              to={"/user/" + (video.username || video.channel.toLowerCase())}
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
+              <p className="youtube_ChannelName">{video.channel}</p>
+            </Link>
+          </div>
+          {isUploaded && (
+            <div className="youtube_videoStats">
+              <span>👁 {formatViews(viewCounts["video_" + video.id] ?? 0)}</span>
+              <button onClick={(e) => handleLikeVideo(e, video.id)}>
+                👍 {video.likes ?? 0}
+              </button>
+              {video.created_at && (
+                <span>{formatTimeAgo(video.created_at)}</span>
+              )}
+            </div>
           )}
         </div>
-
       </div>
     </div>
   );
 };
 
-export default VideoUpload;
+// ─────────────────────────────────────────────────────────────────────────────
+// YouTubeVideoCard — same title-on-top / meta-row-below layout as
+// VideoCard, for visual consistency. No views/likes exist for external
+// YouTube results, so its meta row just shows channel + publish date.
+// ─────────────────────────────────────────────────────────────────────────────
+const YouTubeVideoCard = ({ item, onSelect }) => (
+  <div
+    className="youtube_thumbnailBox"
+    style={{ cursor: "pointer" }}
+    onClick={() =>
+      onSelect(
+        item.id.videoId,
+        item.snippet.title,
+        item.snippet.channelTitle,
+      )
+    }
+  >
+    <div
+      className="youtube_thumbnailWrapper"
+      style={{ position: "relative", display: "block" }}
+    >
+      <img
+        src={item.snippet.thumbnails.medium.url}
+        alt={item.snippet.title}
+        className="youtube_thumbnailPic"
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: "8px",
+          left: "8px",
+          background: "#ef4444",
+          color: "white",
+          fontSize: "10px",
+          fontWeight: "800",
+          padding: "2px 7px",
+          borderRadius: "5px",
+        }}
+      >
+        ▶ YouTube
+      </div>
+    </div>
+    <div className="youtubeTitleBox">
+      <p className="youtube_videoTitle">{item.snippet.title}</p>
+      <div className="youtube_videoMetaRow">
+        <div className="youtubeBoxProfile">
+          <img
+            src={
+              "https://ui-avatars.com/api/?name=" +
+              encodeURIComponent(item.snippet.channelTitle) +
+              "&background=random&size=36"
+            }
+            alt={item.snippet.channelTitle}
+            className="youtube_thumbnail_Profile"
+          />
+          <p className="youtube_ChannelName">{item.snippet.channelTitle}</p>
+        </div>
+        <span className="youtube_videoDate">
+          {new Date(item.snippet.publishedAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+      </div>
+    </div>
+  </div>
+);
+
+const SkeletonCard = () => (
+  <div
+    className="youtube_thumbnailBox"
+    style={{ border: "2px solid #e0d4ff" }}
+  >
+    <div
+      style={{
+        width: "100%",
+        paddingTop: "56.25%",
+        background:
+          "linear-gradient(90deg,#e8e0ff 25%,#f3eeff 50%,#e8e0ff 75%)",
+        backgroundSize: "400px 100%",
+        borderRadius: "0",
+        animation: "shimmer 1.4s infinite",
+      }}
+    />
+    <div
+      style={{
+        padding: "10px 12px",
+        display: "flex",
+        gap: "10px",
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          width: "34px",
+          height: "34px",
+          borderRadius: "50%",
+          background:
+            "linear-gradient(90deg,#e8e0ff 25%,#f3eeff 50%,#e8e0ff 75%)",
+          backgroundSize: "400px 100%",
+          flexShrink: 0,
+          animation: "shimmer 1.4s infinite",
+        }}
+      />
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            height: "13px",
+            background:
+              "linear-gradient(90deg,#e8e0ff 25%,#f3eeff 50%,#e8e0ff 75%)",
+            backgroundSize: "400px 100%",
+            borderRadius: "6px",
+            marginBottom: "8px",
+            animation: "shimmer 1.4s infinite",
+          }}
+        />
+        <div
+          style={{
+            height: "12px",
+            background:
+              "linear-gradient(90deg,#e8e0ff 25%,#f3eeff 50%,#e8e0ff 75%)",
+            backgroundSize: "400px 100%",
+            borderRadius: "6px",
+            width: "60%",
+            animation: "shimmer 1.4s infinite",
+          }}
+        />
+      </div>
+    </div>
+  </div>
+);
+
+const SectionLabel = ({ color, bg, text, count }) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      marginBottom: "14px",
+    }}
+  >
+    <span
+      style={{
+        background: bg,
+        color: color,
+        fontSize: "11px",
+        fontWeight: "800",
+        padding: "4px 12px",
+        borderRadius: "20px",
+        fontFamily: "Nunito, sans-serif",
+        letterSpacing: "0.3px",
+      }}
+    >
+      {text}
+    </span>
+    {count !== undefined && (
+      <span style={{ color: "#8b84c4", fontSize: "12px", fontWeight: "600" }}>
+        {count} video{count !== 1 ? "s" : ""}
+      </span>
+    )}
+  </div>
+);
+
+const SearchResultsPanel = ({
+  searchQuery,
+  searchedReels,
+  searchedLocalVideos,
+  ytLoading,
+  ytVideos,
+  shortCardProps,
+  videoCardProps,
+  openWatchPage,
+}) => (
+  <div className="search-results-panel">
+    <div style={{ marginBottom: "20px" }}>
+      <h2
+        style={{
+          color: "#1e1b4b",
+          fontSize: "18px",
+          fontWeight: "800",
+          margin: "0 0 6px",
+          fontFamily: "Nunito, sans-serif",
+        }}
+      >
+        🔍 Results for "{searchQuery}"
+      </h2>
+      <span style={{ color: "#8b84c4", fontSize: "13px", fontWeight: "600" }}>
+        {searchedLocalVideos.length} local videos · {searchedReels.length}{" "}
+        reels · {ytVideos.length} YouTube
+      </span>
+    </div>
+    {searchedReels.length > 0 && (
+      <div style={{ marginBottom: "40px" }}>
+        <SectionLabel
+          color="#f97316"
+          bg="#fff7ed"
+          text="🎬 REELS"
+          count={searchedReels.length}
+        />
+        <div className="homePage_shortsRow">
+          {searchedReels.map((short) => (
+            <ShortCard key={short.id} short={short} {...shortCardProps} />
+          ))}
+        </div>
+      </div>
+    )}
+    {searchedLocalVideos.length > 0 && (
+      <div style={{ marginBottom: "40px" }}>
+        <SectionLabel
+          color="#4c4589"
+          bg="#f0f4ff"
+          text="🎬 UPLOADED VIDEOS"
+          count={searchedLocalVideos.length}
+        />
+        <div className="youtube_VideoGrid">
+          {searchedLocalVideos.map((v) => (
+            <VideoCard
+              key={v.id}
+              video={v}
+              isUploaded={v.isUploaded || false}
+              {...videoCardProps}
+            />
+          ))}
+        </div>
+      </div>
+    )}
+    {ytLoading && (
+      <div style={{ marginBottom: "40px" }}>
+        <SectionLabel
+          color="#ef4444"
+          bg="#fff1f2"
+          text="▶ YOUTUBE — searching..."
+        />
+        <div className="youtube_VideoGrid">
+          {[...Array(8)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    )}
+    {!ytLoading && ytVideos.length > 0 && (
+      <div style={{ marginBottom: "40px" }}>
+        <SectionLabel
+          color="#ef4444"
+          bg="#fff1f2"
+          text="▶ YOUTUBE"
+          count={ytVideos.length}
+        />
+        <div className="youtube_VideoGrid">
+          {ytVideos.map((item) => (
+            <YouTubeVideoCard
+              key={item.id.videoId}
+              item={item}
+              onSelect={openWatchPage}
+            />
+          ))}
+        </div>
+      </div>
+    )}
+    {!ytLoading &&
+      searchedLocalVideos.length === 0 &&
+      searchedReels.length === 0 &&
+      ytVideos.length === 0 && (
+        <div style={{ textAlign: "center", marginTop: "80px" }}>
+          <div style={{ fontSize: "48px", marginBottom: "16px" }}>🔍</div>
+          <p
+            style={{ color: "#8b84c4", fontSize: "16px", fontWeight: "600" }}
+          >
+            No results for "
+            <span style={{ color: "#7c3aed" }}>{searchQuery}</span>"
+          </p>
+          <p style={{ color: "#c4bfdf", fontSize: "13px", marginTop: "8px" }}>
+            Try different keywords
+          </p>
+        </div>
+      )}
+  </div>
+);
+
+const DropdownPortal = ({ wrapperRef, menuRef, children }) => {
+  const [style, setStyle] = React.useState({});
+
+  React.useLayoutEffect(() => {
+    if (!wrapperRef.current) return;
+
+    const recalc = () => {
+      if (!wrapperRef.current) return;
+      const rect = wrapperRef.current.getBoundingClientRect();
+      const menuWidth = 230;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      let left = rect.right - menuWidth;
+      if (left < 8) left = 8;
+      if (left + menuWidth > viewportWidth - 8)
+        left = viewportWidth - menuWidth - 8;
+
+      let top = rect.bottom + 6;
+      const estimatedHeight = 220;
+      if (top + estimatedHeight > viewportHeight - 8)
+        top = rect.top - estimatedHeight - 6;
+
+      setStyle({
+        position: "fixed",
+        top: top + "px",
+        left: left + "px",
+        width: menuWidth + "px",
+        zIndex: 99999,
+      });
+    };
+
+    recalc();
+    window.addEventListener("scroll", recalc, true);
+    window.addEventListener("resize", recalc);
+    return () => {
+      window.removeEventListener("scroll", recalc, true);
+      window.removeEventListener("resize", recalc);
+    };
+  }, [wrapperRef]);
+
+  return createPortal(
+    <div ref={menuRef} style={style}>
+      {children}
+    </div>,
+    document.body,
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ThreeDotMenu — generic "⋮" button + dropdown, shared by videos, reels,
+// and posts. Callers just build an `items` array (icon/label/onClick,
+// optional `active`/`danger` flags); this component owns the open/close
+// state, outside-click handling, and the DropdownPortal positioning that
+// used to live only inside SaveMenuButton.
+// ─────────────────────────────────────────────────────────────────────────────
+const ThreeDotMenu = ({ items }) => {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => {
+      const clickedWrapper =
+        wrapperRef.current && wrapperRef.current.contains(e.target);
+      const clickedMenu = menuRef.current && menuRef.current.contains(e.target);
+      if (!clickedWrapper && !clickedMenu) {
+        setOpen(false);
+      }
+    };
+    const t = setTimeout(() => {
+      document.addEventListener("mousedown", close);
+      document.addEventListener("touchstart", close);
+    }, 50);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  return (
+    <>
+      <div
+        ref={wrapperRef}
+        className="save-menu-wrapper"
+        style={{ position: "absolute", top: "8px", right: "8px", zIndex: 11 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          title="More options"
+          style={{
+            background: open ? "rgba(124,58,237,0.22)" : "rgba(0,0,0,0.55)",
+            border: "none",
+            color: "white",
+            borderRadius: "8px",
+            padding: "5px 6px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            transition: "background 0.18s",
+          }}
+        >
+          <MoreVertIcon style={{ fontSize: 17 }} />
+        </button>
+
+        {open && (
+          <DropdownPortal wrapperRef={wrapperRef} menuRef={menuRef}>
+            <div
+              style={{
+                minWidth: "230px",
+                background: "#ffffff",
+                borderRadius: "14px",
+                boxShadow:
+                  "0 8px 32px rgba(76,69,137,0.28), 0 2px 8px rgba(0,0,0,0.14)",
+                border: "1.5px solid #e0d4ff",
+                overflow: "hidden",
+                animation: "ddFadeSlide 0.16s cubic-bezier(0.32,0.72,0,1)",
+              }}
+            >
+              {items.map((item, idx) => (
+                <button
+                  key={item.id}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    item.onClick(e);
+                    setOpen(false);
+                  }}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "11px 16px",
+                    background: item.active ? "#f7f0ff" : "transparent",
+                    border: "none",
+                    borderTop:
+                      idx === items.length - 1 && item.danger
+                        ? "1px solid #fee2e2"
+                        : idx > 0
+                          ? "1px solid #f5f0ff"
+                          : "none",
+                    color: item.danger ? "#ef4444" : "#1e1b4b",
+                    fontSize: "14px",
+                    fontWeight: item.active ? "700" : "600",
+                    fontFamily: "Outfit, sans-serif",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "background 0.14s",
+                    letterSpacing: "0.1px",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = item.danger
+                      ? "#fff1f2"
+                      : "#f7f0ff";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = item.active
+                      ? "#f7f0ff"
+                      : "transparent";
+                  }}
+                >
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </DropdownPortal>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes ddFadeSlide {
+          from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0)   scale(1);    }
+        }
+      `}</style>
+    </>
+  );
+};
+
+// Video three-dots menu — Watch Later, Add to Playlist, Go to Channel,
+// Share, Report, and (owner-only) Delete.
+const SaveMenuButton = ({
+  videoId,
+  isSaved,
+  onToggleWatchLater,
+  video,
+  loggedInUsername,
+  onDelete,
+  onReport,
+}) => {
+  const navigate = useNavigate();
+
+  const isOwner =
+    loggedInUsername && video?.username && video.username === loggedInUsername;
+
+  const items = [
+    {
+      id: "watch-later",
+      icon: isSaved ? (
+        <BookmarkIcon style={{ fontSize: 17, color: "#7c3aed" }} />
+      ) : (
+        <BookmarkBorderIcon style={{ fontSize: 17, color: "#7c3aed" }} />
+      ),
+      label: isSaved ? "Saved to Watch Later" : "Save to Watch Later",
+      active: isSaved,
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleWatchLater(e, videoId);
+      },
+    },
+    {
+      id: "playlist",
+      icon: <PlaylistAddIcon style={{ fontSize: 17, color: "#7c3aed" }} />,
+      label: "Add to Playlist",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate("/playlist", { state: { addVideoId: videoId } });
+      },
+    },
+    {
+      id: "channel",
+      icon: <span style={{ fontSize: 15 }}>👤</span>,
+      label: "Go to Channel",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const slug =
+          video?.username || video?.channel?.toLowerCase() || "unknown";
+        navigate("/user/" + slug);
+      },
+    },
+    {
+      id: "share",
+      icon: <span style={{ fontSize: 15 }}>🔗</span>,
+      label: "Share",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const shareId = video?.short_id || videoId;
+        shareContent({
+          contentType: "video",
+          contentId: shareId,
+          title: video?.title || "Video",
+          text: `Watch "${video?.title}" on Zixplon`,
+        });
+      },
+    },
+    {
+      id: "report",
+      icon: <span style={{ fontSize: 15 }}>🚩</span>,
+      label: "Report video",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReport && onReport("video", videoId, video?.title);
+      },
+    },
+    ...(isOwner
+      ? [
+          {
+            id: "delete",
+            icon: <span style={{ fontSize: 15 }}>🗑️</span>,
+            label: "Delete video",
+            danger: true,
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete && onDelete(e, videoId);
+            },
+          },
+        ]
+      : []),
+  ];
+
+  return <ThreeDotMenu items={items} />;
+};
+
+// Reel three-dots menu — Share, Go to Profile, Report, and (owner-only)
+// Delete. Reels didn't have a menu at all before; this mirrors the video
+// card's menu so all three content types behave consistently.
+const ReelMenuButton = ({ short, loggedInUsername, onDelete, onReport, navigate }) => {
+  const isOwner =
+    loggedInUsername && short?.username && short.username === loggedInUsername;
+
+  const items = [
+    {
+      id: "share",
+      icon: <span style={{ fontSize: 15 }}>🔗</span>,
+      label: "Share",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shareContent({
+          contentType: "reel",
+          contentId: short?.dbId ?? short?.id,
+          title: short?.title || "Reel",
+          text: `Watch "${short?.title}" on Zixplon`,
+        });
+      },
+    },
+    {
+      id: "profile",
+      icon: <span style={{ fontSize: 15 }}>👤</span>,
+      label: "Go to Profile",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate("/user/" + (short?.username || "unknown"));
+      },
+    },
+    {
+      id: "report",
+      icon: <span style={{ fontSize: 15 }}>🚩</span>,
+      label: "Report reel",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReport && onReport("reel", short?.dbId ?? short?.id, short?.title);
+      },
+    },
+    ...(isOwner
+      ? [
+          {
+            id: "delete",
+            icon: <span style={{ fontSize: 15 }}>🗑️</span>,
+            label: "Delete reel",
+            danger: true,
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete && short?.dbId && onDelete(e, short.dbId);
+            },
+          },
+        ]
+      : []),
+  ];
+
+  return <ThreeDotMenu items={items} />;
+};
+
+// Post three-dots menu — Share, Go to Profile, Report, and (owner-only)
+// Delete.
+const PostMenuButton = ({ post, loggedInUsername, onDelete, onReport }) => {
+  const navigate = useNavigate();
+  const isOwner =
+    loggedInUsername && post?.username && post.username === loggedInUsername;
+
+  const items = [
+    {
+      id: "share",
+      icon: <span style={{ fontSize: 15 }}>🔗</span>,
+      label: "Share",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shareContent({
+          contentType: "post",
+          contentId: post?.id,
+          title: post?.text ? post.text.slice(0, 60) : "Post",
+          text: `Check out this post by @${post?.username} on Zixplon`,
+        });
+      },
+    },
+    {
+      id: "profile",
+      icon: <span style={{ fontSize: 15 }}>👤</span>,
+      label: "Go to Profile",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate("/user/" + (post?.username || "unknown"));
+      },
+    },
+    {
+      id: "report",
+      icon: <span style={{ fontSize: 15 }}>🚩</span>,
+      label: "Report post",
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReport && onReport("post", post?.id, post?.text ? post.text.slice(0, 60) : "Post");
+      },
+    },
+    ...(isOwner
+      ? [
+          {
+            id: "delete",
+            icon: <span style={{ fontSize: 15 }}>🗑️</span>,
+            label: "Delete post",
+            danger: true,
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete && onDelete(e, post?.id);
+            },
+          },
+        ]
+      : []),
+  ];
+
+  return <ThreeDotMenu items={items} />;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReportModal — single shared "Report this content" dialog, rendered once
+// at the HomePage root and opened by any card's three-dots menu (video,
+// reel, or post) via the onReport(contentType, contentId, title) callback.
+// Submits into a `reports` table in Supabase (content_id, content_type,
+// reason, details, reporter_username, created_at) — create that table if
+// it doesn't already exist in your schema.
+// ─────────────────────────────────────────────────────────────────────────────
+const ReportModal = ({ target, onClose, onSubmit, submitting }) => {
+  const [reason, setReason] = useState(null);
+  const [details, setDetails] = useState("");
+
+  useEffect(() => {
+    if (target) {
+      setReason(null);
+      setDetails("");
+    }
+  }, [target]);
+
+  if (!target) return null;
+
+  return createPortal(
+    <div
+      className="zx-report-overlay"
+      onClick={onClose}
+    >
+      <div className="zx-report-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="zx-report-header">
+          <span>Report {target.contentType}</span>
+          <button className="zx-report-close" onClick={onClose} aria-label="Close">
+            <CloseIcon style={{ fontSize: 18 }} />
+          </button>
+        </div>
+        <p className="zx-report-sub">
+          {target.title
+            ? `"${target.title}"`
+            : "Help us understand what's wrong with this content."}
+        </p>
+        <div className="zx-report-reasons">
+          {REPORT_REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={"zx-report-reason" + (reason === r ? " active" : "")}
+              onClick={() => setReason(r)}
+            >
+              <span className="zx-report-radio">
+                {reason === r && <CheckIcon style={{ fontSize: 13 }} />}
+              </span>
+              {r}
+            </button>
+          ))}
+        </div>
+        <textarea
+          className="zx-report-details"
+          placeholder="Add more details (optional)"
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          rows={3}
+        />
+        <div className="zx-report-actions">
+          <button type="button" className="zx-report-cancel" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="zx-report-submit"
+            disabled={!reason || submitting}
+            onClick={() => onSubmit(reason, details)}
+          >
+            {submitting ? "Submitting..." : "Submit report"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
+const DRAMATIC_AUTOPLAY_MS = 4200;
+// How far (in px) a drag must travel before it counts as a swipe to the
+// next/previous slide, rather than snapping back to the current one.
+const DRAG_SWIPE_THRESHOLD = 50;
+// How much a drag can visually move the stage past a true 1:1 tracking of
+// the finger/pointer — keeps the drag feeling responsive without letting
+// a huge swipe fling the deck several cards at once.
+const DRAG_MAX_VISUAL_PX = 260;
+
+const MOVIE_TAG_LIST = [
+  "Hindi Movies",
+  "Hollywood Movies",
+  "Bhojpuri Cinema",
+  "Superhero Movies",
+  "Pakistani Movies",
+];
+
+const TYPE_BADGE = {
+  video: { label: "🎬", bg: "#7c3aed" },
+  reel: { label: "📱", bg: "#f97316" },
+  movie: { label: "🎥", bg: "#f43f5e" },
+  live: { label: "🔴", bg: "#ef4444" },
+};
+
+const TrendingCard = ({
+  item,
+  index,
+  isActive,
+  offset,
+  cardOffset,
+  cycleKey,
+  isMobile,
+  onActivate,
+  onJump,
+  dragDeltaX = 0,
+}) => {
+  // ── Preview setup ──
+  // Desktop: hover-to-preview, only on the active (centered) card.
+  // Mobile: no hover exists, and the active card is already the one
+  // the user is "on" — so it previews automatically as soon as it
+  // becomes active, mirroring the scroll-into-view behaviour used by
+  // usePostPreview elsewhere on the page.
+  const canPreview = !!item.src;
+  const desktopHover = useHoverPreview(isActive && !isMobile && canPreview);
+  const isPreviewing = isMobile
+    ? isActive && canPreview
+    : desktopHover.isPreviewing;
+  const { videoRef, onMouseEnter, onMouseLeave } = desktopHover;
+
+  const abs = Math.abs(offset);
+  // dragDeltaX moves every visible card together in real time while the
+  // user is dragging — the same clamp is applied to every card so the
+  // whole deck tracks the finger/pointer at once instead of just the
+  // active card.
+  const translateX = offset * cardOffset + dragDeltaX;
+  const scale = isActive ? 1 : Math.max(0.62, 1 - abs * 0.16);
+  const rotateY = offset * -16;
+  const zIndex = 10 - abs;
+  const opacity = 1 - abs * 0.24;
+  const blurPx = isActive ? 0 : Math.min(abs * 1.4, 4);
+  const badge = TYPE_BADGE[item._type] || TYPE_BADGE.video;
+
+  return (
+    <div
+      className={"zx-dramatic-card" + (isActive ? " active" : "")}
+      style={{
+        transform: `translate(-50%, -50%) translateX(${translateX}px) scale(${scale}) rotateY(${rotateY}deg)`,
+        zIndex,
+        opacity,
+        filter: blurPx ? `blur(${blurPx}px)` : "none",
+      }}
+      onClick={() => (isActive ? onActivate(item) : onJump())}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      tabIndex={isActive ? 0 : -1}
+      role="button"
+      aria-label={`${item.title}, ${item.channel || item.user}`}
+      aria-current={isActive || undefined}
+    >
+      <span
+        className="zx-dramatic-card-badge"
+        style={{ background: badge.bg }}
+      >
+        {badge.label}
+      </span>
+      <span className="zx-dramatic-card-rank">#{index + 1}</span>
+      <div className="zx-dramatic-card-imgwrap">
+        <img
+          key={isActive ? `active-img-${cycleKey}` : "img"}
+          src={item.thumbnail}
+          alt={item.title}
+          className={
+            "zx-dramatic-card-img" +
+            (isActive && !isPreviewing ? " kenburns" : "")
+          }
+          style={{
+            opacity: canPreview && isPreviewing ? 0 : 1,
+            transition: "opacity 0.25s",
+          }}
+          draggable={false}
+        />
+        {canPreview && isPreviewing && (
+          <video
+            ref={videoRef}
+            src={item.src}
+            className="zx-dramatic-card-img"
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="metadata"
+            style={{ position: "absolute", inset: 0, objectFit: "cover" }}
+            onCanPlay={(e) => e.target.play().catch(() => {})}
+          />
+        )}
+        <div className="zx-dramatic-card-gradient" />
+      </div>
+      {isActive && (
+        <div className="zx-dramatic-card-info" key={`info-${cycleKey}`}>
+          <div className="zx-dramatic-card-title">{item.title}</div>
+          <div className="zx-dramatic-card-channel">
+            {item.channel || item.user}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DramaticTrendingCarousel = ({
+  dbVideos,
+  dbReels = [],
+  onVideoClick,
+  onReelClick,
+}) => {
+  const isMobile = useIsMobile();
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [cycleKey, setCycleKey] = useState(0);
+  const resumeTimeoutRef = useRef(null);
+  const autoplayTimeoutRef = useRef(null);
+
+  // ── Manual drag/swipe state (touch + mouse pointer) ──
+  // dragDeltaX is applied live to every card's transform (see
+  // TrendingCard) so the deck visually tracks the finger/pointer while
+  // dragging. On release, a big-enough drag advances to the next/prev
+  // slide; a small one just snaps back in place.
+  const [dragDeltaX, setDragDeltaX] = useState(0);
+  const dragStateRef = useRef({ dragging: false, startX: 0 });
+  const suppressClickRef = useRef(false);
+
+  const items = React.useMemo(() => {
+    const videoLimit = isMobile ? 6 : 8;
+    const reelLimit = isMobile ? 5 : 6;
+    const movieLimit = isMobile ? 3 : 4;
+    return [
+      ...dbVideos.slice(0, videoLimit).map((v) => ({ ...v, _type: "video" })),
+      ...dbReels.slice(0, reelLimit).map((r) => ({
+        ...r,
+        _type: "reel",
+        thumbnail: r.thumbnail,
+        title: r.title,
+        channel: r.user,
+      })),
+      ...dbVideos
+        .filter((v) => v.tags?.some((t) => MOVIE_TAG_LIST.includes(t)))
+        .slice(0, movieLimit)
+        .map((v) => ({ ...v, _type: "movie" })),
+    ].slice(0, isMobile ? 12 : 16);
+  }, [dbVideos, dbReels, isMobile]);
+
+  const total = items.length;
+
+  const goTo = (idx) => {
+    if (total === 0) return;
+    const next = ((idx % total) + total) % total;
+    setActiveIndex(next);
+    setCycleKey((k) => k + 1);
+  };
+  const goNext = () => goTo(activeIndex + 1);
+  const goPrev = () => goTo(activeIndex - 1);
+
+  const pause = () => {
+    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    setIsPaused(true);
+  };
+  const resume = (delay = 0) => {
+    const doResume = () => setIsPaused(false);
+    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    if (delay > 0) resumeTimeoutRef.current = setTimeout(doResume, delay);
+    else doResume();
+  };
+
+  useEffect(() => {
+    if (total === 0 || isPaused) return;
+    autoplayTimeoutRef.current = setTimeout(() => {
+      goNext();
+    }, DRAMATIC_AUTOPLAY_MS);
+    return () => clearTimeout(autoplayTimeoutRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, isPaused, total]);
+
+  useEffect(() => {
+    return () => {
+      if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    };
+  }, []);
+
+  // ── Drag/swipe handlers ──
+  const clampDrag = (px) =>
+    Math.max(-DRAG_MAX_VISUAL_PX, Math.min(DRAG_MAX_VISUAL_PX, px));
+
+  const startDrag = (clientX) => {
+    dragStateRef.current = { dragging: true, startX: clientX };
+    pause();
+    setDragDeltaX(0);
+  };
+
+  const moveDrag = (clientX) => {
+    if (!dragStateRef.current.dragging) return;
+    setDragDeltaX(clampDrag(clientX - dragStateRef.current.startX));
+  };
+
+  const endDrag = () => {
+    if (!dragStateRef.current.dragging) return;
+    dragStateRef.current.dragging = false;
+
+    setDragDeltaX((currentDelta) => {
+      if (Math.abs(currentDelta) > 4) {
+        // A real drag happened — swallow the click that browsers fire
+        // right after mouseup/touchend so it doesn't also "activate"
+        // the card underneath the pointer.
+        suppressClickRef.current = true;
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+      }
+
+      // A drag to the left (negative delta) means "show the next card";
+      // a drag to the right means "show the previous card" — matching
+      // how swiping a physical deck of cards works.
+      if (currentDelta <= -DRAG_SWIPE_THRESHOLD) {
+        goNext();
+      } else if (currentDelta >= DRAG_SWIPE_THRESHOLD) {
+        goPrev();
+      }
+      return 0;
+    });
+
+    resume(1500);
+  };
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    startDrag(e.clientX);
+
+    const onMove = (ev) => moveDrag(ev.clientX);
+    const onUp = () => {
+      endDrag();
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const handleTouchStart = (e) => {
+    startDrag(e.touches[0].clientX);
+  };
+  const handleTouchMove = (e) => {
+    moveDrag(e.touches[0].clientX);
+  };
+  const handleTouchEnd = () => {
+    endDrag();
+  };
+
+  if (total === 0) return null;
+
+  const handleSelect = (item) => {
+    if (suppressClickRef.current) return;
+    if (item._type === "reel") onReelClick && onReelClick(item, items);
+    else onVideoClick && onVideoClick(item, items);
+  };
+
+  const cardOffset = isMobile ? 130 : 230;
+
+  return (
+    <div
+      className="zx-dramatic-trending"
+      onMouseEnter={pause}
+      onMouseLeave={() => resume(0)}
+    >
+      <div className="zx-dramatic-trending-label">
+        <span className="zx-dramatic-z-badge">Z</span>
+        <span>Trending Now</span>
+        {isPaused && (
+          <span className="zx-trending-pause-indicator" aria-hidden="true">
+            ⏸ Paused
+          </span>
+        )}
+      </div>
+
+      <div
+        className="zx-dramatic-stage"
+        role="region"
+        aria-label="Trending now — drag, swipe, or use left and right arrow keys to browse, Enter to open"
+        tabIndex={0}
+        onFocus={pause}
+        onBlur={() => resume(0)}
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onClickCapture={(e) => {
+          if (suppressClickRef.current) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        }}
+        style={{
+          cursor: dragStateRef.current.dragging ? "grabbing" : "grab",
+          touchAction: "pan-y",
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") {
+            e.preventDefault();
+            pause();
+            goNext();
+            resume(2500);
+          } else if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            pause();
+            goPrev();
+            resume(2500);
+          } else if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleSelect(items[activeIndex]);
+          }
+        }}
+      >
+        {items.map((item, i) => {
+          let offset = i - activeIndex;
+          if (offset > total / 2) offset -= total;
+          if (offset < -total / 2) offset += total;
+          const abs = Math.abs(offset);
+          if (abs > 3) return null;
+
+          const isActive = offset === 0;
+
+          return (
+            <TrendingCard
+              key={`dramatic_${item._type}_${item.id}_${i}`}
+              item={item}
+              index={i}
+              isActive={isActive}
+              offset={offset}
+              cardOffset={cardOffset}
+              cycleKey={cycleKey}
+              isMobile={isMobile}
+              onActivate={handleSelect}
+              onJump={() => {
+                pause();
+                goTo(i);
+                resume(2500);
+              }}
+              dragDeltaX={dragDeltaX}
+            />
+          );
+        })}
+
+        <button
+          className="zx-dramatic-nav prev"
+          onClick={(e) => {
+            e.stopPropagation();
+            pause();
+            goPrev();
+            resume(2500);
+          }}
+          aria-label="Previous slide"
+        >
+          ‹
+        </button>
+        <button
+          className="zx-dramatic-nav next"
+          onClick={(e) => {
+            e.stopPropagation();
+            pause();
+            goNext();
+            resume(2500);
+          }}
+          aria-label="Next slide"
+        >
+          ›
+        </button>
+      </div>
+
+      <div className="zx-dramatic-controls">
+        <div className="zx-dramatic-dots">
+          {items.map((_, i) => (
+            <button
+              key={i}
+              className={
+                "zx-dramatic-dot" + (i === activeIndex ? " active" : "")
+              }
+              onClick={() => {
+                pause();
+                goTo(i);
+                resume(2500);
+              }}
+              aria-label={`Go to slide ${i + 1}`}
+            />
+          ))}
+        </div>
+        {!isPaused && (
+          <div className="zx-dramatic-progress-track" key={cycleKey}>
+            <div
+              className="zx-dramatic-progress-bar"
+              style={{ animationDuration: DRAMATIC_AUTOPLAY_MS + "ms" }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const WP_THEME = {
+  bg: "#f0f4ff",
+  surface: "#ffffff",
+  surface2: "#f7f0ff",
+  border: "#e0d4ff",
+  primary: "#7c3aed",
+  primary2: "#a855f7",
+  text: "#1e1b4b",
+  text2: "#4c4589",
+  text3: "#8b84c4",
+  accent: "#f43f5e",
+};
+
+const VideoPlayer = ({ videoId, videoTitle, isMobile }) => (
+  <div
+    style={{
+      width: "100%",
+      position: "relative",
+      paddingBottom: "56.25%",
+      height: 0,
+      overflow: "hidden",
+      background: "#1e1b4b",
+      borderRadius: isMobile ? "0" : "16px",
+      flexShrink: 0,
+    }}
+  >
+    <iframe
+      key={videoId}
+      src={
+        "https://www.youtube.com/embed/" +
+        videoId +
+        "?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1"
+      }
+      title={videoTitle}
+      frameBorder="0"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowFullScreen
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        border: "none",
+        display: "block",
+      }}
+    />
+  </div>
+);
+
+const AutoplayToggle = ({ autoplay, setAutoplay }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+    <span style={{ color: WP_THEME.text3, fontSize: "13px" }}>Autoplay</span>
+    <div
+      onClick={() => setAutoplay((a) => !a)}
+      style={{
+        width: "44px",
+        height: "24px",
+        background: autoplay ? WP_THEME.primary : "#d1d5db",
+        borderRadius: "12px",
+        cursor: "pointer",
+        position: "relative",
+        transition: "background 0.3s",
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: "18px",
+          height: "18px",
+          background: "white",
+          borderRadius: "50%",
+          position: "absolute",
+          top: "3px",
+          left: autoplay ? "23px" : "3px",
+          transition: "left 0.3s",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+        }}
+      />
+    </div>
+    <span
+      style={{
+        color: autoplay ? WP_THEME.primary : "#9ca3af",
+        fontSize: "12px",
+        fontWeight: "700",
+      }}
+    >
+      {autoplay ? "ON" : "OFF"}
+    </span>
+  </div>
+);
+
+const WatchNavBar = ({
+  goPrev,
+  hasPrev,
+  goNext,
+  hasNext,
+  autoplay,
+  setAutoplay,
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      background: WP_THEME.surface2,
+      borderRadius: "12px",
+      padding: "10px 16px",
+      marginTop: "10px",
+      gap: "8px",
+      border: "1px solid " + WP_THEME.border,
+    }}
+  >
+    <button
+      onClick={goPrev}
+      disabled={!hasPrev}
+      style={{
+        background: hasPrev ? WP_THEME.surface : "#f3f4f6",
+        border: "1.5px solid " + (hasPrev ? WP_THEME.border : "#e5e7eb"),
+        color: hasPrev ? WP_THEME.text : "#9ca3af",
+        borderRadius: "20px",
+        padding: "8px 18px",
+        cursor: hasPrev ? "pointer" : "not-allowed",
+        fontSize: "14px",
+        fontWeight: "700",
+        whiteSpace: "nowrap",
+      }}
+    >
+      ⏮ Previous
+    </button>
+    <AutoplayToggle autoplay={autoplay} setAutoplay={setAutoplay} />
+    <button
+      onClick={goNext}
+      disabled={!hasNext}
+      style={{
+        background: hasNext ? WP_THEME.primary : "#f3f4f6",
+        border: "none",
+        color: hasNext ? "white" : "#9ca3af",
+        borderRadius: "20px",
+        padding: "8px 18px",
+        cursor: hasNext ? "pointer" : "not-allowed",
+        fontSize: "14px",
+        fontWeight: "700",
+        whiteSpace: "nowrap",
+      }}
+    >
+      Next ⏭
+    </button>
+  </div>
+);
+
+const MetaSection = ({
+  videoTitle,
+  isMobile,
+  channelName,
+  subscribedChannels,
+  handleSubscribe,
+  isLiked,
+  setIsLiked,
+  isDisliked,
+  setIsDisliked,
+  likeCount,
+  videoId,
+  description,
+  publishedAt,
+  showFullDesc,
+  setShowFullDesc,
+  onClose,
+}) => (
+  <div style={{ padding: isMobile ? "0 12px" : "0" }}>
+    <div
+      style={{
+        color: WP_THEME.text,
+        fontWeight: "700",
+        fontSize: isMobile ? "15px" : "18px",
+        lineHeight: "1.4",
+        marginTop: "14px",
+      }}
+    >
+      {videoTitle}
+    </div>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+        gap: "12px",
+        marginTop: "12px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <img
+          src={
+            "https://ui-avatars.com/api/?name=" +
+            encodeURIComponent(channelName) +
+            "&background=random&size=40"
+          }
+          alt={channelName}
+          style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "50%",
+            flexShrink: 0,
+          }}
+        />
+        <div>
+          <div
+            style={{ color: WP_THEME.text, fontWeight: "700", fontSize: "15px" }}
+          >
+            {channelName}
+          </div>
+          <div style={{ color: WP_THEME.text3, fontSize: "12px" }}>
+            1.2M subscribers
+          </div>
+        </div>
+        <button
+          onClick={() => handleSubscribe(channelName)}
+          style={{
+            background: subscribedChannels.has(channelName)
+              ? WP_THEME.surface2
+              : WP_THEME.primary,
+            color: subscribedChannels.has(channelName)
+              ? WP_THEME.primary
+              : "white",
+            border: "1.5px solid " + WP_THEME.primary,
+            borderRadius: "20px",
+            padding: "8px 18px",
+            fontWeight: "700",
+            cursor: "pointer",
+            fontSize: "14px",
+            marginLeft: "4px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {subscribedChannels.has(channelName) ? "✓ Subscribed" : "Subscribe"}
+        </button>
+      </div>
+    </div>
+    <div
+      style={{
+        display: "flex",
+        gap: "8px",
+        flexWrap: "wrap",
+        marginTop: "12px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          background: WP_THEME.surface2,
+          borderRadius: "20px",
+          overflow: "hidden",
+          border: "1.5px solid " + WP_THEME.border,
+        }}
+      >
+        <button
+          onClick={() => {
+            setIsLiked((l) => !l);
+            if (isDisliked) setIsDisliked(false);
+          }}
+          style={{
+            background: isLiked ? "#ede9fe" : "transparent",
+            border: "none",
+            color: isLiked ? WP_THEME.primary : WP_THEME.text2,
+            padding: "8px 16px",
+            cursor: "pointer",
+            fontSize: "14px",
+            borderRight: "1px solid " + WP_THEME.border,
+            fontWeight: "600",
+          }}
+        >
+          👍 {(likeCount + (isLiked ? 1 : 0)).toLocaleString()}
+        </button>
+        <button
+          onClick={() => {
+            setIsDisliked((d) => !d);
+            if (isLiked) setIsLiked(false);
+          }}
+          style={{
+            background: isDisliked ? "#fff1f2" : "transparent",
+            border: "none",
+            color: isDisliked ? WP_THEME.accent : WP_THEME.text2,
+            padding: "8px 16px",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "600",
+          }}
+        >
+          👎
+        </button>
+      </div>
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(
+            "https://www.youtube.com/watch?v=" + videoId,
+          );
+          alert("Link copied!");
+        }}
+        style={{
+          background: WP_THEME.surface2,
+          border: "1.5px solid " + WP_THEME.border,
+          color: WP_THEME.text2,
+          borderRadius: "20px",
+          padding: "8px 16px",
+          cursor: "pointer",
+          fontSize: "14px",
+          fontWeight: "600",
+        }}
+      >
+        🔗 Share
+      </button>
+      <button
+        onClick={onClose}
+        style={{
+          background: WP_THEME.surface2,
+          border: "1.5px solid " + WP_THEME.border,
+          color: WP_THEME.text3,
+          borderRadius: "20px",
+          padding: "8px 16px",
+          cursor: "pointer",
+          fontSize: "13px",
+          fontWeight: "600",
+        }}
+      >
+        ✕ Close
+      </button>
+    </div>
+    {description !== null && (
+      <div
+        onClick={() => setShowFullDesc((s) => !s)}
+        style={{
+          background: WP_THEME.surface2,
+          borderRadius: "12px",
+          padding: "14px 16px",
+          marginTop: "14px",
+          color: WP_THEME.text2,
+          fontSize: "14px",
+          lineHeight: "1.6",
+          cursor: "pointer",
+          border: "1px solid " + WP_THEME.border,
+        }}
+      >
+        {publishedAt && (
+          <div
+            style={{ color: WP_THEME.text3, fontSize: "13px", marginBottom: "6px" }}
+          >
+            {new Date(publishedAt).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
+          </div>
+        )}
+        <p
+          style={{
+            margin: 0,
+            display: showFullDesc ? "block" : "-webkit-box",
+            WebkitLineClamp: showFullDesc ? "unset" : 2,
+            WebkitBoxOrient: "vertical",
+            overflow: showFullDesc ? "visible" : "hidden",
+          }}
+        >
+          {description || "No description available."}
+        </p>
+        <span
+          style={{
+            color: WP_THEME.primary,
+            fontWeight: "700",
+            fontSize: "13px",
+            marginTop: "6px",
+            display: "block",
+          }}
+        >
+          {showFullDesc ? "Show less" : "...more"}
+        </span>
+      </div>
+    )}
+  </div>
+);
+
+const CommentSection = ({
+  isMobile,
+  comments,
+  newComment,
+  setNewComment,
+  likedComments,
+  addComment,
+  toggleCommentLike,
+}) => (
+  <div style={{ padding: isMobile ? "0 12px 40px" : "0 0 40px" }}>
+    <div
+      style={{
+        color: WP_THEME.text,
+        fontWeight: "700",
+        fontSize: "16px",
+        margin: "28px 0 20px",
+      }}
+    >
+      {comments.length} Comments
+    </div>
+    <div style={{ display: "flex", gap: "12px", marginBottom: "24px" }}>
+      <div
+        style={{
+          width: "36px",
+          height: "36px",
+          borderRadius: "50%",
+          flexShrink: 0,
+          background: WP_THEME.primary,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          fontWeight: "800",
+          fontSize: "12px",
+        }}
+      >
+        YO
+      </div>
+      <div style={{ flex: 1 }}>
+        <input
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addComment()}
+          placeholder="Add a comment..."
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            borderBottom: "2px solid " + WP_THEME.border,
+            color: WP_THEME.text,
+            fontSize: "14px",
+            padding: "8px 0",
+            outline: "none",
+            boxSizing: "border-box",
+            fontFamily: "Outfit, sans-serif",
+          }}
+          onFocus={(e) => (e.target.style.borderBottomColor = WP_THEME.primary)}
+          onBlur={(e) => (e.target.style.borderBottomColor = WP_THEME.border)}
+        />
+        {newComment.trim() && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: "8px",
+              marginTop: "8px",
+            }}
+          >
+            <button
+              onClick={() => setNewComment("")}
+              style={{
+                background: "none",
+                border: "none",
+                color: WP_THEME.text3,
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: "600",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={addComment}
+              style={{
+                background: WP_THEME.primary,
+                border: "none",
+                color: "white",
+                borderRadius: "20px",
+                padding: "6px 16px",
+                cursor: "pointer",
+                fontWeight: "700",
+                fontSize: "14px",
+              }}
+            >
+              Comment
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+    {comments.map((c) => (
+      <div
+        key={c.id}
+        style={{ display: "flex", gap: "12px", marginBottom: "20px" }}
+      >
+        <div
+          style={{
+            width: "36px",
+            height: "36px",
+            borderRadius: "50%",
+            flexShrink: 0,
+            background: getColor(c.avatar),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#fff",
+            fontWeight: "800",
+            fontSize: "11px",
+          }}
+        >
+          {c.avatar}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              marginBottom: "4px",
+            }}
+          >
+            <span
+              style={{ color: WP_THEME.text, fontWeight: "700", fontSize: "13px" }}
+            >
+              {c.user}
+            </span>
+            <span style={{ color: WP_THEME.text3, fontSize: "12px" }}>
+              {c.time}
+            </span>
+          </div>
+          <p
+            style={{
+              color: WP_THEME.text2,
+              fontSize: "14px",
+              margin: "0 0 6px",
+              lineHeight: "1.5",
+            }}
+          >
+            {c.text}
+          </p>
+          <div style={{ display: "flex", gap: "12px" }}>
+            <button
+              onClick={() => toggleCommentLike(c.id)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                color: likedComments.has(c.id) ? WP_THEME.primary : WP_THEME.text3,
+                fontSize: "13px",
+                fontWeight: "600",
+              }}
+            >
+              👍 {c.likes}
+            </button>
+            <span
+              style={{ color: WP_THEME.text3, fontSize: "13px", cursor: "pointer" }}
+            >
+              👎
+            </span>
+            <span
+              style={{
+                color: WP_THEME.text3,
+                fontSize: "13px",
+                cursor: "pointer",
+                fontWeight: "600",
+              }}
+            >
+              Reply
+            </span>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const RelatedSidebar = ({
+  suggestions,
+  currentIndex,
+  goTo,
+  isMobile,
+  autoplay,
+  setAutoplay,
+}) => {
+  const relatedList = suggestions.filter((_, i) => i !== currentIndex);
+  return (
+    <div
+      style={{
+        width: isMobile ? "100%" : "402px",
+        flexShrink: 0,
+        overflowY: isMobile ? "visible" : "auto",
+        scrollbarWidth: "thin",
+        scrollbarColor: WP_THEME.border + " transparent",
+        background: WP_THEME.surface,
+        borderLeft: isMobile ? "none" : "2px solid " + WP_THEME.border,
+        padding: "12px 10px 20px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "14px",
+        }}
+      >
+        <span style={{ color: WP_THEME.text, fontWeight: "800", fontSize: "14px" }}>
+          Up Next
+        </span>
+        <AutoplayToggle autoplay={autoplay} setAutoplay={setAutoplay} />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {relatedList.map((s) => {
+          const realIdx = suggestions.indexOf(s);
+          const isYTItem = !!s.snippet;
+          const thumb = isYTItem
+            ? s.snippet.thumbnails.medium.url
+            : s.thumbnail;
+          const title = isYTItem ? s.snippet.title : s.title;
+          const channel = isYTItem ? s.snippet.channelTitle : s.channel;
+          const hasVid =
+            (isYTItem && !!s.id?.videoId) || (!isYTItem && !!s.src);
+          return (
+            <div
+              key={s.id?.videoId || s.id || realIdx}
+              onClick={() => hasVid && goTo(realIdx)}
+              style={{
+                display: "flex",
+                gap: "8px",
+                cursor: hasVid ? "pointer" : "default",
+                borderRadius: "10px",
+                padding: "6px",
+                transition: "background 0.2s",
+                opacity: hasVid ? 1 : 0.5,
+                border: "1px solid transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (hasVid) {
+                  e.currentTarget.style.background = WP_THEME.surface2;
+                  e.currentTarget.style.borderColor = WP_THEME.border;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.borderColor = "transparent";
+              }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  flexShrink: 0,
+                  width: "168px",
+                  height: "94px",
+                  borderRadius: "10px",
+                  overflow: "hidden",
+                  background: "#e8e0ff",
+                }}
+              >
+                <img
+                  src={thumb}
+                  alt={title}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+                {isYTItem && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "4px",
+                      left: "4px",
+                      background: "#ef4444",
+                      color: "#fff",
+                      fontSize: "9px",
+                      fontWeight: "800",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    ▶ YT
+                  </div>
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0, paddingTop: "2px" }}>
+                <div
+                  style={{
+                    color: WP_THEME.text,
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    lineHeight: "1.4",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                    marginBottom: "4px",
+                  }}
+                >
+                  {title}
+                </div>
+                <div
+                  style={{
+                    color: WP_THEME.text3,
+                    fontSize: "12px",
+                    marginBottom: "2px",
+                    fontWeight: "600",
+                  }}
+                >
+                  {channel}
+                </div>
+                {isYTItem && s.snippet?.publishedAt && (
+                  <div style={{ color: WP_THEME.text3, fontSize: "12px" }}>
+                    {new Date(s.snippet.publishedAt).toLocaleDateString(
+                      "en-US",
+                      { month: "short", day: "numeric", year: "numeric" },
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const WatchPage = ({
+  initialVideoId,
+  initialTitle,
+  initialChannel,
+  onClose,
+  suggestions,
+  onIncrementView,
+}) => {
+  const isMobile = useIsMobile();
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const i = suggestions.findIndex((s) => s.id?.videoId === initialVideoId);
+    return i >= 0 ? i : 0;
+  });
+  const [autoplay, setAutoplay] = useState(true);
+  const [isLiked, setIsLiked] = useState(false);
+  const [isDisliked, setIsDisliked] = useState(false);
+  const [likeCount] = useState(() => Math.floor(Math.random() * 50000) + 1000);
+  const [comments, setComments] = useState(MOCK_COMMENTS);
+  const [newComment, setNewComment] = useState("");
+  const [likedComments, setLikedComments] = useState(new Set());
+  const [showFullDesc, setShowFullDesc] = useState(false);
+  const [subscribedChannels, setSubscribedChannels] = useState(new Set());
+
+  const item = suggestions[currentIndex] || null;
+  const isYT = item && !!item.snippet;
+  const videoId = isYT && item.id?.videoId ? item.id.videoId : initialVideoId;
+  const videoTitle = isYT ? item.snippet.title : (item?.title ?? initialTitle);
+  const channelName = isYT
+    ? item.snippet.channelTitle
+    : (item?.channel ?? initialChannel);
+  const publishedAt = isYT ? item.snippet.publishedAt : null;
+  const description = isYT ? item.snippet.description : null;
+
+  const goTo = (idx) => {
+    const clampedIdx = Math.max(0, Math.min(idx, suggestions.length - 1));
+    const target = suggestions[clampedIdx];
+    if (target && onIncrementView) {
+      const isYTItem = !!target.snippet;
+      if (!isYTItem && target.src && target.id)
+        onIncrementView(String(target.id), "video");
+    }
+    setCurrentIndex(clampedIdx);
+    setIsLiked(false);
+    setIsDisliked(false);
+    setShowFullDesc(false);
+  };
+
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < suggestions.length - 1;
+  const goPrev = () => {
+    if (hasPrev) goTo(currentIndex - 1);
+  };
+  const goNext = () => {
+    if (hasNext) goTo(currentIndex + 1);
+  };
+
+  const autoplayRef = useRef(autoplay);
+  useEffect(() => {
+    autoplayRef.current = autoplay;
+  }, [autoplay]);
+  const hasNextRef = useRef(hasNext);
+  useEffect(() => {
+    hasNextRef.current = hasNext;
+  }, [hasNext]);
+  const goNextRef = useRef(goNext);
+  useEffect(() => {
+    goNextRef.current = goNext;
+  });
+
+  useEffect(() => {
+    const handleMessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (
+          data.event === "infoDelivery" &&
+          data.info &&
+          data.info.playerState === 0
+        ) {
+          if (autoplayRef.current && hasNextRef.current) goNextRef.current();
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const handleSubscribe = (ch) => {
+    setSubscribedChannels((prev) => {
+      const next = new Set(prev);
+      next.has(ch) ? next.delete(ch) : next.add(ch);
+      return next;
+    });
+  };
+
+  const addComment = () => {
+    if (!newComment.trim()) return;
+    setComments((prev) => [
+      {
+        id: Date.now(),
+        user: "You",
+        avatar: "YO",
+        text: newComment.trim(),
+        likes: 0,
+        time: "Just now",
+      },
+      ...prev,
+    ]);
+    setNewComment("");
+  };
+
+  const toggleCommentLike = (id) => {
+    setLikedComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        setComments((c) =>
+          c.map((x) => (x.id === id ? { ...x, likes: x.likes - 1 } : x)),
+        );
+      } else {
+        next.add(id);
+        setComments((c) =>
+          c.map((x) => (x.id === id ? { ...x, likes: x.likes + 1 } : x)),
+        );
+      }
+      return next;
+    });
+  };
+
+  if (isMobile) {
+    return (
+      <>
+        <style>
+          {".hp-watch-root{-webkit-overflow-scrolling:touch;}.hp-watch-root *{-webkit-transform:none !important;}"}
+        </style>
+        <div className="hp-watch-root">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "8px 12px",
+              background: "#ffffff",
+              borderBottom: "2px solid #e0d4ff",
+              flexShrink: 0,
+            }}
+          >
+            <button
+              onClick={onClose}
+              style={{
+                background: "#f7f0ff",
+                border: "1.5px solid #e0d4ff",
+                color: "#7c3aed",
+                fontSize: "13px",
+                cursor: "pointer",
+                padding: "6px 12px",
+                borderRadius: "20px",
+                fontWeight: "700",
+              }}
+            >
+              ← Back
+            </button>
+            <span
+              style={{
+                color: "#1e1b4b",
+                fontWeight: "700",
+                fontSize: "13px",
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {videoTitle}
+            </span>
+            <span
+              style={{
+                background: "#ef4444",
+                color: "#fff",
+                fontSize: "10px",
+                fontWeight: "800",
+                padding: "2px 8px",
+                borderRadius: "5px",
+              }}
+            >
+              ▶ YT
+            </span>
+          </div>
+          <VideoPlayer videoId={videoId} videoTitle={videoTitle} isMobile={isMobile} />
+          <div style={{ padding: "0 12px" }}>
+            <WatchNavBar
+              goPrev={goPrev}
+              hasPrev={hasPrev}
+              goNext={goNext}
+              hasNext={hasNext}
+              autoplay={autoplay}
+              setAutoplay={setAutoplay}
+            />
+          </div>
+          <MetaSection
+            videoTitle={videoTitle}
+            isMobile={isMobile}
+            channelName={channelName}
+            subscribedChannels={subscribedChannels}
+            handleSubscribe={handleSubscribe}
+            isLiked={isLiked}
+            setIsLiked={setIsLiked}
+            isDisliked={isDisliked}
+            setIsDisliked={setIsDisliked}
+            likeCount={likeCount}
+            videoId={videoId}
+            description={description}
+            publishedAt={publishedAt}
+            showFullDesc={showFullDesc}
+            setShowFullDesc={setShowFullDesc}
+            onClose={onClose}
+          />
+          <CommentSection
+            isMobile={isMobile}
+            comments={comments}
+            newComment={newComment}
+            setNewComment={setNewComment}
+            likedComments={likedComments}
+            addComment={addComment}
+            toggleCommentLike={toggleCommentLike}
+          />
+          <div style={{ borderTop: "8px solid #f0f4ff", marginTop: "8px" }}>
+            <RelatedSidebar
+              suggestions={suggestions}
+              currentIndex={currentIndex}
+              goTo={goTo}
+              isMobile={isMobile}
+              autoplay={autoplay}
+              setAutoplay={setAutoplay}
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <style>
+        {"::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-thumb{background:#e0d4ff;border-radius:4px;}"}
+      </style>
+      <div
+        style={{
+          position: "fixed",
+          top: "55px",
+          left: "0",
+          right: "0",
+          bottom: "0",
+          zIndex: 999,
+          background: "#f0f4ff",
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: "'Outfit', sans-serif",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "52px",
+            flexShrink: 0,
+            background: "#ffffff",
+            borderBottom: "2px solid #e0d4ff",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 16px",
+            gap: "10px",
+            boxShadow: "0 2px 12px rgba(124,58,237,0.06)",
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#8b84c4",
+              cursor: "pointer",
+              fontSize: "22px",
+              lineHeight: 1,
+              padding: "4px 10px",
+              borderRadius: "8px",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "#f7f0ff";
+              e.currentTarget.style.color = "#7c3aed";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "none";
+              e.currentTarget.style.color = "#8b84c4";
+            }}
+          >
+            ←
+          </button>
+          <div
+            style={{ width: "1px", height: "20px", background: "#e0d4ff" }}
+          />
+          <span
+            style={{
+              color: "#1e1b4b",
+              fontWeight: "700",
+              fontSize: "14px",
+              flex: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {videoTitle}
+          </span>
+          <span
+            style={{
+              background: "#ef4444",
+              color: "#fff",
+              fontSize: "11px",
+              fontWeight: "800",
+              padding: "3px 10px",
+              borderRadius: "5px",
+              flexShrink: 0,
+            }}
+          >
+            ▶ YouTube
+          </span>
+        </div>
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "20px 24px",
+              minWidth: 0,
+              scrollbarWidth: "thin",
+              scrollbarColor: "#e0d4ff transparent",
+            }}
+          >
+            <VideoPlayer videoId={videoId} videoTitle={videoTitle} isMobile={isMobile} />
+            <WatchNavBar
+              goPrev={goPrev}
+              hasPrev={hasPrev}
+              goNext={goNext}
+              hasNext={hasNext}
+              autoplay={autoplay}
+              setAutoplay={setAutoplay}
+            />
+            <MetaSection
+              videoTitle={videoTitle}
+              isMobile={isMobile}
+              channelName={channelName}
+              subscribedChannels={subscribedChannels}
+              handleSubscribe={handleSubscribe}
+              isLiked={isLiked}
+              setIsLiked={setIsLiked}
+              isDisliked={isDisliked}
+              setIsDisliked={setIsDisliked}
+              likeCount={likeCount}
+              videoId={videoId}
+              description={description}
+              publishedAt={publishedAt}
+              showFullDesc={showFullDesc}
+              setShowFullDesc={setShowFullDesc}
+              onClose={onClose}
+            />
+            <CommentSection
+              isMobile={isMobile}
+              comments={comments}
+              newComment={newComment}
+              setNewComment={setNewComment}
+              likedComments={likedComments}
+              addComment={addComment}
+              toggleCommentLike={toggleCommentLike}
+            />
+          </div>
+          <div
+            style={{
+              width: "402px",
+              flexShrink: 0,
+              overflowY: "auto",
+              scrollbarWidth: "thin",
+              scrollbarColor: "#e0d4ff transparent",
+            }}
+          >
+            <RelatedSidebar
+              suggestions={suggestions}
+              currentIndex={currentIndex}
+              goTo={goTo}
+              isMobile={isMobile}
+              autoplay={autoplay}
+              setAutoplay={setAutoplay}
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const HomePage = ({ sideNavbar }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isMobile = useIsMobile();
+  const [selectedOption, setSelectedOption] = useState("All");
+
+  const liveBrowserRef = useRef(null);
+
+  const searchQuery = (() => {
+    const params = new URLSearchParams(location.search);
+    return (params.get("q") || "").trim().toLowerCase();
+  })();
+
+  const optionsTrackRef = useRef(null);
+  const autoScrollRef = useRef(null);
+  const isPausedRef = useRef(false);
+  const [ytVideos, setYtVideos] = useState([]);
+  const [ytLoading, setYtLoading] = useState(false);
+  const [watchVideo, setWatchVideo] = useState(null);
+  const [dbVideos, setDbVideos] = useState([]);
+  const [dbLoading, setDbLoading] = useState(true);
+  const [dbReels, setDbReels] = useState([]);
+  const [dbPosts, setDbPosts] = useState([]);
+  const [viewCounts, setViewCounts] = useState({});
+  const [watchedContentIds, setWatchedContentIds] = useState(new Set());
+  const [watchLaterIds, setWatchLaterIds] = useState(new Set());
+  const [playlistsCache, setPlaylistsCache] = useState(null);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const loggedInUsername = localStorage.getItem("username") || "";
+
+  const loadWatchedIds = React.useCallback(async () => {
+    const userId = localStorage.getItem("userId");
+    if (!userId) return;
+    const { data } = await supabase
+      .from("views")
+      .select("content_id, content_type")
+      .eq("user_id", userId);
+    if (data) {
+      const ids = new Set(data.map((r) => `${r.content_type}_${r.content_id}`));
+      setWatchedContentIds(ids);
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadWatchLater = async () => {
+      const username = localStorage.getItem("username");
+      if (!username) return;
+      const { data } = await supabase
+        .from("watch_later")
+        .select("video_id")
+        .eq("username", username);
+      if (data) setWatchLaterIds(new Set(data.map((r) => String(r.video_id))));
+    };
+    loadWatchLater();
+  }, []);
+
+  useEffect(() => {
+    loadWatchedIds();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") loadWatchedIds();
+    };
+    const handleFocus = () => loadWatchedIds();
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+    const interval = setInterval(loadWatchedIds, 30000);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+      clearInterval(interval);
+    };
+  }, [loadWatchedIds]);
+
+  const incrementView = async (contentId, contentType) => {
+    const storageKey = `lastViewed_${contentType}_${contentId}`;
+    const lastViewed = localStorage.getItem(storageKey);
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    if (lastViewed && now - parseInt(lastViewed, 10) < TWENTY_FOUR_HOURS)
+      return;
+    localStorage.setItem(storageKey, String(now));
+    localStorage.setItem(`viewed_${contentType}_${contentId}`, "true");
+    const key = `${contentType}_${contentId}`;
+    setViewCounts((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+    try {
+      const userId = localStorage.getItem("userId");
+      if (!userId) return;
+      await supabase.from("views").upsert(
+        {
+          user_id: userId,
+          content_id: String(contentId),
+          content_type: contentType,
+          viewed_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,content_id,content_type" },
+      );
+    } catch (_) {}
+  };
+
+  const fetchViewCounts = async (ids, contentType) => {
+    if (!ids || !ids.length) return;
+    try {
+      const { data, error } = await supabase
+        .from("views")
+        .select("content_id")
+        .eq("content_type", contentType)
+        .in("content_id", ids.map(String));
+      const map = {};
+      ids.forEach((id) => {
+        map[contentType + "_" + id] = 0;
+      });
+      if (!error && data) {
+        data.forEach((r) => {
+          const k = contentType + "_" + r.content_id;
+          map[k] = (map[k] || 0) + 1;
+        });
+      }
+      setViewCounts((prev) => ({ ...prev, ...map }));
+    } catch (_) {}
+  };
+
+  const options = [
+    "All",
+    "DD News",
+    "Kapil Sharma Show",
+    "Hindi Movies",
+    "Hindi News",
+    "English News",
+    "Film Criticisms",
+    "Twenty20 Cricket",
+    "Music",
+    "Mixes",
+    "Gaming",
+    "Debates",
+    "Coke Studio India",
+    "Democracy",
+    "Pakistani Dramas",
+    "Pakistani Movies",
+    "Comedy",
+    "Podcasts",
+    "WWE",
+    "Superhero Movies",
+    "Dramedy",
+    "Web Development",
+    "Hollywood Movies",
+    "Dubbed Hollywood Movies",
+    "Web Series",
+    "Professional Wrestling",
+    "Bhojpuri Cinema",
+    "Bhojpuri Songs",
+    "Astronomy",
+    "AI",
+    "History",
+    "Geographical Videos",
+    "National Geography",
+    "Indian Music",
+    "Indian Movies",
+    "Recently Uploaded",
+    "Watched",
+  ];
+
+  useEffect(() => {
+    const fetchDbVideos = async () => {
+      setDbLoading(true);
+      const { data, error } = await supabase
+        .from("videos")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error && data) {
+        const formatted = data.map((v) => ({
+  id: v.id,
+  short_id: v.short_id,
+  src: v.video_url,
+  // FIX: previously `thumbnail: v.thumbnail_url` with no fallback at
+  // all — if client-side auto thumbnail capture failed during upload
+  // (see VideoUpload.jsx), thumbnail_url was saved as an empty string,
+  // and <img src=""> renders nothing. Now falls back to a self-hosted
+  // placeholder, matching what reels already did below.
+  thumbnail: v.thumbnail_url || makePlaceholderThumb(v.id),
+  title: v.title,
+  duration: v.duration || "00:00",
+  channel: v.channel,
+  username: v.username || v.channel?.toLowerCase() || "unknown",
+  tags: [v.category || "All"],
+  likes: v.likes ?? 0,
+  created_at: v.created_at || null,
+}));
+        const videoIds = formatted.map((v) => String(v.id));
+        const { data: likesData } = await supabase
+          .from("likes")
+          .select("content_id")
+          .eq("content_type", "video")
+          .in("content_id", videoIds);
+        if (likesData) {
+          const likesMap = {};
+          likesData.forEach((row) => {
+            likesMap[row.content_id] = (likesMap[row.content_id] || 0) + 1;
+          });
+          setDbVideos(
+            formatted.map((v) => ({
+              ...v,
+              likes: likesMap[String(v.id)] ?? v.likes ?? 0,
+            })),
+          );
+        } else {
+          setDbVideos(formatted);
+        }
+        fetchViewCounts(
+          formatted.map((v) => v.id),
+          "video",
+        );
+      }
+      setDbLoading(false);
+    };
+    fetchDbVideos();
+
+    const subscription = supabase
+      .channel("videos-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "videos" },
+        (payload) => {
+          const v = payload.new;
+          const newVideo = {
+            id: v.id,
+            src: v.video_url,
+            // FIX: same fallback as fetchDbVideos above, applied to
+            // realtime INSERTs too.
+            thumbnail: v.thumbnail_url || makePlaceholderThumb(v.id),
+            title: v.title,
+            duration: v.duration || "00:00",
+            channel: v.channel,
+            username: v.username || v.channel?.toLowerCase() || "unknown",
+            tags: [v.category || "All"],
+            likes: v.likes ?? 0,
+            created_at: v.created_at || null,
+          };
+          setDbVideos((prev) => [newVideo, ...prev]);
+          fetchViewCounts([v.id], "video");
+          loadWatchedIds();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "videos" },
+        (payload) => {
+          setDbVideos((prev) => prev.filter((v) => v.id !== payload.old.id));
+        },
+      )
+      .subscribe();
+    return () => supabase.removeChannel(subscription);
+  }, [loadWatchedIds]);
+
+  useEffect(() => {
+    const fetchDbReels = async () => {
+      const { data, error } = await supabase
+        .from("reels")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error && data) {
+        const formatted = data.map((r) => ({
+          id: "db_" + r.id,
+          dbId: r.id,
+          src: r.video_url,
+          // FIX: previously fell back to picsum.photos — an external
+          // domain that ad blockers / network filters commonly block,
+          // which just swaps one blank thumbnail for another blank one.
+          // Now falls back to a self-hosted data: URI placeholder (see
+          // makePlaceholderThumb above), which has no network dependency
+          // and always renders. Still seeded per-reel-id so each
+          // fallback is visually distinct rather than identical.
+          thumbnail: r.thumbnail || makePlaceholderThumb(r.id),
+          title: r.title || "Untitled",
+          duration: r.duration || "00:00",
+          user: r.user || r.username || "Unknown",
+          username: r.username || "unknown",
+          profilePic:
+            "https://api.dicebear.com/7.x/initials/svg?seed=" +
+            (r.username || "user"),
+          description: r.description || "",
+          likes: r.likes ?? 0,
+          created_at: r.created_at || null,
+        }));
+        setDbReels(formatted);
+        fetchViewCounts(
+          formatted.map((r) => r.id),
+          "reel",
+        );
+      }
+    };
+    fetchDbReels();
+
+    const reelsSub = supabase
+      .channel("reels-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "reels" },
+        (payload) => {
+          const r = payload.new;
+          const newReel = {
+            id: "db_" + r.id,
+            dbId: r.id,
+            src: r.video_url,
+            // FIX: same self-hosted placeholder fallback as fetchDbReels
+            // above, applied to realtime INSERTs too.
+            thumbnail: r.thumbnail || makePlaceholderThumb(r.id),
+            title: r.title || "Untitled",
+            duration: r.duration || "00:00",
+            user: r.user || r.username || "Unknown",
+            username: r.username || "unknown",
+            profilePic:
+              "https://api.dicebear.com/7.x/initials/svg?seed=" +
+              (r.username || "user"),
+            description: r.description || "",
+            likes: r.likes || 0,
+            created_at: r.created_at || null,
+          };
+          setDbReels((prev) => [newReel, ...prev]);
+          fetchViewCounts([r.id], "reel");
+          loadWatchedIds();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "reels" },
+        (payload) => {
+          setDbReels((prev) => prev.filter((r) => r.dbId !== payload.old.id));
+        },
+      )
+      .subscribe();
+    return () => supabase.removeChannel(reelsSub);
+  }, [loadWatchedIds]);
+
+  // ── Posts (for the Posts section, previewable exactly like the
+  // Explore homepage grid: hover on desktop, scroll-into-view on mobile) ──
+  //
+  // Joins post_reactions/post_comments so each post card can show its
+  // OWN like/comment counts (see PostCard above).
+  //
+  // NEW: also seeds this post's initial view count into `viewCounts`
+  // (keyed "post_<id>"), same as fetchDbVideos/fetchDbReels do for
+  // videos/reels — see fetchViewCounts(..., "post") calls below.
+  useEffect(() => {
+    const fetchDbPosts = async () => {
+      const { data, error } = await supabase
+        .from("posts")
+        .select("*, post_reactions(type), post_comments(id)")
+        .order("created_at", { ascending: false })
+        .limit(30);
+      if (!error && data) {
+        setDbPosts(data);
+        fetchViewCounts(
+          data.map((p) => p.id),
+          "post",
+        );
+      }
+    };
+    fetchDbPosts();
+
+    const postsSub = supabase
+      .channel("posts-channel-home")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts" },
+        (payload) => {
+          // payload.new has no joined post_reactions/post_comments arrays
+          // (those only come back from a select() with joins) — default
+          // them so PostCard's likesCount/commentsCount don't blow up on
+          // a freshly-created post before anyone's reacted/commented.
+          setDbPosts((prev) => [
+            { ...payload.new, post_reactions: [], post_comments: [] },
+            ...prev,
+          ]);
+          fetchViewCounts([payload.new.id], "post");
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "posts" },
+        (payload) => {
+          setDbPosts((prev) => prev.filter((p) => p.id !== payload.old.id));
+        },
+      )
+      .subscribe();
+    return () => supabase.removeChannel(postsSub);
+  }, []);
+
+  const allVideos = dbVideos;
+  const allReels = dbReels;
+
+  useEffect(() => {
+    if (searchQuery) fetchYouTubeByTopic(searchQuery);
+    else fetchYouTubeByTopic(selectedOption);
+  }, [selectedOption, searchQuery]);
+
+  useEffect(() => {
+    const track = optionsTrackRef.current;
+    if (!track) return;
+    let pos = 0;
+    const speed = 0.6;
+    const step = () => {
+      if (!isPausedRef.current) {
+        pos += speed;
+        if (pos >= track.scrollWidth - track.clientWidth) pos = 0;
+        track.scrollLeft = pos;
+      }
+      autoScrollRef.current = requestAnimationFrame(step);
+    };
+    autoScrollRef.current = requestAnimationFrame(step);
+    return () => {
+      if (autoScrollRef.current) cancelAnimationFrame(autoScrollRef.current);
+    };
+  }, []);
+
+  const fetchYouTubeByTopic = async (topic) => {
+    if (["All", "Recently Uploaded", "Watched"].includes(topic)) {
+      setYtVideos([]);
+      return;
+    }
+    setYtLoading(true);
+    setYtVideos([]);
+    for (let i = 0; i < API_KEYS.length; i++) {
+      const keyIndex = (currentKeyIndex + i) % API_KEYS.length;
+      try {
+        const res = await axios.get(
+          "https://www.googleapis.com/youtube/v3/search",
+          {
+            params: {
+              part: "snippet",
+              q: topic,
+              type: "video",
+              maxResults: 50,
+              order: "relevance",
+              key: API_KEYS[keyIndex],
+            },
+          },
+        );
+        currentKeyIndex = keyIndex;
+        setYtVideos(res.data.items || []);
+        break;
+      } catch (err) {
+        const status = err.response?.status;
+        const isQuotaOrNetworkIssue =
+          status === 403 || status === 429 || !err.response;
+        if (isQuotaOrNetworkIssue) {
+          currentKeyIndex = (keyIndex + 1) % API_KEYS.length;
+          continue;
+        }
+        break;
+      }
+    }
+    setYtLoading(false);
+  };
+
+  const openWatchPage = (videoId, title, channel, dbVideoId = null) => {
+    if (dbVideoId) incrementView(String(dbVideoId), "video");
+    setWatchVideo({ videoId, title, channel });
+  };
+  const closeWatchPage = () => setWatchVideo(null);
+  const getSuggestions = () => [
+    ...ytVideos.slice(0, 20),
+    ...allVideos.slice(0, 12),
+  ];
+  const filteredVideos =
+    selectedOption === "All"
+      ? allVideos
+      : allVideos.filter((v) => v.tags?.includes(selectedOption));
+  const searchActive = searchQuery.length > 0;
+
+  const scoreVideo = (v) => {
+    let score = 0;
+    const words = searchQuery.split(/\s+/).filter(Boolean);
+    const title = (v.title || "").toLowerCase();
+    const channel = (v.channel || "").toLowerCase();
+    const tags = (v.tags || []).map((t) => t.toLowerCase());
+    const description = (v.description || "").toLowerCase();
+    for (const w of words) {
+      if (title.includes(w)) score += 4;
+      if (tags.some((t) => t.includes(w))) score += 3;
+      if (channel.includes(w)) score += 2;
+      if (description.includes(w)) score += 1;
+    }
+    return score;
+  };
+
+  const searchedLocalVideos = searchActive
+    ? dbVideos
+        .map((v) => ({ ...v, isUploaded: true }))
+        .map((v) => ({ ...v, _score: scoreVideo(v) }))
+        .filter((v) => v._score > 0)
+        .sort((a, b) => b._score - a._score)
+    : [];
+
+  const searchedReels = searchActive
+    ? allReels.filter((r) => {
+        const q = searchQuery;
+        return (
+          (r.title || "").toLowerCase().includes(q) ||
+          (r.user || "").toLowerCase().includes(q) ||
+          (r.username || "").toLowerCase().includes(q) ||
+          (r.description || "").toLowerCase().includes(q)
+        );
+      })
+    : [];
+
+  const handleLikeVideo = async (e, videoId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      alert("Please login to like");
+      return;
+    }
+    try {
+      const { data: existing } = await supabase
+        .from("likes")
+        .select("id")
+        .match({
+          user_id: userId,
+          content_id: String(videoId),
+          content_type: "video",
+        })
+        .maybeSingle();
+      if (existing) {
+        await supabase
+          .from("likes")
+          .delete()
+          .match({
+            user_id: userId,
+            content_id: String(videoId),
+            content_type: "video",
+          });
+        await supabase.rpc("decrement_likes", {
+          p_table: "videos",
+          p_id: videoId,
+        });
+        setDbVideos((prev) =>
+          prev.map((v) =>
+            v.id === videoId
+              ? { ...v, likes: Math.max(0, (v.likes || 0) - 1) }
+              : v,
+          ),
+        );
+      } else {
+        await supabase.from("likes").insert({
+          user_id: userId,
+          content_id: String(videoId),
+          content_type: "video",
+        });
+        await supabase.rpc("increment_likes", {
+          p_table: "videos",
+          p_id: videoId,
+        });
+        setDbVideos((prev) =>
+          prev.map((v) =>
+            v.id === videoId ? { ...v, likes: (v.likes || 0) + 1 } : v,
+          ),
+        );
+        // Notify the video owner about the like. dbVideos already
+        // carries `username` per row (set in fetchDbVideos above), so we
+        // look the video up from current state rather than adding a new
+        // fetch just for this.
+        const likedVideo = dbVideos.find((v) => v.id === videoId);
+        if (likedVideo) {
+          notifyUser({
+            recipientUsername: likedVideo.username,
+            senderUsername: loggedInUsername,
+            type: "like",
+            message: `${loggedInUsername} liked your video "${likedVideo.title || ""}"`,
+            contentId: videoId,
+            contentType: "video",
+          });
+        }
+      }
+    } catch (_) {}
+  };
+
+  const handleDeleteVideo = async (e, videoId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm("Delete this video? This cannot be undone.")) return;
+    const { error } = await supabase.from("videos").delete().eq("id", videoId);
+    if (!error) setDbVideos((prev) => prev.filter((v) => v.id !== videoId));
+    else alert("Failed to delete video.");
+  };
+
+  const handleDeleteReel = async (e, dbId) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete this reel? This cannot be undone.")) return;
+    const { error } = await supabase.from("reels").delete().eq("id", dbId);
+    if (!error) setDbReels((prev) => prev.filter((r) => r.dbId !== dbId));
+    else alert("Failed to delete reel.");
+  };
+
+  const handleDeletePost = async (e, postId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!postId) return;
+    if (!window.confirm("Delete this post? This cannot be undone.")) return;
+    const { error } = await supabase.from("posts").delete().eq("id", postId);
+    if (!error) setDbPosts((prev) => prev.filter((p) => p.id !== postId));
+    else alert("Failed to delete post.");
+  };
+
+  // ── Report modal — opened from any card's three-dots menu ──
+  const openReport = (contentType, contentId, title) => {
+    if (!contentId) return;
+    setReportTarget({ contentType, contentId, title });
+  };
+  const closeReport = () => {
+    if (reportSubmitting) return;
+    setReportTarget(null);
+  };
+  const submitReport = async (reason, details) => {
+    if (!reportTarget) return;
+    setReportSubmitting(true);
+    try {
+      const { error } = await supabase.from("reports").insert({
+        content_id: String(reportTarget.contentId),
+        content_type: reportTarget.contentType,
+        reason,
+        details: details || null,
+        reporter_username: loggedInUsername || null,
+        created_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      alert("Thanks — your report has been submitted for review.");
+      setReportTarget(null);
+    } catch (_) {
+      alert("Couldn't submit the report right now. Please try again.");
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
+  const handleToggleWatchLater = async (e, videoId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const username = localStorage.getItem("username");
+    if (!username) {
+      alert("Please login to save videos");
+      return;
+    }
+    const idStr = String(videoId);
+    if (watchLaterIds.has(idStr)) {
+      await supabase
+        .from("watch_later")
+        .delete()
+        .eq("username", username)
+        .eq("video_id", videoId);
+      setWatchLaterIds((prev) => {
+        const next = new Set(prev);
+        next.delete(idStr);
+        return next;
+      });
+    } else {
+      await supabase
+        .from("watch_later")
+        .insert({ username, video_id: videoId });
+      setWatchLaterIds((prev) => new Set(prev).add(idStr));
+    }
+  };
+
+  const videoCardProps = {
+    viewCounts,
+    watchLaterIds,
+    loggedInUsername,
+    handleToggleWatchLater,
+    handleDeleteVideo,
+    handleLikeVideo,
+    watchedContentIds,
+    incrementView,
+    onReport: openReport,
+  };
+  const shortCardProps = {
+    incrementView,
+    viewCounts,
+    handleDeleteReel,
+    navigate,
+    watchedContentIds,
+    onReport: openReport,
+    loggedInUsername,
+  };
+
+  // ── Interleaved Posts / Reels / Videos rows for the "All" feed ──
+  // Order is always Post row -> Reel row -> Video row -> repeat, same on
+  // both breakpoints; only how many cards land in each row differs
+  // (ROW_SIZES_DESKTOP vs ROW_SIZES_MOBILE, see buildContentRows above).
+  const contentRows = React.useMemo(() => {
+    const sizes = isMobile ? ROW_SIZES_MOBILE : ROW_SIZES_DESKTOP;
+    const buckets = {
+      post: dbPosts,
+      reel: allReels,
+      video: dbVideos.map((v) => ({ ...v, isUploaded: true })),
+    };
+    return buildContentRows(buckets, sizes);
+  }, [dbPosts, allReels, dbVideos, isMobile]);
+
+  return (
+    <div className="homePage">
+      <div className={"homePage_options" + (sideNavbar ? " sidebar-open" : "")}>
+        <div
+          className="homePage_options_track"
+          ref={optionsTrackRef}
+          onMouseEnter={() => {
+            isPausedRef.current = true;
+          }}
+          onMouseLeave={() => {
+            isPausedRef.current = false;
+          }}
+          onTouchStart={() => {
+            isPausedRef.current = true;
+          }}
+          onTouchEnd={() => {
+            setTimeout(() => {
+              isPausedRef.current = false;
+            }, 1500);
+          }}
+          onMouseDown={(e) => {
+            isPausedRef.current = true;
+            const startX = e.pageX - optionsTrackRef.current.offsetLeft;
+            const startScroll = optionsTrackRef.current.scrollLeft;
+            const onMove = (ev) => {
+              const x = ev.pageX - optionsTrackRef.current.offsetLeft;
+              optionsTrackRef.current.scrollLeft = startScroll - (x - startX);
+            };
+            const onUp = () => {
+              document.removeEventListener("mousemove", onMove);
+              document.removeEventListener("mouseup", onUp);
+              setTimeout(() => {
+                isPausedRef.current = false;
+              }, 1500);
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+          }}
+          style={{ cursor: "grab", userSelect: "none" }}
+        >
+          <div
+            className="homePage_option"
+            onClick={() => {
+              liveBrowserRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }}
+            style={{
+              cursor: "pointer",
+              color: "#ef4444",
+              padding: "6px 14px",
+              fontWeight: "800",
+              whiteSpace: "nowrap",
+              userSelect: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+            }}
+          >
+            🔴 Live
+          </div>
+
+          {options.map((item) => (
+            <div
+              key={item}
+              className={
+                "homePage_option" + (selectedOption === item ? " active" : "")
+              }
+              onClick={() => setSelectedOption(item)}
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className={
+          "home_mainPage" + (sideNavbar ? " sidebar-open" : " sidebar-closed")
+        }
+      >
+        {searchActive && (
+          <SearchResultsPanel
+            searchQuery={searchQuery}
+            searchedReels={searchedReels}
+            searchedLocalVideos={searchedLocalVideos}
+            ytLoading={ytLoading}
+            ytVideos={ytVideos}
+            shortCardProps={shortCardProps}
+            videoCardProps={videoCardProps}
+            openWatchPage={openWatchPage}
+          />
+        )}
+
+        {!searchActive && (
+          <DramaticTrendingCarousel
+            dbVideos={allVideos}
+            dbReels={allReels}
+            onVideoClick={(v, trendingList) => {
+              incrementView(String(v.id), "video");
+              const trendingVideoIds = trendingList
+                .filter((t) => t._type !== "reel")
+                .map((t) => String(t.id));
+              navigate(`/video/${v.id}`, {
+                state: { trendingIds: trendingVideoIds, fromTrending: true },
+              });
+            }}
+            onReelClick={(r, trendingList) => {
+              const trendingReelIds = trendingList
+                .filter((t) => t._type === "reel")
+                .map((t) => String(t.id));
+              navigate("/reels/" + r.id, {
+                state: {
+                  clickedReel: r,
+                  trendingIds: trendingReelIds,
+                  fromTrending: true,
+                },
+              });
+            }}
+          />
+        )}
+
+        {!searchActive && (
+          <div ref={liveBrowserRef} style={{ marginBottom: "28px" }}>
+            <LiveBrowser currentUser={loggedInUsername} />
+          </div>
+        )}
+
+        {!searchActive &&
+          (selectedOption === "All" ? (
+            <>
+              {dbLoading && contentRows.length === 0 && (
+                <div className="youtube_VideoGrid">
+                  {[...Array(4)].map((_, i) => (
+                    <SkeletonCard key={i} />
+                  ))}
+                </div>
+              )}
+              {!dbLoading && contentRows.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: "center",
+                    marginTop: "60px",
+                    color: "#8b84c4",
+                  }}
+                >
+                  <div style={{ fontSize: "48px", marginBottom: "16px" }}>
+                    📭
+                  </div>
+                  <p style={{ fontSize: "16px", fontWeight: "600" }}>
+                    No content yet
+                  </p>
+                  <p style={{ fontSize: "13px", marginTop: "8px" }}>
+                    Upload your first video, reel, or post to see it here
+                  </p>
+                </div>
+              ) : (
+                (() => {
+                  let videoRowCount = 0;
+                  return contentRows.map((row) => {
+                    if (row.type === "post") {
+                      return (
+                        <PostsRow
+                          key={row.key}
+                          data={row.items}
+                          title="Posts"
+                          isMobile={isMobile}
+                          onReport={openReport}
+                          loggedInUsername={loggedInUsername}
+                          onDeletePost={handleDeletePost}
+                          incrementView={incrementView}
+                          viewCounts={viewCounts}
+                        />
+                      );
+                    }
+                    if (row.type === "reel") {
+                      return (
+                        <ShortsRow
+                          key={row.key}
+                          data={row.items}
+                          title="Shorts"
+                          {...shortCardProps}
+                        />
+                      );
+                    }
+                    // video row
+                    videoRowCount += 1;
+                    return (
+                      <React.Fragment key={row.key}>
+                        <div className="youtube_VideoGrid">
+                          {row.items.map((v) => (
+                            <VideoCard
+                              key={v.id}
+                              video={v}
+                              isUploaded={v.isUploaded || false}
+                              {...videoCardProps}
+                            />
+                          ))}
+                        </div>
+                        {/* Google AdSense — one banner unit every other
+                            video row (skipped on the very first so the
+                            page doesn't open with an ad above the fold) */}
+                        {videoRowCount > 1 && videoRowCount % 2 === 0 && (
+                          <AdUnit slot="3820561974" />
+                        )}
+                      </React.Fragment>
+                    );
+                  });
+                })()
+              )}
+            </>
+          ) : (
+            <div style={{ padding: "16px 0" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  marginBottom: "20px",
+                }}
+              >
+                <span style={{ fontSize: "22px" }}>
+                  {ytLoading ? "⏳" : "🔎"}
+                </span>
+                <h2
+                  style={{
+                    color: "#1e1b4b",
+                    fontSize: "18px",
+                    fontWeight: "800",
+                    margin: 0,
+                    fontFamily: "Nunito, sans-serif",
+                  }}
+                >
+                  {selectedOption}
+                </h2>
+                {ytLoading && (
+                  <span
+                    style={{
+                      color: "#8b84c4",
+                      fontSize: "13px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    — loading YouTube results...
+                  </span>
+                )}
+              </div>
+              {dbVideos.filter((v) => v.tags?.includes(selectedOption)).length >
+                0 && (
+                <div style={{ marginBottom: "40px" }}>
+                  <SectionLabel
+                    color="#f97316"
+                    bg="#fff7ed"
+                    text="⬆ UPLOADED VIDEOS"
+                    count={
+                      dbVideos.filter((v) => v.tags?.includes(selectedOption))
+                        .length
+                    }
+                  />
+                  <div className="youtube_VideoGrid">
+                    {dbVideos
+                      .filter((v) => v.tags?.includes(selectedOption))
+                      .map((v) => (
+                        <VideoCard key={v.id} video={v} isUploaded={true} {...videoCardProps} />
+                      ))}
+                  </div>
+                </div>
+              )}
+              {ytLoading && (
+                <div style={{ marginBottom: "40px" }}>
+                  <SectionLabel color="#ef4444" bg="#fff1f2" text="▶ YOUTUBE" />
+                  <div className="youtube_VideoGrid">
+                    {[...Array(8)].map((_, i) => (
+                      <SkeletonCard key={i} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!ytLoading && ytVideos.length > 0 && (
+                <div>
+                  <SectionLabel
+                    color="#ef4444"
+                    bg="#fff1f2"
+                    text="▶ YOUTUBE"
+                    count={ytVideos.length}
+                  />
+                  <div className="youtube_VideoGrid">
+                    {ytVideos.map((item) => (
+                      <YouTubeVideoCard
+                        key={item.id.videoId}
+                        item={item}
+                        onSelect={openWatchPage}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!ytLoading &&
+                filteredVideos.length === 0 &&
+                ytVideos.length === 0 && (
+                  <div style={{ textAlign: "center", marginTop: "80px" }}>
+                    <div style={{ fontSize: "48px", marginBottom: "16px" }}>
+                      📭
+                    </div>
+                    <p
+                      style={{
+                        color: "#8b84c4",
+                        fontSize: "16px",
+                        fontWeight: "600",
+                      }}
+                    >
+                      No videos found for "
+                      <span style={{ color: "#7c3aed" }}>{selectedOption}</span>
+                      "
+                    </p>
+                    <p
+                      style={{
+                        color: "#c4bfdf",
+                        fontSize: "13px",
+                        marginTop: "8px",
+                      }}
+                    >
+                      Try selecting a different category
+                    </p>
+                  </div>
+                )}
+            </div>
+          ))}
+      </div>
+
+      {watchVideo && (
+        <WatchPage
+          initialVideoId={watchVideo.videoId}
+          initialTitle={watchVideo.title}
+          initialChannel={watchVideo.channel}
+          onClose={closeWatchPage}
+          suggestions={getSuggestions()}
+          onIncrementView={incrementView}
+        />
+      )}
+
+      <ReportModal
+        target={reportTarget}
+        onClose={closeReport}
+        onSubmit={submitReport}
+        submitting={reportSubmitting}
+      />
+    </div>
+  );
+};
+
+export default HomePage;
