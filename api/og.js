@@ -9,7 +9,20 @@ function escapeHtml(str = "") {
     .replace(/'/g, "&#39;");
 }
 
-function getVideoThumbnail(videoUrl) {
+// CHANGED: this used to attempt a Cloudinary-only URL transform
+// (`/upload/so_0/....jpg`) to pull a frame out of a video URL when no
+// stored thumbnail existed. Since the app migrated video/reel/post-video
+// uploads to Cloudflare R2 (uploadVideoToR2 in utils/mediaUpload.js),
+// video_url values no longer contain "/upload/" and never matched — this
+// was silently dead code for every content type. R2 (plain object
+// storage) has no equivalent built-in "grab me a frame" URL transform,
+// so there is currently no way to derive a thumbnail from the video URL
+// alone at request time. Kept as a named no-op (rather than deleted
+// outright) so it's obvious where to plug in a real transform if/when
+// one becomes available (e.g. a Cloudflare Stream thumbnail endpoint, or
+// a dedicated thumbnail-generation worker) — see the comment at each
+// call site below for what would need to change.
+function getVideoThumbnailFromCloudinaryUrl(videoUrl) {
   if (!videoUrl) return null;
   if (videoUrl.includes("/upload/")) {
     return videoUrl
@@ -31,11 +44,21 @@ async function fetchWithTimeout(url, options, timeoutMs = FETCH_TIMEOUT_MS) {
   }
 }
 
-// NEW: explicit allow-list. Previously any `type` that wasn't "post" or
-// "reel" silently fell through to the `videos` table lookup — harmless
-// today since nothing calls this with a bogus type, but it meant a typo
-// or a future new content type would fail silently instead of loudly.
+// Explicit allow-list — a typo or a future new content type fails loudly
+// (fallback card) instead of silently matching whatever the `else`
+// branch happened to do.
 const ALLOWED_TYPES = ["post", "reel", "video"];
+
+// CHANGED: was a bare string repeated in three places. Pulled into one
+// constant so there's a single source of truth, and documented here
+// rather than left implicit: logo192.png is a square PWA icon, NOT a
+// proper Open Graph image. Most platforms (WhatsApp, Facebook, iMessage,
+// Discord) expect roughly a 1200x630 landscape image and will crop or
+// awkwardly letterbox a square icon. If share-preview quality matters
+// beyond "an image shows up at all", replace this with a real branded
+// 1200x630 asset hosted at a stable URL, e.g.
+// "https://zixplon.in/og-fallback.jpg".
+const FALLBACK_OG_IMAGE = "https://zixplon.in/logo192.png";
 
 function renderHtml({ type, title, description, image, url }) {
   const safeTitle = escapeHtml(title);
@@ -71,7 +94,7 @@ function fallbackHtml(type, url) {
     type,
     title: "ZIXPLON",
     description: "Watch videos, reels, and posts on ZIXPLON",
-    image: "https://zixplon.in/logo192.png",
+    image: FALLBACK_OG_IMAGE,
     url,
   });
 }
@@ -91,13 +114,10 @@ export default async function handler(req) {
     "cache-control": "public, max-age=3600, s-maxage=3600",
   };
 
-  // NEW: much shorter cache for anything that ISN'T a confirmed content
-  // hit (missing params, unknown type, row not found, lookup error).
-  // Previously these shared the same 1-hour cache as real hits, so a
-  // freshly-created/shared video whose OG request raced ahead of the
-  // DB write (or hit a transient error) could keep serving the generic
-  // fallback card for up to an hour afterwards. 60s lets it self-correct
-  // quickly while still absorbing repeat-crawler traffic.
+  // Much shorter cache for anything that ISN'T a confirmed content hit
+  // (missing params, unknown type, row not found, lookup error) — lets
+  // a freshly-created/shared item self-correct within a minute instead
+  // of serving the fallback card for up to an hour.
   const notFoundHeaders = {
     "content-type": "text/html",
     "cache-control": "public, max-age=60, s-maxage=60",
@@ -147,23 +167,30 @@ export default async function handler(req) {
 
       title = item?.username ? `${item.username} on ZIXPLON` : "Post on ZIXPLON";
       description = item?.text?.slice(0, 200) || "Check out this post on ZIXPLON";
+      // CHANGED: added item?.thumbnail_url ahead of the dead Cloudinary
+      // fallback. PostComposer.jsx now captures and uploads a real
+      // thumbnail for video posts at upload time (same approach
+      // VideoUpload.jsx already used for videos/reels) and stores it in
+      // posts.thumbnail_url — see PostComposer.jsx changes. Requires the
+      // migration: alter table posts add column thumbnail_url text;
       image =
         item?.image_url ||
         item?.image_urls?.[0] ||
-        getVideoThumbnail(item?.video_url) ||
-        "https://zixplon.in/logo192.png";
+        item?.thumbnail_url ||
+        getVideoThumbnailFromCloudinaryUrl(item?.video_url) ||
+        FALLBACK_OG_IMAGE;
       url = `https://zixplon.in/feed?post=${id}`;
     } else {
       // Video/reel: match on EITHER the real internal id or short_id,
       // since our live URLs (/video/:id, /reels/db_:id) use the real
       // id, but some rows may only have short_id populated.
       //
-      // FIX: `id` is a uuid column, so trying `id.eq.<value>` with a
-      // value that isn't a valid UUID (e.g. an alphanumeric short_id
-      // like "b1bZGDMmzY") makes Postgres throw a type-cast error —
-      // which fails the WHOLE OR query, even though `short_id.eq.`
-      // alone would have matched fine. So: only include the id.eq.
-      // comparison when the requested id actually looks like a UUID.
+      // `id` is a uuid column, so trying `id.eq.<value>` with a value
+      // that isn't a valid UUID (e.g. an alphanumeric short_id like
+      // "b1bZGDMmzY") makes Postgres throw a type-cast error — which
+      // fails the WHOLE OR query, even though `short_id.eq.` alone would
+      // have matched fine. So: only include the id.eq. comparison when
+      // the requested id actually looks like a UUID.
       //
       // Also note the standalone (non-OR) filter below uses
       // `short_id=eq.value` (an "=" separating column and operator) —
@@ -202,11 +229,19 @@ export default async function handler(req) {
 
       title = item?.title || "Watch on ZIXPLON";
       description = item?.description || item?.channel || "Watch videos and reels on ZIXPLON";
+      // CHANGED: the Cloudinary URL transform never matches post-R2-
+      // migration video_url values (see getVideoThumbnailFromCloudinaryUrl
+      // above) — it's kept as a documented no-op rather than silently
+      // dead code. The real fix for videos/reels landing here is making
+      // sure thumbnail_url/thumbnail gets reliably populated at upload
+      // time (VideoUpload.jsx's captureThumbnail) — this handler can
+      // only display what's already stored, it can't generate a frame
+      // from an R2 URL on its own.
       image =
         item?.thumbnail_url ||
         item?.thumbnail ||
-        getVideoThumbnail(item?.video_url) ||
-        "https://zixplon.in/logo192.png";
+        getVideoThumbnailFromCloudinaryUrl(item?.video_url) ||
+        FALLBACK_OG_IMAGE;
 
       // Internal route still uses the REAL id — reels keep their existing
       // `db_<id>` convention, videos keep their plain numeric id.
