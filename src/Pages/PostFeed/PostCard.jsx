@@ -142,7 +142,7 @@ const PostVideo = ({ src }) => {
         playsInline
         preload="metadata"
         className="pf-card-video"
-        controlsList="nodownload noplaybackrate nofullscreen"
+        controlsList="nodownload noplaybackrate"
         disablePictureInPicture
         onContextMenu={(e) => e.preventDefault()}
       />
