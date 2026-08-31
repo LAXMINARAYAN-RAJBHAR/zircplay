@@ -605,7 +605,7 @@
   border-top: 2px solid var(--zx-border);
   background: var(--zx-surface);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .mp-chat-input {
