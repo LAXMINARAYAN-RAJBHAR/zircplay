@@ -1,0 +1,39 @@
+.hashtag-back-btn {
+  background: none;
+  border: none;
+  color: var(--zx-primary, #dc2626);
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+.hashtag-page-title {
+  font-family: 'Nunito', sans-serif;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--zx-text, #1a1414);
+  margin: 4px 0 2px;
+}
+
+.hashtag-page-subtitle {
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  color: var(--zx-text3, #b08585);
+  margin: 0 0 16px;
+}
+
+/* Default hashtag/mention link styling used by ExpandableText's
+   linkifyText() call wherever a call site doesn't override it with its
+   own hashtagClassName/mentionClassName. */
+.expandable-text-hashtag,
+.expandable-text-mention {
+  color: var(--zx-primary, #dc2626);
+  font-weight: 700;
+  text-decoration: none;
+}
+.expandable-text-hashtag:hover,
+.expandable-text-mention:hover {
+  text-decoration: underline;
+}

@@ -49,6 +49,12 @@ import { PresenceProvider } from "./context/PresenceContext";
 import useRequireUsernameSetup from "./hooks/useRequireUsernameSetup";
 import UsernameSetupModal from "./Component/Auth/UsernameSetupModal";
 import ExploreGrid from "./Pages/Explore/ExploreGrid";
+// NEW: /tag/:tag — every post containing a given #hashtag. See
+// src/Pages/Hashtag/HashtagPage.jsx. Clicking a #hashtag or @mention
+// anywhere ExpandableText is used (post text, comments, reel/video
+// descriptions) now routes here (or to /user/:username for mentions,
+// which already existed).
+import HashtagPage from "./Pages/Hashtag/HashtagPage";
 
 // ── FeedRedirect ──────────────────────────────────────────────────────────
 // FIX: old links to /feed?post=<id> — from the navbar's post-notification
@@ -739,6 +745,9 @@ function App() {
               <Route path="/admin"                 element={<AdminPanel />} />
               <Route path="/live"                  element={<LiveBrowser currentUser={currentUser} />} />
               <Route path="/foryou"                element={<ExploreGrid />} />
+              {/* NEW: hashtag pages — /tag/:tag. Linked from every
+                  #hashtag rendered via ExpandableText/linkifyText. */}
+              <Route path="/tag/:tag"              element={<HashtagPage sideNavbar={sideNavbar} currentUser={currentUser} />} />
             </Routes>
           </div>
         </div>

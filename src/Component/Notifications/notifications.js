@@ -10,11 +10,14 @@ import { supabase } from "../../config/supabase";
 import "./notifications.css";
 import { notifyUser, notifySubscribers } from "../../utils/notifications";
 
+// NEW: "mention" — fired from PostFeed.jsx (post creation + comments)
+// and HashtagPage.jsx (comments) whenever someone @mentions a user.
 const TYPE_ICON = {
   like: "❤️",
   comment: "💬",
   subscriber: "🔔",
   upload: "🎬",
+  mention: "📣",
 };
 
 const timeAgo = (iso) => {

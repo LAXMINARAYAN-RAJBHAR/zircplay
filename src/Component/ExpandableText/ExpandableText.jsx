@@ -1,14 +1,25 @@
 import React, { useState } from "react";
+import { linkifyText } from "../../utils/linkify";
 
 /**
  * Reusable "Show more / Show less" text truncator.
  * Used in PostCard (post text), Video (description), Reels (description).
+ *
+ * CHANGED: the displayed text is now run through linkifyText() so any
+ * #hashtag becomes a link to /tag/:tag and any @mention becomes a link to
+ * /user/:username — everywhere this component is already used gets this
+ * for free with no call-site changes required. hashtagClassName /
+ * mentionClassName are optional so each call site can theme them (e.g.
+ * white-on-dark for reel captions vs. the default post-text color);
+ * unset, they fall back to plain unstyled links.
  */
 const ExpandableText = ({
   text,
   maxChars = 180,
   className = "",
   toggleClassName = "",
+  hashtagClassName = "expandable-text-hashtag",
+  mentionClassName = "expandable-text-mention",
 }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -19,7 +30,7 @@ const ExpandableText = ({
 
   return (
     <span className={className}>
-      {displayText}
+      {linkifyText(displayText, { hashtagClassName, mentionClassName })}
       {isLong && (
         <span
           className={`expandable-text-toggle ${toggleClassName}`}
