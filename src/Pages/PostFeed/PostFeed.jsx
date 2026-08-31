@@ -12,6 +12,10 @@ import AdUnit from "../../Component/Ads/AdUnit";
 // anyone at all (unlike Video.jsx/Reels.jsx, which both call notifyUser
 // inline right after their like/comment Supabase writes).
 import { notifySubscribers, notifyUser } from "../../utils/notifications";
+// NEW: parses @mentions out of post/comment text so the mentioned user
+// gets notified, same as a like or comment would. See src/utils/linkify.js
+// (also used by ExpandableText to render #hashtags/@mentions as links).
+import { extractMentions } from "../../utils/linkify";
 
 // currentUser now comes from App.js via HomeHub — the same auth state
 // that drives the Navbar's Upload button, BottomNav, etc — instead of
@@ -326,6 +330,21 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
       contentId: post.id,
       contentType: "post",
     });
+
+    // NEW: notify anyone @mentioned in the post's own text — independent
+    // of the subscriber broadcast above, since a mentioned person isn't
+    // necessarily a subscriber of the poster.
+    extractMentions(post.text).forEach((mentioned) => {
+      if (mentioned === uploaderUsername) return;
+      notifyUser({
+        recipientUsername: mentioned,
+        senderUsername: uploaderUsername,
+        type: "mention",
+        message: `${uploaderUsername} mentioned you in a post`,
+        contentId: post.id,
+        contentType: "post",
+      });
+    });
   };
 
   const handleReaction = async (postId, reactionType) => {
@@ -420,6 +439,21 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         contentType: "post",
       });
     }
+
+    // NEW: notify anyone @mentioned in the comment — skipping the
+    // commenter themselves and the post owner (already notified above,
+    // so they'd otherwise get two notifications for one comment).
+    extractMentions(text).forEach((mentioned) => {
+      if (mentioned === currentUser || mentioned === post?.username) return;
+      notifyUser({
+        recipientUsername: mentioned,
+        senderUsername: currentUser,
+        type: "mention",
+        message: `${currentUser} mentioned you in a comment: "${text.trim().slice(0, 60)}"`,
+        contentId: postId,
+        contentType: "post",
+      });
+    });
   };
 
   // NEW: like/dislike a single comment. `type` is "like" or "dislike";
