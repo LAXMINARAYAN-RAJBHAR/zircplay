@@ -68,10 +68,24 @@ export const closeDanglingBold = (text) => {
  * className props let each call site style these to match its own theme
  * (dark reel captions vs. light post text, etc.) without this helper
  * hardcoding any color/weight itself beyond <strong>'s default boldness.
+ *
+ * disableLinks: when the linkified text is going to be rendered INSIDE
+ * an outer <Link> (e.g. a whole card that already navigates somewhere
+ * on click — see home.js's post preview cards), hashtag/mention <Link>s
+ * would nest an <a> inside an <a>, which is invalid HTML and breaks
+ * click behavior. Pass disableLinks: true in that case — hashtags and
+ * mentions still get their className applied (so they still look
+ * distinct) but render as plain <span>s instead of navigable links.
+ * **Bold** is unaffected either way, since <strong> was never a link.
  */
 export const linkifyText = (
   text,
-  { hashtagClassName = "", mentionClassName = "", boldClassName = "" } = {},
+  {
+    hashtagClassName = "",
+    mentionClassName = "",
+    boldClassName = "",
+    disableLinks = false,
+  } = {},
 ) => {
   if (!text) return null;
 
@@ -90,7 +104,11 @@ export const linkifyText = (
     }
     if (HASHTAG_TOKEN_TEST.test(part)) {
       const tag = part.slice(1);
-      return (
+      return disableLinks ? (
+        <span key={i} className={hashtagClassName}>
+          {part}
+        </span>
+      ) : (
         <Link
           key={i}
           to={`/tag/${tag.toLowerCase()}`}
@@ -103,7 +121,11 @@ export const linkifyText = (
     }
     if (MENTION_TOKEN_TEST.test(part)) {
       const username = part.slice(1);
-      return (
+      return disableLinks ? (
+        <span key={i} className={mentionClassName}>
+          {part}
+        </span>
+      ) : (
         <Link
           key={i}
           to={`/user/${username}`}
