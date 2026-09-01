@@ -1714,3 +1714,8 @@
   font-size: 20px;
   font-weight: 800;
 }
+
+.homePage_postBold {
+  color: inherit;
+  font-weight: 800;
+}

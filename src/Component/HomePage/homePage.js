@@ -16,6 +16,7 @@ import LiveBrowser from "../Live/LiveViewer";
 import AdUnit from "../../Component/Ads/AdUnit";
 // NEW: shared notification helper — see src/utils/notifications.js
 import { notifyUser } from "../../utils/notifications";
+import { linkifyText } from "../../utils/linkify";
 
 const API_KEYS = [
   process.env.REACT_APP_YOUTUBE_KEY_1,
@@ -755,13 +756,15 @@ const PostCard = ({
           />
         ) : (
           <div className="homePage_postThumbText">
-            <p>{post.text}</p>
-          </div>
+  <p>{linkifyText(post.text, { disableLinks: true, boldClassName: "homePage_postBold" })}</p>
+</div>
         )}
         <span className="homePage_postBadge">📝 Post</span>
       </div>
       <div className="homePage_postMeta">
-        <p className="homePage_postCaption">{post.text || "View post"}</p>
+        <p className="homePage_postCaption">
+  {post.text ? linkifyText(post.text, { disableLinks: true, boldClassName: "homePage_postBold" }) : "View post"}
+</p>
         <div className="homePage_postFooter">
           <p className="homePage_postUser">@{post.username}</p>
           <span className="homePage_postStats">
