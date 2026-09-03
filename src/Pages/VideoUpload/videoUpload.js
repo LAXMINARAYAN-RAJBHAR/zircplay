@@ -8,7 +8,7 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import { supabase } from "../../config/supabase";
 import RecordModal from "../RecordModal/RecordModal";
 import { checkContent } from "../../Component/Moderation/useModerationFilter";
-import { notifySubscribers } from "../../utils/notifications";
+import { notifyConnections } from "../../utils/notifications";
 import { uploadToR2, buildTransformUrl, uploadVideoToR2 } from "../../utils/mediaUpload";
 
 const INITIAL_FIELDS = {
@@ -477,10 +477,10 @@ const VideoUpload = () => {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Subscriber notifications on upload now go through the SHARED helper
+  // Connection notifications on upload now go through the SHARED helper
   // (src/utils/notifications.js) instead of a locally duplicated copy —
-  // see notifySubscribers(...) calls inside handleSubmit below. This keeps
-  // the UUID-vs-username subscriber resolution logic in exactly one place
+  // see notifyConnections(...) calls inside handleSubmit below. This keeps
+  // the UUID-vs-username connection resolution logic in exactly one place
   // so future fixes (RLS issues, resolution edge cases, etc.) don't have
   // to be made twice and can't silently drift apart between call sites.
   // ─────────────────────────────────────────────────────────────────────────
@@ -568,7 +568,7 @@ const VideoUpload = () => {
           .single();
         if (videoError) throw new Error(videoError.message);
 
-        await notifySubscribers(uploaderUsername, {
+        await notifyConnections(uploaderUsername, {
           type: "video",
           message: `${uploaderUsername} uploaded a new video: "${inputField.title}"`,
           contentId: newVideo.id,
@@ -602,7 +602,7 @@ const VideoUpload = () => {
         if (featureMode === "remix") await notifyRemixedCreator(inputField.title, newReel.id);
         else if (featureMode)        await notifyFeatureCreator(inputField.title, newReel.id);
 
-        await notifySubscribers(uploaderUsername, {
+        await notifyConnections(uploaderUsername, {
           type: "reel",
           message: `${uploaderUsername} uploaded a new reel: "${inputField.title}"`,
           contentId: newReel.id,

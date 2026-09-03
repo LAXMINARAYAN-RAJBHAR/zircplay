@@ -7,11 +7,11 @@ import PostCard from "./PostCard";
 import SideNavbar from "../../Component/SideNavbar/sideNavbar";
 import AdUnit from "../../Component/Ads/AdUnit";
 // CHANGED: now also imports notifyUser — needed for post like/comment
-// notifications added below. notifySubscribers already handled new-post
+// notifications added below. notifyConnections already handled new-post
 // notifications; likes/comments on posts previously never notified
 // anyone at all (unlike Video.jsx/Reels.jsx, which both call notifyUser
 // inline right after their like/comment Supabase writes).
-import { notifySubscribers, notifyUser } from "../../utils/notifications";
+import { notifyConnections, notifyUser } from "../../utils/notifications";
 // NEW: parses @mentions out of post/comment text so the mentioned user
 // gets notified, same as a like or comment would. See src/utils/linkify.js
 // (also used by ExpandableText to render #hashtags/@mentions as links).
@@ -324,7 +324,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     fetchViewCounts([post.id]);
 
     const uploaderUsername = currentUser;
-    await notifySubscribers(uploaderUsername, {
+    await notifyConnections(uploaderUsername, {
       type: "upload",
       message: `${uploaderUsername} made a new post: "${post.text?.slice(0, 60) || "Check it out"}"`,
       contentId: post.id,
@@ -332,8 +332,8 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     });
 
     // NEW: notify anyone @mentioned in the post's own text — independent
-    // of the subscriber broadcast above, since a mentioned person isn't
-    // necessarily a subscriber of the poster.
+    // of the connections broadcast above, since a mentioned person isn't
+    // necessarily connected to the poster.
     extractMentions(post.text).forEach((mentioned) => {
       if (mentioned === uploaderUsername) return;
       notifyUser({

@@ -2,7 +2,7 @@
 //
 // Shared helper for writing rows into the `notifications` table.
 // Previously only PostFeed.jsx's local `notifySubscribers()` did this —
-// likes, comments, subscribes, and video/reel uploads never wrote a
+// likes, comments, connects, and video/reel uploads never wrote a
 // notification row anywhere, which is why the bell only ever showed
 // (or was supposed to show) new-post notifications and nothing else.
 //
@@ -20,7 +20,7 @@ import { supabase } from "../config/supabase";
 export const notifyUser = async ({
   recipientUsername,
   senderUsername,
-  type, // "like" | "comment" | "subscriber" | "upload" | ...
+  type, // "like" | "comment" | "connection" | "upload" | ...
   message,
   contentId = null,
   contentType = null,
@@ -55,33 +55,43 @@ export const notifyUser = async ({
 };
 
 /**
- * Notify every subscriber of `uploaderUsername` (e.g. "X uploaded a new
+ * Notify everyone connected to `uploaderUsername` (e.g. "X uploaded a new
  * video/reel/post"). Mirrors the uuid-vs-username resolution that used to
  * live only inside PostFeed.jsx, now shared so video/reel uploads and
  * posts all use the same logic.
+ *
+ * CHANGED: renamed from notifySubscribers, and reads from the
+ * "connections" table (connector_id / connected_to) instead of the old
+ * "subscriptions" table (subscriber_id / subscribed_to) — see
+ * subscriptions_to_connections_migration.sql. This was the source of the
+ * "relation \"public.subscriptions\" does not exist" error on video/reel
+ * upload: this function was still querying the old table name after the
+ * migration renamed it.
  */
-export const notifySubscribers = async (
+export const notifyConnections = async (
   uploaderUsername,
   { type, message, contentId = null, contentType = null },
 ) => {
   if (!uploaderUsername) return;
 
-  const { data: subRows, error: subErr } = await supabase
-    .from("subscriptions")
-    .select("subscriber_id")
-    .eq("subscribed_to", uploaderUsername);
+  const { data: connectionRows, error: connErr } = await supabase
+    .from("connections")
+    .select("connector_id")
+    .eq("connected_to", uploaderUsername);
 
-  if (subErr) {
-    console.error("[notifications] Failed to load subscribers:", subErr);
+  if (connErr) {
+    console.error("[notifications] Failed to load connections:", connErr);
     return;
   }
-  if (!subRows || subRows.length === 0) return;
+  if (!connectionRows || connectionRows.length === 0) return;
 
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const uuidIds = [
     ...new Set(
-      subRows.filter((s) => uuidRegex.test(s.subscriber_id)).map((s) => s.subscriber_id),
+      connectionRows
+        .filter((c) => uuidRegex.test(c.connector_id))
+        .map((c) => c.connector_id),
     ),
   ];
 
@@ -92,7 +102,7 @@ export const notifySubscribers = async (
       .select("id, username")
       .in("id", uuidIds);
     if (profErr) {
-      console.error("[notifications] Failed to resolve subscriber usernames:", profErr);
+      console.error("[notifications] Failed to resolve connection usernames:", profErr);
     }
     profilesData?.forEach((p) => {
       if (p.username && p.username.trim()) idToUsername[p.id] = p.username;
@@ -101,9 +111,9 @@ export const notifySubscribers = async (
 
   const recipientUsernames = [
     ...new Set(
-      subRows
-        .map((s) =>
-          uuidRegex.test(s.subscriber_id) ? idToUsername[s.subscriber_id] : s.subscriber_id,
+      connectionRows
+        .map((c) =>
+          uuidRegex.test(c.connector_id) ? idToUsername[c.connector_id] : c.connector_id,
         )
         .filter(Boolean)
         .filter((u) => u !== uploaderUsername),
@@ -126,6 +136,6 @@ export const notifySubscribers = async (
 
   const { error } = await supabase.from("notifications").insert(notifications);
   if (error) {
-    console.error(`[notifications] Failed to notify subscribers ("${type}"):`, error);
+    console.error(`[notifications] Failed to notify connections ("${type}"):`, error);
   }
 };
