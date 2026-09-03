@@ -226,7 +226,7 @@ const ReelItem = ({ reel, allReels }) => {
 
   const loggedInUser = localStorage.getItem("username") || "Guest";
 
-  const [subscribed, setSubscribed]             = useState(false);
+  const [connected, setConnected]               = useState(false);
   const [liked, setLiked]                       = useState(false);
   const [disliked, setDisliked]                 = useState(false);
   const [likeCount, setLikeCount]               = useState(0);
@@ -325,13 +325,13 @@ const ReelItem = ({ reel, allReels }) => {
   }, [reel.id]);
 
   useEffect(() => {
-    const loadSubscription = async () => {
+    const loadConnection = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) return;
-      const { data } = await supabase.from("subscriptions").select("id").match({ subscriber_id: userId, subscribed_to: reel.username }).maybeSingle();
-      setSubscribed(!!data);
+      const { data } = await supabase.from("connections").select("id").match({ connector_id: userId, connected_to: reel.username }).maybeSingle();
+      setConnected(!!data);
     };
-    loadSubscription();
+    loadConnection();
   }, [reel.username]);
 
   useEffect(() => {
@@ -366,24 +366,24 @@ const ReelItem = ({ reel, allReels }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reel.src]);
 
-  const handleSubscribe = async (e) => {
+  const handleConnect = async (e) => {
     e.preventDefault();
     const userId = localStorage.getItem("userId");
-    if (!userId) { alert("Please login to subscribe"); return; }
-    if (userId === reel.username) { alert("You cannot subscribe to yourself"); return; }
-    if (subscribed) {
-      await supabase.from("subscriptions").delete().match({ subscriber_id: userId, subscribed_to: reel.username });
-      setSubscribed(false);
+    if (!userId) { alert("Please login to connect"); return; }
+    if (userId === reel.username) { alert("You cannot connect to yourself"); return; }
+    if (connected) {
+      await supabase.from("connections").delete().match({ connector_id: userId, connected_to: reel.username });
+      setConnected(false);
     } else {
-      const { error } = await supabase.from("subscriptions").insert({ subscriber_id: userId, subscriber_username: localStorage.getItem("username"), subscribed_to: reel.username });
+      const { error } = await supabase.from("connections").insert({ connector_id: userId, connector_username: localStorage.getItem("username"), connected_to: reel.username });
       if (!error) {
-        setSubscribed(true);
-        // NEW: notify the reel owner about the new subscriber.
+        setConnected(true);
+        // NEW: notify the reel owner about the new connection.
         notifyUser({
           recipientUsername: reel.username,
           senderUsername: loggedInUser,
-          type: "subscriber",
-          message: `${loggedInUser} subscribed to your channel`,
+          type: "connection",
+          message: `${loggedInUser} connected with you`,
         });
       }
     }
@@ -927,11 +927,11 @@ const ReelItem = ({ reel, allReels }) => {
             </Link>
             {loggedInUser !== reel.username && (
               <button
-                className="reel_subscribe_btn"
-                onClick={handleSubscribe}
-                style={{ background: subscribed ? "#555" : "#ff0000", color: "white" }}
+                className="reel_connect_btn"
+                onClick={handleConnect}
+                style={{ background: connected ? "#555" : "#ff0000", color: "white" }}
               >
-                {subscribed ? "Subscribed" : "Subscribe"}
+                {connected ? "Connected" : "Connect"}
               </button>
             )}
           </div>

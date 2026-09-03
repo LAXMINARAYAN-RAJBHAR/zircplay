@@ -176,7 +176,7 @@ import React, { useState, useRef, useEffect } from "react";
 
     const [dbVideos, setDbVideos] = useState([]);
     const [dbLoading, setDbLoading] = useState(true);
-    const [isSubscribed, setIsSubscribed] = useState(false);
+    const [isConnected, setIsConnected] = useState(false);
     const [message, setMessage] = useState("");
     const [autoPlay, setAutoPlay] = useState(true);
     const [showControls, setShowControls] = useState(true);
@@ -433,18 +433,18 @@ import React, { useState, useRef, useEffect } from "react";
     }, [video?.id, video?.isDb, loggedInUser]);
 
     useEffect(() => {
-      const loadSubscription = async () => {
+      const loadConnection = async () => {
         const userId = localStorage.getItem("userId");
         if (!userId || !video) return;
         const channelUsername = video.username || video.channel?.toLowerCase();
         const { data } = await supabase
-          .from("subscriptions")
+          .from("connections")
           .select("id")
-          .match({ subscriber_id: userId, subscribed_to: channelUsername })
+          .match({ connector_id: userId, connected_to: channelUsername })
           .single();
-        setIsSubscribed(!!data);
+        setIsConnected(!!data);
       };
-      loadSubscription();
+      loadConnection();
     }, [id, video?.username]);
 
     // ── Fetch the channel/uploader's real avatar from the profiles table.
@@ -473,35 +473,35 @@ import React, { useState, useRef, useEffect } from "react";
       loadChannelAvatar();
     }, [video?.id, video?.username, video?.channel]);
 
-    const handleSubscribe = async () => {
+    const handleConnect = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) {
-        alert("Please login to subscribe");
+        alert("Please login to connect");
         return;
       }
       const channelUsername = video.username || video.channel?.toLowerCase();
       if (userId === channelUsername) {
-        alert("You cannot subscribe to yourself");
+        alert("You cannot connect to yourself");
         return;
       }
-      if (isSubscribed) {
+      if (isConnected) {
         await supabase
-          .from("subscriptions")
+          .from("connections")
           .delete()
-          .match({ subscriber_id: userId, subscribed_to: channelUsername });
-        setIsSubscribed(false);
+          .match({ connector_id: userId, connected_to: channelUsername });
+        setIsConnected(false);
       } else {
         const { error } = await supabase
-          .from("subscriptions")
-          .insert({ subscriber_id: userId, subscribed_to: channelUsername });
+          .from("connections")
+          .insert({ connector_id: userId, connected_to: channelUsername });
         if (!error) {
-          setIsSubscribed(true);
-          // NEW: notify the channel owner that they got a new subscriber.
+          setIsConnected(true);
+          // NEW: notify the channel owner that they got a new connection.
           notifyUser({
             recipientUsername: channelUsername,
             senderUsername: loggedInUser,
-            type: "subscriber",
-            message: `${loggedInUser} subscribed to your channel`,
+            type: "connection",
+            message: `${loggedInUser} connected with you`,
           });
         }
       }
@@ -1194,16 +1194,16 @@ import React, { useState, useRef, useEffect } from "react";
                 </div>
                 {loggedInUser !== channelUsername && (
                   <div
-                    className="subscribeBtnYoutube"
-                    onClick={handleSubscribe}
+                    className="connectBtnYoutube"
+                    onClick={handleConnect}
                     style={{
-                      background: isSubscribed ? "#e0d4ff" : "#7c3aed",
-                      color: isSubscribed ? "#7c3aed" : "#ffffff",
-                      border: isSubscribed ? "2px solid #7c3aed" : "none",
+                      background: isConnected ? "#e0d4ff" : "#7c3aed",
+                      color: isConnected ? "#7c3aed" : "#ffffff",
+                      border: isConnected ? "2px solid #7c3aed" : "none",
                       cursor: "pointer",
                     }}
                   >
-                    {isSubscribed ? "✓ Subscribed" : "Subscribe"}
+                    {isConnected ? "✓ Connected" : "Connect"}
                   </div>
                 )}
               </div>
