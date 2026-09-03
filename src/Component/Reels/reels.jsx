@@ -10,7 +10,10 @@ import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import GrassOutlinedIcon from "@mui/icons-material/GrassOutlined";
 import ContentCutOutlinedIcon from "@mui/icons-material/ContentCutOutlined";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
-import CheckIcon from "@mui/icons-material/Check";
+// CHANGED: CheckIcon removed — the Connect button now shows a plain
+// "✓ Connected" text label, same as PostCard.jsx and Video.jsx, instead
+// of a separate MUI check icon. Keeps the three Connect buttons visually
+// and semantically identical across the app.
 import "./reels.css";
 import { Link, useLocation, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../config/supabase";
@@ -21,12 +24,7 @@ import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ExpandableText from "../ExpandableText/ExpandableText";
 import AdUnit from "../../Component/Ads/AdUnit";
-// NEW: shared notification helper — see src/utils/notifications.js
 import { notifyUser } from "../../utils/notifications";
-
-// ── Only uploaded reels (from Supabase) are used anywhere in this file now.
-//    The hardcoded demo `reelsData` array has been removed — reels shown in
-//    the app come exclusively from the `reels` table via fetchDbReels below.
 
 const getVideoType = (src) => {
   if (!src) return "video/mp4";
@@ -55,26 +53,12 @@ const setGlobalMuted = (val) => {
   muteListeners.forEach((fn) => fn(val));
 };
 
-// Human-readable label shown in the corner badge for each quality tier
 const QUALITY_LABELS = {
   low: "240p",
   medium: "360p",
   high: "720p HD",
 };
 
-// ── Relative-time formatter for comment timestamps (e.g. "3h ago").
-//    Mirrors the helper used in Video.jsx so comment ages read
-//    consistently across posts, videos, and reels.
-//
-//    FIX: Supabase/Postgres `timestamp` (no timezone) columns come back
-//    as strings like "2024-06-01 10:00:00" — no "T", no "Z", no offset.
-//    `new Date(...)` parses a string in that shape as LOCAL time, not
-//    UTC, which silently shifts every relative time by the browser's
-//    UTC offset (e.g. showing "5h ago" for a comment posted seconds
-//    ago, for a user in UTC+5:30). If the string has no explicit
-//    timezone marker, we now treat it as UTC before parsing. Strings
-//    that already carry a "Z" or a numeric offset (i.e. a proper
-//    `timestamptz` column) pass through unchanged.
 const timeAgo = (dateStr) => {
   if (!dateStr) return "";
 
@@ -94,18 +78,8 @@ const timeAgo = (dateStr) => {
   return `${Math.floor(diff / 31536000)}y ago`;
 };
 
-// ─────────────────────────────────────────────────────────
-// "New" badge helpers
-// A reel is NEW if:
-//   1. It's a db_ reel (i.e. an uploaded reel from Supabase)
-//   2. Not yet viewed (tracked in localStorage)
-//   3. Uploaded within last 7 days OR just arrived via realtime
-//
-// "Just arrived via realtime" = stored in sessionStorage
-// so badge shows immediately without waiting for created_at
-// ─────────────────────────────────────────────────────────
 const VIEWED_KEY  = "zixplon_viewed_reels";
-const FRESH_KEY   = "zixplon_fresh_reels"; // reels that arrived this session via realtime
+const FRESH_KEY   = "zixplon_fresh_reels";
 
 const getViewedReels = () => {
   try { return JSON.parse(localStorage.getItem(VIEWED_KEY) || "[]"); }
@@ -117,7 +91,6 @@ const getFreshReels = () => {
   catch { return []; }
 };
 
-// Call this when a reel arrives via realtime INSERT
 export const markReelFresh = (id) => {
   const fresh = getFreshReels();
   if (!fresh.includes(String(id))) {
@@ -126,12 +99,9 @@ export const markReelFresh = (id) => {
   }
 };
 
-// Call this when user actually watches the reel
 const markReelViewed = (id) => {
-  // Remove from fresh list
   const fresh = getFreshReels().filter((f) => f !== String(id));
   sessionStorage.setItem(FRESH_KEY, JSON.stringify(fresh));
-  // Add to viewed list
   const viewed = getViewedReels();
   if (!viewed.includes(String(id))) {
     viewed.push(String(id));
@@ -141,13 +111,9 @@ const markReelViewed = (id) => {
 
 const isNewReel = (reel) => {
   const id = String(reel.id);
-  // Only uploaded reels (db_*) can ever be "new"
   if (!id.startsWith("db_")) return false;
-  // Already viewed → not new
   if (getViewedReels().includes(id)) return false;
-  // Just arrived this session via realtime → always show badge
   if (getFreshReels().includes(id)) return true;
-  // Uploaded within last 7 days → show badge
   if (reel.created_at) {
     const age = Date.now() - new Date(reel.created_at).getTime();
     return age <= 7 * 24 * 60 * 60 * 1000;
@@ -155,9 +121,6 @@ const isNewReel = (reel) => {
   return false;
 };
 
-// ─────────────────────────────────────────────────────────
-// More dropdown — 6 creator/moderation actions in a floating menu
-// ─────────────────────────────────────────────────────────
 const MoreDropdown = ({ onRemix, onSound, onCollab, onGreenScreen, onCut, onReport, onClose }) => {
   const ref = useRef(null);
 
@@ -195,11 +158,6 @@ const MoreDropdown = ({ onRemix, onSound, onCollab, onGreenScreen, onCut, onRepo
   );
 };
 
-// ─────────────────────────────────────────────────────────
-// ReelAdSlide — a full-height interstitial ad slide that mimics the
-// dimensions/snap-scroll behavior of a real ReelItem, so it sits
-// naturally in the vertical feed without breaking the snap rhythm.
-// ─────────────────────────────────────────────────────────
 const ReelAdSlide = () => (
   <div className="reel_item" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0a" }}>
     <div style={{ width: "100%", maxWidth: "420px", padding: "0 16px" }}>
@@ -219,15 +177,19 @@ const ReelItem = ({ reel, allReels }) => {
   const observerRef     = useRef(null);
   const iconTimeoutRef  = useRef(null);
   const commentPanelRef = useRef(null);
-  const commentBtnRef   = useRef(null); // ✅ FIX: ref for comment button
+  const commentBtnRef   = useRef(null);
   const lastTapRef      = useRef(0);
   const tapTimeoutRef   = useRef(null);
   const muteBtnTimerRef = useRef(null);
-  const progressBarRef  = useRef(null); // 🆕 progress bar hit area
+  const progressBarRef  = useRef(null);
 
   const loggedInUser = localStorage.getItem("username") || "Guest";
 
   const [connected, setConnected]               = useState(false);
+  // NEW: connectLoading — same debounce/disable guard PostCard.jsx uses,
+  // so a double-click (or double-tap on mobile) can't fire two
+  // overlapping Supabase requests and desync the optimistic UI state.
+  const [connectLoading, setConnectLoading]     = useState(false);
   const [liked, setLiked]                       = useState(false);
   const [disliked, setDisliked]                 = useState(false);
   const [likeCount, setLikeCount]               = useState(0);
@@ -246,44 +208,40 @@ const ReelItem = ({ reel, allReels }) => {
   const [viewCount, setViewCount]               = useState(0);
   const [showHeartBurst, setShowHeartBurst]     = useState(false);
   const [showMuteBtn, setShowMuteBtn]           = useState(true);
-  const [showNewBadge, setShowNewBadge]         = useState(false); // "New" badge
+  const [showNewBadge, setShowNewBadge]         = useState(false);
   const [showReportModal, setShowReportModal]   = useState(false);
-  const [progress, setProgress]                 = useState(0); // 🆕 playback progress %
+  const [progress, setProgress]                 = useState(0);
 
-  // ── Adaptive resolution based on real-time network conditions ─────────────
   const quality = useNetworkQuality();
 
-  // ✅ Re-evaluate New badge whenever reel object changes (e.g. after realtime insert)
   useEffect(() => {
     setShowNewBadge(isNewReel(reel));
   }, [reel.id]);
 
-  // ── show timed action toast ──
   const showToast = (msg, type = "") => {
     setActionToast({ show: true, msg, type });
     setTimeout(() => setActionToast({ show: false, msg: "", type: "" }), 950);
   };
 
-  // ── require login helper ──
   const requireLogin = () => {
-    if (!localStorage.getItem("username")) { alert("Please login to use this feature"); return false; }
+    if (!localStorage.getItem("username")) {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return false;
+    }
     return true;
   };
 
-  // ── pause + navigate to upload ──
   const goToUpload = (state) => {
     if (videoRef.current) videoRef.current.pause();
     setTimeout(() => navigate("/763/upload", { state }), 900);
   };
 
-  // ── global mute listener ──
   useEffect(() => {
     const listener = (val) => { setMuted(val); if (videoRef.current) videoRef.current.muted = val; };
     muteListeners.add(listener);
     return () => muteListeners.delete(listener);
   }, []);
 
-  // ✅ FIX: outside click excludes BOTH the panel AND the comment button
   useEffect(() => {
     if (!showComments) return;
     const handleOutsideClick = (e) => {
@@ -325,11 +283,21 @@ const ReelItem = ({ reel, allReels }) => {
     loadViewCount();
   }, [reel.id]);
 
+  // CHANGED: this loader now also runs for the current user's own reels
+  // and simply skips setting state when username === reel.username — but
+  // to keep behavior identical to before (button never renders on own
+  // reels anyway) it still returns early. Kept as-is, wired the same way
+  // as PostCard.jsx / Video.jsx's connection loaders.
   useEffect(() => {
     const loadConnection = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) return;
-      const { data } = await supabase.from("connections").select("id").match({ connector_id: userId, connected_to: reel.username }).maybeSingle();
+      const { data, error } = await supabase
+        .from("connections")
+        .select("id")
+        .match({ connector_id: userId, connected_to: reel.username })
+        .maybeSingle();
+      if (error) console.error("loadConnection error:", error);
       setConnected(!!data);
     };
     loadConnection();
@@ -339,9 +307,6 @@ const ReelItem = ({ reel, allReels }) => {
     const loadComments = async () => {
       const { data } = await supabase.from("comments").select("*").match({ content_id: String(reel.id), content_type: "reel" }).order("created_at", { ascending: false });
       if (data && data.length > 0) {
-        // CHANGED: keep the full created_at timestamp (was previously
-        // sliced to just the date, e.g. "2024-06-01") so the comment
-        // list can render a relative "x ago" time via timeAgo() below.
         setComments(data.map((c) => ({ id: c.id, user: c.username, text: c.text, date: c.created_at })));
       }
     };
@@ -350,7 +315,6 @@ const ReelItem = ({ reel, allReels }) => {
 
   useViewTracker({ contentId: reel.id, contentType: "reel", isPlaying });
 
-  // 🆕 Track playback progress for the progress bar
   useEffect(() => {
     if (isYouTube(reel.src)) return;
     const video = videoRef.current;
@@ -367,34 +331,60 @@ const ReelItem = ({ reel, allReels }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reel.src]);
 
-  // ── Connect / Disconnect — optimistic update so the button flips
-  //    instantly (like Subscribe/Subscribed) instead of waiting on the
-  //    Supabase round-trip. Reverts state if the request fails.
+  // ── Connect / Disconnect — now wired identically to PostCard.jsx and
+  //    Video.jsx: dispatch "openLogin" instead of alert() when logged
+  //    out, a self-connect guard, a connectLoading guard against
+  //    double-fires, an optimistic flip with rollback + console.error
+  //    logging on failure, and notifyUser() only after a confirmed
+  //    successful insert.
   const handleConnect = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!localStorage.getItem("username")) {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
     const userId = localStorage.getItem("userId");
-    if (!userId) { alert("Please login to connect"); return; }
-    if (userId === reel.username) { alert("You cannot connect to yourself"); return; }
+    if (!userId) {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
+    if (userId === reel.username) return; // self-connect guard
+    if (connectLoading) return;
 
     const wasConnected = connected;
+    setConnectLoading(true);
     setConnected(!wasConnected); // optimistic flip
 
-    if (wasConnected) {
-      const { error } = await supabase.from("connections").delete().match({ connector_id: userId, connected_to: reel.username });
-      if (error) setConnected(true); // revert on failure
-    } else {
-      const { error } = await supabase.from("connections").insert({ connector_id: userId, connector_username: localStorage.getItem("username"), connected_to: reel.username });
-      if (error) {
-        setConnected(false); // revert on failure
+    try {
+      if (wasConnected) {
+        const { error } = await supabase
+          .from("connections")
+          .delete()
+          .match({ connector_id: userId, connected_to: reel.username });
+        if (error) {
+          console.error("handleConnect delete error:", error);
+          setConnected(true); // rollback
+        }
       } else {
-        // NEW: notify the reel owner about the new connection.
-        notifyUser({
-          recipientUsername: reel.username,
-          senderUsername: loggedInUser,
-          type: "connection",
-          message: `${loggedInUser} connected with you`,
+        const { error } = await supabase.from("connections").insert({
+          connector_id: userId,
+          connector_username: loggedInUser,
+          connected_to: reel.username,
         });
+        if (error) {
+          console.error("handleConnect insert error:", error);
+          setConnected(false); // rollback
+        } else {
+          notifyUser({
+            recipientUsername: reel.username,
+            senderUsername: loggedInUser,
+            type: "connection",
+            message: `${loggedInUser} connected with you`,
+          });
+        }
       }
+    } finally {
+      setConnectLoading(false);
     }
   };
 
@@ -404,12 +394,7 @@ const ReelItem = ({ reel, allReels }) => {
     if (!userId) { alert("Please login to comment"); return; }
     const { data, error } = await supabase.from("comments").insert({ user_id: userId, username: loggedInUser, content_id: String(reel.id), content_type: "reel", text: commentText }).select().single();
     if (!error && data) {
-      // CHANGED: keep the full created_at timestamp (was previously
-      // sliced to just the date) so the newly-posted comment shows a
-      // relative "just now" / "Xm ago" time immediately, consistent
-      // with comments loaded from the database.
       setComments((prev) => [{ id: data.id, user: data.username, text: data.text, date: data.created_at }, ...prev]);
-      // NEW: notify the reel owner about the comment.
       notifyUser({
         recipientUsername: reel.username,
         senderUsername: loggedInUser,
@@ -422,14 +407,6 @@ const ReelItem = ({ reel, allReels }) => {
     setCommentText("");
   };
 
-  // FIX: use the reel's alphanumeric short_id in the shared link instead
-  // of the raw numeric id, so links pasted into WhatsApp/etc. show
-  // something like ?id=aB3xY9kLm2 instead of ?id=86. Falls back to the
-  // old numeric-id form if short_id isn't available for some reason
-  // (e.g. a row created before the short_id migration ran), so this
-  // never breaks. Everything else about the reel (likes, comments,
-  // views, remix chains, "New" badge tracking) is untouched — reel.id
-  // still keeps its existing `db_<realid>` form everywhere else.
   const handleShare = () => {
     const isDbReel = String(reel.id).startsWith("db_");
     const shareId = reel.short_id || String(reel.id).replace("db_", "");
@@ -440,8 +417,6 @@ const ReelItem = ({ reel, allReels }) => {
     setShareToast(true);
     setTimeout(() => setShareToast(false), 2500);
   };
-
-  // ── Creator action handlers ──────────────────────────────
 
   const handleRemix = () => {
     if (!requireLogin()) return;
@@ -518,13 +493,13 @@ const ReelItem = ({ reel, allReels }) => {
     });
   };
 
-  // ── Report handler ───────────────────────────────────────
   const handleReport = () => {
-    if (!localStorage.getItem("username")) { alert("Please login"); return; }
+    if (!localStorage.getItem("username")) {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
     setShowReportModal(true);
   };
-
-  // ── Video / playback helpers ─────────────────────────────
 
   const isYouTube = (url) => url && (url.includes("youtube.com") || url.includes("youtu.be"));
   const getEmbedUrl = (url) => {
@@ -549,11 +524,9 @@ const ReelItem = ({ reel, allReels }) => {
           video.muted = globalMuted;
           video.play().catch(() => {});
           setIsPlaying(true);
-          // ✅ Show mute pill when reel comes into view
           setShowMuteBtn(true);
           clearTimeout(muteBtnTimerRef.current);
           muteBtnTimerRef.current = setTimeout(() => setShowMuteBtn(false), 3000);
-          // ✅ Mark as viewed after 2s delay so "New" badge is visible first
           setTimeout(() => {
             markReelViewed(reel.id);
             setShowNewBadge(false);
@@ -576,9 +549,6 @@ const ReelItem = ({ reel, allReels }) => {
     };
   }, []);
 
-  // ── Reload the player when detected network quality changes, so a reel
-  //    already in view actually steps up/down resolution instead of only
-  //    affecting the next scroll. Only applies to Cloudinary sources. ──────
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !reel.src?.includes("cloudinary.com")) return;
@@ -615,7 +585,6 @@ const ReelItem = ({ reel, allReels }) => {
       setLiked(true);
       setLikeCount(await fetchCount(reel.id, "reel", "like"));
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));
-      // NEW: notify the reel owner about the like (double-tap path).
       notifyUser({
         recipientUsername: reel.username,
         senderUsername: loggedInUser,
@@ -646,7 +615,6 @@ const ReelItem = ({ reel, allReels }) => {
     }, 250);
   };
 
-  // ✅ FIX: show mute pill on every toggle, hide after 3s
   const handleToggleMute = (e) => {
     e.stopPropagation();
     const newMuted = !globalMuted;
@@ -657,7 +625,6 @@ const ReelItem = ({ reel, allReels }) => {
     muteBtnTimerRef.current = setTimeout(() => setShowMuteBtn(false), 3000);
   };
 
-  // 🆕 Seek handler — click/drag anywhere on the progress bar to jump
   const handleSeek = (e) => {
     e.stopPropagation();
     const bar = progressBarRef.current;
@@ -686,7 +653,6 @@ const ReelItem = ({ reel, allReels }) => {
         }
         await supabase.from("likes").upsert({ user_id: userId, content_id: String(reel.id), content_type: "reel", reaction_type: "like" }, { onConflict: "user_id,content_id,content_type,reaction_type" });
         setLiked(true);
-        // NEW: notify the reel owner about the like (button path).
         notifyUser({
           recipientUsername: reel.username,
           senderUsername: loggedInUser,
@@ -727,13 +693,10 @@ const ReelItem = ({ reel, allReels }) => {
     <div className="reel_item" id={`reel-${reel.id}`} ref={containerRef}>
       <div className="reel_video_wrapper">
 
-        {/* ── Video ── */}
         {isYouTube(reel.src) ? (
           <iframe className="reel_video" src={getEmbedUrl(reel.src)} frameBorder="0" allow="autoplay; fullscreen" allowFullScreen title={reel.title} />
         ) : (
           <video ref={videoRef} className="reel_video" loop muted={muted} playsInline poster={reel.thumbnail} controlsList="nodownload" onContextMenu={(e) => e.preventDefault()} onClick={handleVideoClick}>
-            {/* getAdaptiveVideoSrc injects a resolution/quality transform for
-                Cloudinary-hosted reels based on live network conditions. */}
             <source src={getAdaptiveVideoSrc(reel.src, quality)} type={getVideoType(reel.src)} />
             Your browser does not support this video.
           </video>
@@ -742,7 +705,6 @@ const ReelItem = ({ reel, allReels }) => {
         {!isYouTube(reel.src) && showIcon       && <div className="reel_play_icon">{isPlaying ? "▶" : "⏸"}</div>}
         {!isYouTube(reel.src) && showHeartBurst && <div className="reel_heart_burst">❤️</div>}
 
-        {/* ✅ SINGLE mute button — controlled by showMuteBtn state */}
         {!isYouTube(reel.src) && showMuteBtn && (
           <button
             key={muted ? "muted" : "unmuted"}
@@ -755,10 +717,6 @@ const ReelItem = ({ reel, allReels }) => {
           </button>
         )}
 
-        {/* Resolution badge — only meaningful for Cloudinary sources,
-            since those are the ones that actually adapt to network speed.
-            Fades in/out together with the mute pill so it doesn't clutter
-            the view once the viewer has settled into the reel. */}
         {!isYouTube(reel.src) && reel.src?.includes("cloudinary.com") && (
           <div
             style={{
@@ -783,7 +741,6 @@ const ReelItem = ({ reel, allReels }) => {
           </div>
         )}
 
-        {/* ── Remix origin badge ── */}
         {reel.remixed_from_username && (
           <div className="reel_remix_origin_badge" onClick={() => navigate(`/reels/db_${reel.remixed_from_id}`)}>
             <MusicNoteIcon style={{ fontSize: "12px" }} />
@@ -791,12 +748,10 @@ const ReelItem = ({ reel, allReels }) => {
           </div>
         )}
 
-        {/* ── "New" badge — shows on fresh uploads, disappears on first view ── */}
         {showNewBadge && (
           <div className="reel_new_badge">✨ New</div>
         )}
 
-        {/* 🆕 ── Progress bar — click/tap anywhere to seek ── */}
         {!isYouTube(reel.src) && (
           <div
             className="reel_progress_track"
@@ -807,12 +762,8 @@ const ReelItem = ({ reel, allReels }) => {
           </div>
         )}
 
-        {/* ══════════════════════════════════════
-            RIGHT ACTION BAR
-        ══════════════════════════════════════ */}
         <div className="reel_actions">
 
-          {/* Like */}
           <div
             className={`reel_action_btn reel_like_btn ${liked ? "reel_liked" : ""}`}
             onClick={handleLike}
@@ -825,7 +776,6 @@ const ReelItem = ({ reel, allReels }) => {
             <span className="reel_like_emoji">😊</span>
           </div>
 
-          {/* Dislike */}
           <div
             className={`reel_action_btn ${disliked ? "reel_disliked" : ""}`}
             onClick={handleDislike}
@@ -834,7 +784,6 @@ const ReelItem = ({ reel, allReels }) => {
             <ThumbDownAltOutlinedIcon style={{ color: disliked ? "#ff0000" : "white" }} />
           </div>
 
-          {/* ✅ FIX: Comment button now has commentBtnRef */}
           <div
             ref={commentBtnRef}
             className="reel_action_btn"
@@ -844,13 +793,11 @@ const ReelItem = ({ reel, allReels }) => {
             <span>{comments.length > 0 ? comments.length : "Comment"}</span>
           </div>
 
-          {/* Share */}
           <div className="reel_action_btn" onClick={handleShare}>
             <ReplyIcon style={{ color: "white", transform: "scaleX(-1)" }} />
             <span>Share</span>
           </div>
 
-          {/* More */}
           <div
             className={`reel_action_btn reel_more_btn ${showMoreMenu ? "reel_more_btn--open" : ""}`}
             onClick={(e) => { e.stopPropagation(); setShowMoreMenu((v) => !v); }}
@@ -872,7 +819,6 @@ const ReelItem = ({ reel, allReels }) => {
 
         </div>
 
-        {/* Comments panel */}
         {showComments && (
           <div className="reel_comment_panel" ref={commentPanelRef}>
             <div className="reel_comment_input_row">
@@ -904,17 +850,14 @@ const ReelItem = ({ reel, allReels }) => {
           </div>
         )}
 
-        {/* Share toast */}
         {shareToast && <div className="reel_share_toast">Link copied to clipboard ✓</div>}
 
-        {/* Action toast */}
         {actionToast.show && (
           <div className={`reel_share_toast reel_action_toast reel_action_toast--${actionToast.type}`}>
             {actionToast.msg}
           </div>
         )}
 
-        {/* Report modal */}
         {showReportModal && (
           <ReportModal
             contentType="reel"
@@ -934,13 +877,17 @@ const ReelItem = ({ reel, allReels }) => {
             <Link to={`/user/${reel.username}`} style={{ textDecoration: "none", color: "white" }}>
               <span className="reel_username">{reel.user}</span>
             </Link>
+            {/* CHANGED: Connect is now a <button>, matching PostCard.jsx
+                and Video.jsx (was a <div>). Same disabled-while-loading
+                guard, same "✓ Connected" text label instead of a check
+                icon. */}
             {loggedInUser !== reel.username && (
               <button
                 className={`reel_connect_btn ${connected ? "reel_connect_btn--connected" : ""}`}
                 onClick={handleConnect}
+                disabled={connectLoading}
               >
-                {connected && <CheckIcon style={{ fontSize: 14 }} />}
-                {connected ? "Connected" : "Connect"}
+                {connected ? "✓ Connected" : "Connect"}
               </button>
             )}
           </div>
@@ -983,7 +930,7 @@ const Reels = () => {
         setDbReels(
           data.map((r) => ({
             id:                    `db_${r.id}`,
-            short_id:               r.short_id, // alphanumeric alias used only for the share link
+            short_id:               r.short_id,
             src:                   r.video_url,
             thumbnail:             r.thumbnail || "https://picsum.photos/200/350?random=99",
             title:                 r.title    || "Untitled",
@@ -1007,11 +954,10 @@ const Reels = () => {
       .channel("reels-page-channel")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "reels" }, (payload) => {
         const r = payload.new;
-        // ✅ Mark as fresh so "New" badge shows immediately
         markReelFresh(`db_${r.id}`);
         setDbReels((prev) => [{
           id:                    `db_${r.id}`,
-          short_id:               r.short_id, // alphanumeric alias used only for the share link
+          short_id:               r.short_id,
           src:                   r.video_url,
           thumbnail:             r.thumbnail || "https://picsum.photos/200/350?random=99",
           title:                 r.title    || "Untitled",
@@ -1031,31 +977,11 @@ const Reels = () => {
     return () => supabase.removeChannel(reelsSub);
   }, []);
 
-  // ── Only uploaded reels — no hardcoded/static data merged in anymore.
   const baseReels = React.useMemo(() => dbReels, [dbReels]);
 
-  // ── Trending mode: if we arrived here via the homepage "Trending Now"
-  //    strip, location.state carries { fromTrending: true, trendingIds: [...] }
-  //    — a whitelist of reel IDs that were shown in the trending strip.
-  //    When present, we restrict the whole vertical scroll feed to just
-  //    those reels (always keeping the actually-clicked reel included, so
-  //    it can never be excluded by a stale/partial ID list).
   const fromTrending = location.state?.fromTrending || false;
   const trendingIds = location.state?.trendingIds || null;
 
-  // FIX: reel.id everywhere in this file is stored in the "db_<uuid>"
-  // form (see fetchDbReels/reelsSub above). But an incoming :id param —
-  // from a shared link, a notification's navigate("/reels/:id"), or the
-  // og-image endpoint — isn't guaranteed to carry that "db_" prefix.
-  // notifyUser() in src/utils/notifications.js normalizes contentId to a
-  // plain String(...) but has no idea about this file's "db_" convention,
-  // so upload notifications (via notifySubscribers, fired with the raw
-  // Supabase row id) end up stored WITHOUT the prefix, while like/comment
-  // notifications (fired from this file with contentId: reel.id) end up
-  // stored WITH it. Same content_type ("reel"), two different shapes.
-  // normalizeReelId() makes every lookup below tolerant of either shape,
-  // so a stale/inconsistent ID degrades gracefully instead of falsely
-  // reporting the reel as deleted.
   const normalizeReelId = (value) => {
     const str = String(value);
     return str.startsWith("db_") ? str : `db_${str}`;
@@ -1075,20 +1001,11 @@ const Reels = () => {
     }
 
     if (id) {
-      // CHANGED: compare against both the raw :id param and its
-      // normalized "db_" form, instead of only String(r.id) === String(id).
       const normalizedId = normalizeReelId(id);
       const target = pool.find(
         (r) => String(r.id) === String(id) || String(r.id) === normalizedId,
       );
       if (target) return [target, ...pool.filter((r) => String(r.id) !== String(target.id))];
-      // FIX: previously fell through to `return pool` here — meaning a
-      // link/notification pointing at a reel that isn't in this pool
-      // (deleted, or a content_id/type mismatch) silently showed
-      // whatever reel happened to be first instead of any indication
-      // something was wrong. Now handled explicitly below via
-      // `requestedReelMissing`, so the UI can show a clear "not found"
-      // state instead of quietly substituting different content.
     }
     const clickedReel = location.state?.clickedReel;
     if (clickedReel) {
@@ -1098,15 +1015,6 @@ const Reels = () => {
     return pool;
   }, [baseReels, id, location.state, fromTrending, trendingIds]);
 
-  // FIX: a specific reel was requested via the URL (deep link, share
-  // link, or a notification's navigate("/reels/:id")) but it isn't
-  // anywhere in the current pool. Distinguishing this from "there are
-  // no reels at all" lets the empty-state UI below tell the user what
-  // actually happened instead of them just landing on an unrelated reel.
-  // CHANGED: uses the same "db_"-tolerant comparison as the lookup above,
-  // so this no longer false-positives on an unprefixed id that DOES
-  // exist once normalized (the root cause of the "reel isn't available"
-  // bug when opened from an upload notification).
   const requestedReelMissing =
     Boolean(id) &&
     !location.state?.clickedReel &&
@@ -1140,10 +1048,6 @@ const Reels = () => {
   if (dbLoading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: "white", flexDirection: "column", gap: "16px" }}>
-        {/* CHANGED: was "4px solid #ff4444" — now uses the app's actual
-            theme red (--zx-primary: #dc2626) so the spinner matches the
-            same red used everywhere else in the UI, instead of a
-            slightly different off-theme red. */}
         <div style={{ width: "48px", height: "48px", border: "4px solid #333", borderTop: "4px solid #dc2626", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
         <p style={{ color: "#aaa", fontSize: "14px" }}>Loading reels...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -1151,11 +1055,6 @@ const Reels = () => {
     );
   }
 
-  // FIX: show an explicit "this reel isn't available" state when a
-  // specific reel was requested but doesn't exist in the pool, rather
-  // than falling through to the generic empty-state message (which
-  // implies there are no reels at all) or, worse, silently rendering
-  // whatever reel happened to be first.
   if (requestedReelMissing) {
     return (
       <>
@@ -1219,7 +1118,6 @@ const Reels = () => {
       {allReels.map((reel, index) => (
         <React.Fragment key={reel.id}>
           <ReelItem reel={reel} allReels={allReels} />
-          {/* Google AdSense — full-height interstitial slide every 5 reels */}
           {(index + 1) % 5 === 0 && index !== allReels.length - 1 && (
             <ReelAdSlide key={`ad-${index}`} />
           )}

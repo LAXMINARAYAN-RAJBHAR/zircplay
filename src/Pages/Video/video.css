@@ -425,30 +425,42 @@
 }
 
 .connectBtnYoutube {
-  background: rgba(255,255,255,0.2);
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #ffffff;
-  border: 2px solid #ffffff;
-  padding: 5px 16px;
-  border-radius: 20px;
+  background: transparent;
+  border: 2px solid var(--zx-primary);
+  color: var(--zx-primary);
+  padding: 6px 16px;
   height: 36px;
+  border-radius: 20px;
   font-family: 'Nunito', sans-serif;
   font-weight: 800;
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 4px 14px rgba(124,58,237,0.28);
+  white-space: nowrap;
+  transition: all 0.15s;
+  box-sizing: border-box;
 }
 .connectBtnYoutube:hover {
-  background: rgba(255,255,255,0.35);
-  box-shadow: 0 0 12px rgba(255,255,255,0.3);
+  background: rgba(220,38,38,0.08);
 }
 
 .connectBtnYoutube--connected {
-  background: #fde2e2;
+  background: var(--zx-surface2);
+  color: var(--zx-text3);
+  border-color: var(--zx-border);
+}
+.connectBtnYoutube--connected:hover {
+  background: rgba(220,38,38,0.10);
   color: var(--zx-primary);
-  border: 2px solid var(--zx-primary);
+  border-color: var(--zx-primary);
+}
+
+/* NEW: disabled state while a connect/disconnect request is in flight. */
+.connectBtnYoutube:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ── Description box ── */

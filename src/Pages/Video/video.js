@@ -479,57 +479,62 @@ const Video = ({ sideNavbar }) => {
     loadChannelAvatar();
   }, [video?.id, video?.username, video?.channel]);
 
+    // NEW: same debounce/disable guard as PostCard.jsx and Reels.jsx.
+  const [connectLoading, setConnectLoading] = useState(false);
+
+  // ── Connect / Disconnect — now wired identically to PostCard.jsx and
+  //    Reels.jsx: dispatch "openLogin" instead of alert() when logged
+  //    out, a self-connect guard, a connectLoading guard against
+  //    double-fires, optimistic flip with rollback + console.error
+  //    logging, and notifyUser() only after a confirmed successful insert.
   const handleConnect = async () => {
+    if (!localStorage.getItem("username")) {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
     const userId = localStorage.getItem("userId");
     if (!userId) {
-      alert("Please login to connect");
+      window.dispatchEvent(new CustomEvent("openLogin"));
       return;
     }
     const channelUsername = video.username || video.channel?.toLowerCase();
-    if (userId === channelUsername) {
-      alert("You cannot connect to yourself");
-      return;
-    }
-    // CHANGED: optimistic UI — flip the button state immediately on
-    // click (same instant-feedback feel as a Subscribe button) instead
-    // of waiting on the DB round-trip. Rolls back to the previous state
-    // if the request actually fails.
-    if (isConnected) {
-      setIsConnected(false);
-      const { error } = await supabase
-        .from("connections")
-        .delete()
-        .match({ connector_id: userId, connected_to: channelUsername });
-      if (error) {
-        console.error("handleConnect delete error:", error);
-        setIsConnected(true); // rollback
-      }
-    } else {
-      setIsConnected(true);
-      // FIX: was missing connector_username, which Reels.jsx always sends
-      // for this same insert. If the connections table has a NOT NULL (or
-      // similar) constraint on connector_username, every Connect click on
-      // this page was failing silently — the insert error was never
-      // logged, so from the UI it just looked like nothing happened.
-      const { error } = await supabase
-        .from("connections")
-        .insert({
+    if (userId === channelUsername) return; // self-connect guard
+    if (connectLoading) return;
+
+    const wasConnected = isConnected;
+    setConnectLoading(true);
+    setIsConnected(!wasConnected); // optimistic flip
+
+    try {
+      if (wasConnected) {
+        const { error } = await supabase
+          .from("connections")
+          .delete()
+          .match({ connector_id: userId, connected_to: channelUsername });
+        if (error) {
+          console.error("handleConnect delete error:", error);
+          setIsConnected(true); // rollback
+        }
+      } else {
+        const { error } = await supabase.from("connections").insert({
           connector_id: userId,
           connector_username: localStorage.getItem("username"),
           connected_to: channelUsername,
         });
-      if (!error) {
-        // NEW: notify the channel owner that they got a new connection.
-        notifyUser({
-          recipientUsername: channelUsername,
-          senderUsername: loggedInUser,
-          type: "connection",
-          message: `${loggedInUser} connected with you`,
-        });
-      } else {
-        console.error("handleConnect insert error:", error);
-        setIsConnected(false); // rollback
+        if (error) {
+          console.error("handleConnect insert error:", error);
+          setIsConnected(false); // rollback
+        } else {
+          notifyUser({
+            recipientUsername: channelUsername,
+            senderUsername: loggedInUser,
+            type: "connection",
+            message: `${loggedInUser} connected with you`,
+          });
+        }
       }
+    } finally {
+      setConnectLoading(false);
     }
   };
 
@@ -1217,13 +1222,16 @@ const Video = ({ sideNavbar }) => {
                   {uploadedAt ? timeAgo(uploadedAt) : ""}
                 </div>
               </div>
+                            {/* CHANGED: now a <button>, matching PostCard.jsx / Reels.jsx,
+                  disabled while a request is in flight. */}
               {loggedInUser !== channelUsername && (
-                <div
+                <button
                   className={`connectBtnYoutube ${isConnected ? "connectBtnYoutube--connected" : ""}`}
                   onClick={handleConnect}
+                  disabled={connectLoading}
                 >
                   {isConnected ? "✓ Connected" : "Connect"}
-                </div>
+                </button>
               )}
             </div>
           </div>
