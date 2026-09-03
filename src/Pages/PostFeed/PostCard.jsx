@@ -7,6 +7,11 @@ import ReportPostModal from "./ReportPostModal";
 // which adds per-photo like/comment/share/copy-link on top of the same
 // full-screen swipe experience. See PhotoViewer.jsx.
 import PhotoViewer from "./PhotoViewer";
+// NEW: Connect button on each post's header — same "connections" table
+// and notifyUser() pattern used by the Connect button on Video.jsx /
+// Reels.jsx (see subscriptions_to_connections_migration.sql).
+import { supabase } from "../../config/supabase";
+import { notifyUser } from "../../utils/notifications";
 
 const REACTIONS = [
   { key: "like", emoji: "👍", label: "Like", color: "#1877f2" },
@@ -235,6 +240,12 @@ const PostCard = ({
 
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
 
+  // NEW: Connect button state — mirrors isConnected/handleConnect in
+  // Video.jsx and connected/handleConnect in Reels.jsx, against the
+  // same "connections" table.
+  const [connected, setConnected] = useState(false);
+  const [connectLoading, setConnectLoading] = useState(false);
+
   // ── Action bar animation state ──
   // likePopKey / burstKey: replayed via React key remount rather than
   // toggling classes, since remounting an element always restarts its
@@ -331,6 +342,62 @@ const PostCard = ({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // NEW: load whether the current user is already connected to this
+  // post's author. Skipped entirely for the author's own posts, since
+  // the button never renders there anyway.
+  useEffect(() => {
+    if (!post.username || post.username === currentUser) return;
+    const loadConnection = async () => {
+      const userId = localStorage.getItem("userId");
+      if (!userId) return;
+      const { data } = await supabase
+        .from("connections")
+        .select("id")
+        .match({ connector_id: userId, connected_to: post.username })
+        .maybeSingle();
+      setConnected(!!data);
+    };
+    loadConnection();
+  }, [post.username, currentUser]);
+
+  const handleConnect = async () => {
+    if (!currentUser || currentUser === "anonymous") {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
+    if (connectLoading) return;
+    setConnectLoading(true);
+    try {
+      if (connected) {
+        await supabase
+          .from("connections")
+          .delete()
+          .match({ connector_id: userId, connected_to: post.username });
+        setConnected(false);
+      } else {
+        const { error } = await supabase
+          .from("connections")
+          .insert({ connector_id: userId, connected_to: post.username });
+        if (!error) {
+          setConnected(true);
+          notifyUser({
+            recipientUsername: post.username,
+            senderUsername: currentUser,
+            type: "connection",
+            message: `${currentUser} connected with you`,
+          });
+        }
+      }
+    } finally {
+      setConnectLoading(false);
+    }
+  };
 
   const handleCommentSubmit = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -475,6 +542,16 @@ const PostCard = ({
               )}
             </p>
           </div>
+
+          {!isEditing && post.username !== currentUser && (
+            <button
+              className={`pf-connect-btn ${connected ? "pf-connect-btn-active" : ""}`}
+              onClick={handleConnect}
+              disabled={connectLoading}
+            >
+              {connected ? "✓ Connected" : "Connect"}
+            </button>
+          )}
 
           {!isEditing && (
             <div className="pf-menu-wrap" ref={menuRef}>
