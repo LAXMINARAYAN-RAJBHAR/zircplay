@@ -424,7 +424,7 @@
   font-weight: 600;
 }
 
-.subscribeBtnYoutube {
+.connectBtnYoutube {
   background: var(--zx-primary);
   color: #fff;
   border: none;
@@ -438,7 +438,7 @@
   transition: all 0.2s;
   box-shadow: 0 4px 14px rgba(124,58,237,0.28);
 }
-.subscribeBtnYoutube:hover {
+.connectBtnYoutube:hover {
   opacity: 0.9;
   box-shadow: 0 6px 20px rgba(124,58,237,0.4);
 }
@@ -772,7 +772,7 @@
   .addAComment       { width: 100% !important; }
   .video_uTubeTitle  { font-size: 16px; }
 
-  .subscribeBtnYoutube { font-size: 11px; padding: 0 14px; height: 32px; }
+  .connectBtnYoutube { font-size: 11px; padding: 0 14px; height: 32px; }
   .youtubeCommentSectionTitle { font-size: 15px; }
   .next_video_preview { border-radius: 10px; }
   .videoSuggestionsBlock { border-radius: 10px; }

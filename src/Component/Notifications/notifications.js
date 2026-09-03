@@ -15,7 +15,7 @@ import { notifyUser, notifySubscribers } from "../../utils/notifications";
 const TYPE_ICON = {
   like: "❤️",
   comment: "💬",
-  subscriber: "🔔",
+  connection: "🔔",
   upload: "🎬",
   mention: "📣",
 };

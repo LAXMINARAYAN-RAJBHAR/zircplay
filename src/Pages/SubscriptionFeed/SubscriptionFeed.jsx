@@ -21,32 +21,34 @@ const SubscriptionFeed = ({ currentUser, sideNavbar }) => {
     setLoading(true);
     const userId = localStorage.getItem("userId") || "";
 
-    // ── Subscriptions are stored inconsistently across the app:
-    // Profile.jsx writes subscriber_id as the username, while Video.jsx /
-    // Reels.jsx write it as the UUID (userId). Until that's unified, we
-    // check both so subscriptions made from either place show up here. ──
-    const { data: subsByUsername } = await supabase
-      .from("subscriptions")
-      .select("subscribed_to")
-      .eq("subscriber_id", username);
-
-    const { data: subsByUserId } = userId
+    // CHANGED: Video.jsx / Reels.jsx's handleConnect() now write to the
+    // `connections` table (connector_id / connected_to) instead of the old
+    // `subscriptions` table — the whole Subscribe flow was renamed to
+    // Connect. This page previously still queried `subscriptions`, so it
+    // was reading a table nothing wrote to anymore and always showed
+    // stale/empty results. connector_id is stored as the user's UUID
+    // (localStorage "userId"), matching how handleConnect() writes it.
+    const { data: connectionRows, error: connErr } = userId
       ? await supabase
-          .from("subscriptions")
-          .select("subscribed_to")
-          .eq("subscriber_id", userId)
-      : { data: [] };
+          .from("connections")
+          .select("connected_to")
+          .eq("connector_id", userId)
+      : { data: [], error: null };
 
-    const subs = [...(subsByUsername || []), ...(subsByUserId || [])];
+    if (connErr) {
+      console.error("[SubscriptionFeed] Failed to load connections:", connErr);
+    }
 
-    if (subs.length === 0) {
+    const connections = connectionRows || [];
+
+    if (connections.length === 0) {
       setChannels([]);
       setVideos([]);
       setLoading(false);
       return;
     }
 
-    const channelNames = [...new Set(subs.map((s) => s.subscribed_to))];
+    const channelNames = [...new Set(connections.map((c) => c.connected_to))];
     setChannels(channelNames);
 
     const { data, error } = await supabase
@@ -81,17 +83,17 @@ const SubscriptionFeed = ({ currentUser, sideNavbar }) => {
         {/* ✅ Zixplon logo */}
         <img src={logo} alt="Zixplon" className="lib-header-icon" />
         <div>
-          <h1 className="lib-title">Subscriptions</h1>
-          <p className="lib-subtitle">Latest from channels you follow</p>
+          <h1 className="lib-title">Connections</h1>
+          <p className="lib-subtitle">Latest from people you've connected with</p>
         </div>
       </div>
 
-      {!username && <div className="lib-empty"><p>Sign in to see videos from channels you subscribe to.</p></div>}
+      {!username && <div className="lib-empty"><p>Sign in to see videos from people you've connected with.</p></div>}
       {username && loading && <div className="lib-loading"><div className="lib-spinner" /></div>}
       {username && !loading && channels.length === 0 && (
         <div className="lib-empty">
           <SubscriptionsIcon style={{ fontSize: 48, opacity: 0.3 }} />
-          <p>Subscribe to channels to see their latest videos here.</p>
+          <p>Connect with channels to see their latest videos here.</p>
         </div>
       )}
 

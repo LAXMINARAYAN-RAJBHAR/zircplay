@@ -212,7 +212,7 @@
   text-shadow: 0 1px 6px rgba(0,0,0,0.5);
 }
 
-.reel_subscribe_btn {
+.reel_connect_btn {
   background: rgba(255,255,255,0.2);
   border: 2px solid #ffffff;
   color: #ffffff;
@@ -226,7 +226,7 @@
   transition: all 0.2s;
 }
 
-.reel_subscribe_btn:hover {
+.reel_connect_btn:hover {
   background: rgba(255,255,255,0.35);
   box-shadow: 0 0 12px rgba(255,255,255,0.3);
 }
