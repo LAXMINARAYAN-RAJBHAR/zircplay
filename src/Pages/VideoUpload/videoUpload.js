@@ -180,20 +180,17 @@ const VideoUpload = () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // captureThumbnail — FIXED VERSION
+  // captureThumbnail — FIXED VERSION (v2: seeked-timeout fallback)
   //
-  // ROOT CAUSE OF THE BLACK THUMBNAIL BUG:
+  // ROOT CAUSE OF THE ORIGINAL BLACK THUMBNAIL BUG (v1 fix, kept):
   // The video element was created with document.createElement("video") but
   // NEVER attached to the DOM. In Chrome (and most browsers), an off-DOM
   // video element can fire `seeked` and report a "successful" seek without
   // actually having decoded a real frame at that position yet — so
   // ctx.drawImage(video, ...) captures whatever was last in the decode
-  // buffer, which is usually just black. This happens consistently,
-  // regardless of file size or codec — matching what was observed (hover
-  // preview, which uses a real in-DOM <video>, always worked fine; the
-  // off-DOM capture never did).
+  // buffer, which is usually just black.
   //
-  // THE FIX:
+  // THE v1 FIX (kept):
   //  1. Attach the video element to the DOM (positioned off-screen, NOT
   //     display:none — some browsers pause/skip decoding for display:none
   //     elements too).
@@ -203,8 +200,35 @@ const VideoUpload = () => {
   //  3. Always remove the element from the DOM in cleanup, whether it
   //     succeeds or fails, so nothing leaks.
   //
-  // Everything else (multi-event seek retry, 3s force-grab safety net,
-  // 10s final timeout) is unchanged from before.
+  // ROOT CAUSE OF THE "Thumbnail capture timed out." BUG (v2 fix, NEW):
+  // Confirmed in production via console log: "Client-side thumbnail
+  // capture failed: Thumbnail capture timed out." on a recently-uploaded,
+  // longer-form video ("The Fox and the Bird" short film). That error can
+  // only fire once a seek was actually attempted (video.currentTime was
+  // set) — meaning duration resolved fine and trySeek() ran, but the
+  // browser's `seeked` event never arrived within the full 10s window.
+  // This matches MP4 files where the moov atom (metadata index) is stored
+  // at the END of the file rather than the beginning ("not fast-start"
+  // encoded) — common on longer/re-exported files, less common on quick
+  // phone recordings. The browser has to fetch/parse a large chunk of the
+  // Blob just to resolve ANY seek target, and for a large enough file that
+  // can stall past the old fallback windows entirely, since the only
+  // earlier fallback (3s) explicitly skips when a seek WAS attempted.
+  //
+  // THE v2 FIX (NEW):
+  //  1. Seek closer to the very start of the file (min(0.5, dur/2) instead
+  //     of up to 1s in) — doesn't fix the underlying index-parsing cost,
+  //     but keeps the target itself cheap once that index is available.
+  //  2. NEW 5s fallback: if a seek WAS attempted but `seeked` never fired,
+  //     grab whatever frame is currently in the decode buffer instead of
+  //     waiting out the full 10s timeout and losing the thumbnail
+  //     entirely. This is a deliberate trade-off — the grabbed frame may
+  //     not be exactly at the intended seek offset, but a slightly-off
+  //     real frame beats no thumbnail (site logo) at all.
+  //
+  // Everything else (multi-event seek retry via loadedmetadata /
+  // durationchange / loadeddata, 3s "seek never attempted" safety net,
+  // 10s absolute final timeout) is unchanged from v1.
   // ─────────────────────────────────────────────────────────────────────────
   const captureThumbnail = (file) => new Promise((resolve, reject) => {
     const video  = document.createElement("video");
@@ -213,7 +237,7 @@ const VideoUpload = () => {
     video.muted      = true;
     video.playsInline = true;
 
-    // ── KEY FIX #1: attach off-screen instead of leaving detached ──
+    // ── v1 FIX #1: attach off-screen instead of leaving detached ──
     video.style.position = "fixed";
     video.style.top = "-9999px";
     video.style.left = "-9999px";
@@ -227,7 +251,7 @@ const VideoUpload = () => {
 
     const cleanup = () => {
       URL.revokeObjectURL(video.src);
-      // KEY FIX #3: always remove from DOM
+      // v1 FIX #3: always remove from DOM
       if (video.parentNode) video.parentNode.removeChild(video);
     };
     const finish  = (result, err) => {
@@ -263,7 +287,12 @@ const VideoUpload = () => {
       const dur = video.duration;
       if (!isFinite(dur) || dur <= 0) return; // not ready yet — wait for next event
       seekAttempted = true;
-      const seekTo = dur > 2 ? 1 : dur / 2;
+      // v2 CHANGE: seek closer to the start (was: dur > 2 ? 1 : dur / 2).
+      // For MP4s with the moov atom at the end of the file, the browser
+      // needs to fetch/parse a large chunk of the file just to resolve
+      // ANY seek target at all — keeping the target itself modest avoids
+      // also over-requesting once that index is available.
+      const seekTo = Math.min(0.5, dur / 2);
       try {
         video.currentTime = seekTo || 0.1;
       } catch (_) {
@@ -280,7 +309,7 @@ const VideoUpload = () => {
     video.onloadeddata = trySeek;
 
     video.onseeked = () => {
-      // ── KEY FIX #2: force a decode by briefly playing, then pause ──
+      // ── v1 FIX #2: force a decode by briefly playing, then pause ──
       // A seek alone can leave an off-screen video's decode pipeline
       // "behind" — play() forces the browser to actually push a decoded
       // frame to the compositor before we grab it.
@@ -319,6 +348,18 @@ const VideoUpload = () => {
     setTimeout(() => {
       if (!settled && !seekAttempted && video.readyState >= 2) grabFrame();
     }, 3000);
+
+    // v2 NEW: a seek WAS attempted (currentTime was set) but the `seeked`
+    // event never fired — this is the "moov atom at the end" / large-file
+    // stall case that produced "Thumbnail capture timed out." in
+    // production. Rather than waiting the full 10s and giving up entirely,
+    // grab whatever frame is currently decoded once readyState allows it.
+    setTimeout(() => {
+      if (!settled && seekAttempted && video.readyState >= 2) {
+        console.warn("seeked event never fired — grabbing current frame as fallback");
+        grabFrame();
+      }
+    }, 5000);
 
     // Final fallback if nothing above worked.
     setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 10000);

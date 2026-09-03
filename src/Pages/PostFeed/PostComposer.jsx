@@ -24,22 +24,31 @@ const FEELINGS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// captureThumbnail — NEW. Ports the same fixed approach from
-// VideoUpload.jsx over to post-video uploads, which previously had NO
-// thumbnail generation at all. Without this, a video post's shared-link
-// preview (via /api/og) had nothing to show but the generic site logo —
-// there's no Cloudinary/R2 URL transform that can pull a frame out of an
-// R2-hosted video after the fact, so this has to happen client-side at
-// upload time, same as it does for videos/reels.
+// captureThumbnail — v2: seeked-timeout fallback. Ports the same fixed
+// approach from VideoUpload.jsx over to post-video uploads.
 //
-// Root cause of the classic "black thumbnail" bug this avoids: a video
-// element that's never attached to the DOM can report a "successful"
-// seek without actually decoding a real frame at that position, so
-// ctx.drawImage() grabs whatever's left in the decode buffer (usually
-// black) instead of the real frame. Fix: attach off-screen (not
-// display:none — some browsers skip decoding those too), force a decode
-// by briefly play()-ing then pause()-ing after the seek, and always clean
-// up the element whether capture succeeds or fails.
+// v1 root cause (black thumbnail): a video element that's never attached
+// to the DOM can report a "successful" seek without actually decoding a
+// real frame at that position, so ctx.drawImage() grabs whatever's left
+// in the decode buffer (usually black) instead of the real frame. v1 fix:
+// attach off-screen (not display:none — some browsers skip decoding those
+// too), force a decode by briefly play()-ing then pause()-ing after the
+// seek, and always clean up the element whether capture succeeds or fails.
+//
+// v2 root cause ("Thumbnail capture timed out."): confirmed in production
+// via console log on a recently-uploaded, longer-form video. That error
+// can only fire once a seek was actually attempted (video.currentTime was
+// set) — meaning duration resolved fine, but the browser's `seeked` event
+// never arrived within the full 10s window. This matches MP4 files where
+// the moov atom (metadata index) sits at the END of the file rather than
+// the beginning ("not fast-start" encoded) — the browser has to fetch/
+// parse a large chunk of the Blob just to resolve ANY seek target, which
+// can stall past the old fallback windows (the only earlier fallback, at
+// 3s, explicitly skips when a seek WAS attempted). v2 fix: seek closer to
+// the very start of the file (cheaper once the index is available), and
+// add a NEW 5s fallback that grabs whatever frame is currently decoded if
+// a seek was attempted but `seeked` never fired, rather than waiting out
+// the full 10s and losing the thumbnail entirely.
 // ─────────────────────────────────────────────────────────────────────────────
 const captureThumbnail = (file) => new Promise((resolve, reject) => {
   const video = document.createElement("video");
@@ -91,7 +100,12 @@ const captureThumbnail = (file) => new Promise((resolve, reject) => {
     const dur = video.duration;
     if (!isFinite(dur) || dur <= 0) return; // not ready yet — wait for next event
     seekAttempted = true;
-    const seekTo = dur > 2 ? 1 : dur / 2;
+    // v2 CHANGE: seek closer to the start (was: dur > 2 ? 1 : dur / 2).
+    // For MP4s with the moov atom at the end of the file, the browser
+    // needs to fetch/parse a large chunk of the file just to resolve
+    // ANY seek target at all — keeping the target itself modest avoids
+    // also over-requesting once that index is available.
+    const seekTo = Math.min(0.5, dur / 2);
     try {
       video.currentTime = seekTo || 0.1;
     } catch (_) {
@@ -131,10 +145,23 @@ const captureThumbnail = (file) => new Promise((resolve, reject) => {
 
   video.onerror = () => finish(null, new Error("Failed to load video for thumbnail."));
 
+  // Existing safety net: nothing seeked yet at all — grab whatever's loaded.
   setTimeout(() => {
     if (!settled && !seekAttempted && video.readyState >= 2) grabFrame();
   }, 3000);
 
+  // v2 NEW: a seek WAS attempted (currentTime was set) but the `seeked`
+  // event never fired — this is the "moov atom at the end" / large-file
+  // stall case. Rather than waiting the full 10s and giving up entirely,
+  // grab whatever frame is currently decoded once readyState allows it.
+  setTimeout(() => {
+    if (!settled && seekAttempted && video.readyState >= 2) {
+      console.warn("seeked event never fired — grabbing current frame as fallback");
+      grabFrame();
+    }
+  }, 5000);
+
+  // Final fallback if truly nothing worked.
   setTimeout(() => { if (!settled) finish(null, new Error("Thumbnail capture timed out.")); }, 10000);
 
   video.src = URL.createObjectURL(file);
@@ -292,7 +319,7 @@ const PostComposer = ({ currentUser, onPost }) => {
     return buildTransformUrl(url, { width: 800, quality: 85 });
   };
 
-  // ── Thumbnail upload — NEW. Mirrors VideoUpload.jsx's uploadThumbnail:
+  // ── Thumbnail upload — mirrors VideoUpload.jsx's uploadThumbnail:
   // small file, goes through R2 directly (no progress callback needed).
   // format: "jpeg" (not the default "webp") because this becomes the
   // og:image for shared post links, and WhatsApp's link-preview crawler
@@ -324,12 +351,12 @@ const PostComposer = ({ currentUser, onPost }) => {
           imageUrls.push(url);
         }
       } else if (videoFile) {
-        // NEW: capture a thumbnail in parallel with the video upload
-        // itself, same as VideoUpload.jsx does. If capture fails (client
-        // decode issue, unsupported codec, etc.) we log it and continue
-        // — the post still goes out with video_url set, it just won't
-        // have a thumbnail_url until this succeeds on a retry/edit. This
-        // never blocks or fails the actual post submission.
+        // Capture a thumbnail in parallel with the video upload itself,
+        // same as VideoUpload.jsx does. If capture fails (client decode
+        // issue, unsupported codec, etc.) we log it and continue — the
+        // post still goes out with video_url set, it just won't have a
+        // thumbnail_url until this succeeds on a retry/edit. This never
+        // blocks or fails the actual post submission.
         const [{ url }, thumbnailBlob] = await Promise.all([
           uploadVideoToR2(videoFile.file, (pct) => {
             setUploadProgress(pct);
@@ -351,7 +378,7 @@ const PostComposer = ({ currentUser, onPost }) => {
         image_url: imageUrls[0] || null,
         image_urls: imageUrls.length > 0 ? imageUrls : null,
         video_url: videoUrl,
-        // NEW: requires a migration —
+        // Requires a migration —
         //   alter table posts add column thumbnail_url text;
         // Used by /api/og.js as the shared-link preview image for video
         // posts, and could also be surfaced as a static poster image in
