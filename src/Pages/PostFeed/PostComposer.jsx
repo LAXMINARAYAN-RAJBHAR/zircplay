@@ -117,7 +117,19 @@ const captureThumbnail = (file) => new Promise((resolve, reject) => {
   video.ondurationchange = trySeek;
   video.onloadeddata = trySeek;
 
-  video.onseeked = () => {
+  // ── shared decode-forcing grab, v3 ──
+  // v1 root cause reminder: a seek alone can leave an off-screen video's
+  // decode pipeline "behind" — play() forces the browser to actually
+  // push a decoded frame to the compositor before we grab it, or
+  // grabFrame() reads stale (usually black) buffer contents.
+  //
+  // v3 FIX: previously this decode-forcing dance lived ONLY inside
+  // onseeked, while the 5s stalled-seek fallback (v2) called grabFrame()
+  // directly — confirmed in production to produce a solid BLACK
+  // thumbnail when that fallback fired. Extracted into one shared
+  // function so every code path that grabs a frame goes through the
+  // same play→pause→grab sequence.
+  const grabWithDecodeForce = () => {
     const grabAfterDecode = () => {
       if ("requestVideoFrameCallback" in video) {
         video.requestVideoFrameCallback(() => grabFrame());
@@ -143,21 +155,29 @@ const captureThumbnail = (file) => new Promise((resolve, reject) => {
     }
   };
 
+  video.onseeked = () => {
+    grabWithDecodeForce();
+  };
+
   video.onerror = () => finish(null, new Error("Failed to load video for thumbnail."));
 
-  // Existing safety net: nothing seeked yet at all — grab whatever's loaded.
+  // Existing safety net: nothing seeked yet at all — grab whatever's
+  // loaded. v3: routed through grabWithDecodeForce now, same reasoning.
   setTimeout(() => {
-    if (!settled && !seekAttempted && video.readyState >= 2) grabFrame();
+    if (!settled && !seekAttempted && video.readyState >= 2) grabWithDecodeForce();
   }, 3000);
 
-  // v2 NEW: a seek WAS attempted (currentTime was set) but the `seeked`
-  // event never fired — this is the "moov atom at the end" / large-file
-  // stall case. Rather than waiting the full 10s and giving up entirely,
-  // grab whatever frame is currently decoded once readyState allows it.
+  // v2 NEW / v3 FIXED: a seek WAS attempted (currentTime was set) but the
+  // `seeked` event never fired — this is the "moov atom at the end" /
+  // large-file stall case. Rather than waiting the full 10s and giving
+  // up entirely, force-decode and grab whatever frame is currently
+  // loaded once readyState allows it. v3: now goes through
+  // grabWithDecodeForce (was a raw grabFrame() call in v2, which
+  // produced black thumbnails).
   setTimeout(() => {
     if (!settled && seekAttempted && video.readyState >= 2) {
       console.warn("seeked event never fired — grabbing current frame as fallback");
-      grabFrame();
+      grabWithDecodeForce();
     }
   }, 5000);
 
