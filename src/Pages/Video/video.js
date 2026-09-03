@@ -1194,7 +1194,7 @@ import React, { useState, useRef, useEffect } from "react";
                 </div>
                 {loggedInUser !== channelUsername && (
                   <div
-                    className="connectBtnYoutube."
+                    className="connectBtnYoutube"
                     onClick={handleConnect}
                     style={{
                       background: isConnected ? "#e0d4ff" : "#7c3aed",
