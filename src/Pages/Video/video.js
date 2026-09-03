@@ -437,11 +437,17 @@ import React, { useState, useRef, useEffect } from "react";
         const userId = localStorage.getItem("userId");
         if (!userId || !video) return;
         const channelUsername = video.username || video.channel?.toLowerCase();
-        const { data } = await supabase
+        // FIX: was .single(), which throws a Supabase error whenever zero
+        // rows match — i.e. every time the viewer hasn't connected yet.
+        // .maybeSingle() (what Reels.jsx already uses for this same check)
+        // returns null instead of erroring, and we log any real error so
+        // future issues here aren't silent.
+        const { data, error } = await supabase
           .from("connections")
           .select("id")
           .match({ connector_id: userId, connected_to: channelUsername })
-          .single();
+          .maybeSingle();
+        if (error) console.error("loadConnection error:", error);
         setIsConnected(!!data);
       };
       loadConnection();
@@ -491,9 +497,18 @@ import React, { useState, useRef, useEffect } from "react";
           .match({ connector_id: userId, connected_to: channelUsername });
         setIsConnected(false);
       } else {
+        // FIX: was missing connector_username, which Reels.jsx always sends
+        // for this same insert. If the connections table has a NOT NULL (or
+        // similar) constraint on connector_username, every Connect click on
+        // this page was failing silently — the insert error was never
+        // logged, so from the UI it just looked like nothing happened.
         const { error } = await supabase
           .from("connections")
-          .insert({ connector_id: userId, connected_to: channelUsername });
+          .insert({
+            connector_id: userId,
+            connector_username: localStorage.getItem("username"),
+            connected_to: channelUsername,
+          });
         if (!error) {
           setIsConnected(true);
           // NEW: notify the channel owner that they got a new connection.
@@ -503,6 +518,8 @@ import React, { useState, useRef, useEffect } from "react";
             type: "connection",
             message: `${loggedInUser} connected with you`,
           });
+        } else {
+          console.error("handleConnect insert error:", error);
         }
       }
     };
