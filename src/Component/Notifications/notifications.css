@@ -1,7 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --zx-bg:        #fff5f5;
+  --zx-surface:   #ffffff;
+  --zx-surface2:  #fef2f2;
+  --zx-border:    #fbd5d5;
+  --zx-primary:   #dc2626;
+  --zx-primary2:  #ef4444;
+  --zx-accent1:   #b91c1c;
+  --zx-accent2:   #f97316;
+  --zx-accent3:   #06b6d4;
+  --zx-accent4:   #10b981;
+  --zx-accent5:   #eab308;
+  --zx-text:      #1a1414;
+  --zx-text2:     #7a3a3a;
+  --zx-text3:     #b08585;
+  --zx-shadow:    0 4px 24px rgba(220,38,38,0.10);
+  --zx-shadow2:   0 2px 12px rgba(220,38,38,0.08);
+  --zx-radius:    16px;
+  --zx-radius-sm: 10px;
+}
+
 .zx-notifications-page {
   max-width: 640px;
   margin: 0 auto;
   padding: 24px 16px 80px;
+  background: var(--zx-bg);
+  font-family: 'Outfit', sans-serif;
+  color: var(--zx-text);
+  min-height: calc(100vh - 56px);
 }
 
 .zx-notifications-header {
@@ -13,53 +40,72 @@
 
 .zx-notifications-header h2 {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 800;
+  font-family: 'Nunito', sans-serif;
+  color: var(--zx-text);
   margin: 0;
 }
 
 .zx-notifications-markall {
   background: none;
   border: none;
-  color: #cc0000;
+  color: var(--zx-primary);
   font-size: 13px;
-  font-weight: 600;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
   cursor: pointer;
+  transition: color 0.15s, opacity 0.15s;
+}
+
+.zx-notifications-markall:hover {
+  color: var(--zx-accent1);
+  opacity: 0.85;
 }
 
 .zx-notifications-status,
 .zx-notifications-empty {
   text-align: center;
-  color: #888;
+  color: var(--zx-text3);
   padding: 32px 0;
   font-size: 14px;
+  font-family: 'Outfit', sans-serif;
 }
 
 .zx-notifications-error {
-  color: #cc0000;
+  color: var(--zx-primary);
+  font-weight: 700;
 }
 
 .zx-notifications-list {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .zx-notification-item {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px 8px;
-  border-radius: 10px;
+  padding: 12px 10px;
+  border-radius: var(--zx-radius-sm);
   cursor: pointer;
-  transition: background 0.15s ease;
+  background: var(--zx-surface);
+  border: 2px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .zx-notification-item:hover {
-  background: #f0f4ff;
+  background: var(--zx-surface2);
+  border-color: var(--zx-border);
+  box-shadow: var(--zx-shadow2);
 }
 
 .zx-notification-unread {
-  background: #f7f9ff;
+  background: var(--zx-surface2);
+  border-color: var(--zx-border);
 }
 
 .zx-notification-icon {
@@ -76,20 +122,30 @@
 .zx-notification-message {
   margin: 0;
   font-size: 14px;
-  color: #222;
+  color: var(--zx-text);
+  font-family: 'Outfit', sans-serif;
   word-break: break-word;
+}
+
+.zx-notification-message strong {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: var(--zx-primary2);
 }
 
 .zx-notification-time {
   font-size: 12px;
-  color: #999;
+  color: var(--zx-text3);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 600;
 }
 
 .zx-notification-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #cc0000;
+  background: linear-gradient(135deg, var(--zx-primary), var(--zx-primary2));
+  box-shadow: 0 0 6px rgba(220,38,38,0.5);
   margin-top: 6px;
   flex-shrink: 0;
 }
