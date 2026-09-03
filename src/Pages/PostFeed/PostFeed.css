@@ -1640,3 +1640,31 @@
   color: var(--zx-text3);
   white-space: nowrap;
 }
+
+.pf-connect-btn {
+  background: transparent;
+  border: 2px solid var(--zx-primary);
+  color: var(--zx-primary);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.pf-connect-btn:hover {
+  background: rgba(220,38,38,0.08);
+}
+.pf-connect-btn--connected {
+  background: var(--zx-surface2);
+  color: var(--zx-text3);
+  border-color: var(--zx-border);
+}
+.pf-connect-btn--connected:hover {
+  background: rgba(220,38,38,0.10);
+  color: var(--zx-primary);
+  border-color: var(--zx-primary);
+}
+.pf-connect-btn:disabled { opacity: 0.6; cursor: not-allowed; }

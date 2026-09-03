@@ -7,7 +7,7 @@ import ReportPostModal from "./ReportPostModal";
 // which adds per-photo like/comment/share/copy-link on top of the same
 // full-screen swipe experience. See PhotoViewer.jsx.
 import PhotoViewer from "./PhotoViewer";
-// NEW: Connect button on each post's header — same "connections" table
+// Connect button on each post's header — same "connections" table
 // and notifyUser() pattern used by the Connect button on Video.jsx /
 // Reels.jsx (see subscriptions_to_connections_migration.sql).
 import { supabase } from "../../config/supabase";
@@ -240,9 +240,11 @@ const PostCard = ({
 
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
 
-  // NEW: Connect button state — mirrors isConnected/handleConnect in
+  // Connect button state — mirrors isConnected/handleConnect in
   // Video.jsx and connected/handleConnect in Reels.jsx, against the
-  // same "connections" table.
+  // same "connections" table. Kept in lockstep with those two files:
+  // same field names, same optimistic-update + rollback behavior,
+  // same self-connect guard, same notifyUser() call on success.
   const [connected, setConnected] = useState(false);
   const [connectLoading, setConnectLoading] = useState(false);
 
@@ -343,24 +345,35 @@ const PostCard = ({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // NEW: load whether the current user is already connected to this
-  // post's author. Skipped entirely for the author's own posts, since
-  // the button never renders there anyway.
+  // Load whether the current user is already connected to this post's
+  // author. Skipped entirely for the author's own posts, since the
+  // button never renders there anyway — same early-return shape as
+  // Reels.jsx / Video.jsx's connection loaders.
   useEffect(() => {
     if (!post.username || post.username === currentUser) return;
     const loadConnection = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("connections")
         .select("id")
         .match({ connector_id: userId, connected_to: post.username })
         .maybeSingle();
+      if (error) console.error("loadConnection error:", error);
       setConnected(!!data);
     };
     loadConnection();
   }, [post.username, currentUser]);
 
+  // Connect / Disconnect — unified with Reels.jsx / Video.jsx:
+  //   • self-connect guard
+  //   • optimistic flip with rollback on failure
+  //   • connector_username included on insert (this was previously
+  //     missing here, which is the same silent-insert-failure bug
+  //     Video.jsx's handleConnect comment already called out and fixed
+  //     for its own table — connections.connector_username is required
+  //     there too)
+  //   • notifyUser() only fires after a confirmed-successful insert
   const handleConnect = async () => {
     if (!currentUser || currentUser === "anonymous") {
       window.dispatchEvent(new CustomEvent("openLogin"));
@@ -371,21 +384,33 @@ const PostCard = ({
       window.dispatchEvent(new CustomEvent("openLogin"));
       return;
     }
+    if (userId === post.username) return; // self-connect guard
     if (connectLoading) return;
+
+    const wasConnected = connected;
     setConnectLoading(true);
+    setConnected(!wasConnected); // optimistic flip
+
     try {
-      if (connected) {
-        await supabase
+      if (wasConnected) {
+        const { error } = await supabase
           .from("connections")
           .delete()
           .match({ connector_id: userId, connected_to: post.username });
-        setConnected(false);
+        if (error) {
+          console.error("handleConnect delete error:", error);
+          setConnected(true); // rollback
+        }
       } else {
-        const { error } = await supabase
-          .from("connections")
-          .insert({ connector_id: userId, connected_to: post.username });
-        if (!error) {
-          setConnected(true);
+        const { error } = await supabase.from("connections").insert({
+          connector_id: userId,
+          connector_username: currentUser,
+          connected_to: post.username,
+        });
+        if (error) {
+          console.error("handleConnect insert error:", error);
+          setConnected(false); // rollback
+        } else {
           notifyUser({
             recipientUsername: post.username,
             senderUsername: currentUser,
@@ -545,7 +570,7 @@ const PostCard = ({
 
           {!isEditing && post.username !== currentUser && (
             <button
-              className={`pf-connect-btn ${connected ? "pf-connect-btn-active" : ""}`}
+              className={`pf-connect-btn ${connected ? "pf-connect-btn--connected" : ""}`}
               onClick={handleConnect}
               disabled={connectLoading}
             >

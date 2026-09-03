@@ -445,6 +445,12 @@
   box-shadow: 0 0 12px rgba(255,255,255,0.3);
 }
 
+.connectBtnYoutube--connected {
+  background: #fde2e2;
+  color: var(--zx-primary);
+  border: 2px solid var(--zx-primary);
+}
+
 /* ── Description box ── */
 .youtube_video_About {
   display: flex;

@@ -1219,14 +1219,8 @@ const Video = ({ sideNavbar }) => {
               </div>
               {loggedInUser !== channelUsername && (
                 <div
-                  className="connectBtnYoutube"
+                  className={`connectBtnYoutube ${isConnected ? "connectBtnYoutube--connected" : ""}`}
                   onClick={handleConnect}
-                  style={{
-                    background: isConnected ? "#fde2e2" : "#dc2626",
-                    color: isConnected ? "#dc2626" : "#ffffff",
-                    border: isConnected ? "2px solid #dc2626" : "none",
-                    cursor: "pointer",
-                  }}
                 >
                   {isConnected ? "✓ Connected" : "Connect"}
                 </div>
