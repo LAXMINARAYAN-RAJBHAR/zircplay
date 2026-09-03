@@ -425,22 +425,24 @@
 }
 
 .connectBtnYoutube {
-  background: var(--zx-primary);
-  color: #fff;
-  border: none;
-  padding: 0 22px;
+  background: rgba(255,255,255,0.2);
+  align-items: center;
+  gap: 4px;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  padding: 5px 16px;
   border-radius: 20px;
   height: 36px;
   font-family: 'Nunito', sans-serif;
   font-weight: 800;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 4px 14px rgba(124,58,237,0.28);
 }
 .connectBtnYoutube:hover {
-  opacity: 0.9;
-  box-shadow: 0 6px 20px rgba(124,58,237,0.4);
+  background: rgba(255,255,255,0.35);
+  box-shadow: 0 0 12px rgba(255,255,255,0.3);
 }
 
 /* ── Description box ── */
