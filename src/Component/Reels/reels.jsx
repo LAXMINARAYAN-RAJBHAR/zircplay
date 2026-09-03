@@ -929,7 +929,11 @@ const ReelItem = ({ reel, allReels }) => {
               <button
                 className="reel_connect_btn"
                 onClick={handleConnect}
-                style={{ background: connected ? "#555" : "#ff0000", color: "white" }}
+                // CHANGED: was "#ff0000" — matches the app's actual theme
+                // red (--zx-primary: #dc2626) instead of a slightly
+                // different, off-theme pure red, so this button now
+                // visually matches the Connect button on the Video page.
+                style={{ background: connected ? "#555" : "#dc2626", color: "white" }}
               >
                 {connected ? "Connected" : "Connect"}
               </button>
@@ -1131,7 +1135,11 @@ const Reels = () => {
   if (dbLoading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: "white", flexDirection: "column", gap: "16px" }}>
-        <div style={{ width: "48px", height: "48px", border: "4px solid #333", borderTop: "4px solid #ff4444", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+        {/* CHANGED: was "4px solid #ff4444" — now uses the app's actual
+            theme red (--zx-primary: #dc2626) so the spinner matches the
+            same red used everywhere else in the UI, instead of a
+            slightly different off-theme red. */}
+        <div style={{ width: "48px", height: "48px", border: "4px solid #333", borderTop: "4px solid #dc2626", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
         <p style={{ color: "#aaa", fontSize: "14px" }}>Loading reels...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>

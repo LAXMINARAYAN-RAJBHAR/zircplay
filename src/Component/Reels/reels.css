@@ -68,7 +68,7 @@
   touch-action: pan-y;
   scroll-snap-align: start;
   border: 3px solid var(--zx-border);
-  box-shadow: 0 20px 60px rgba(124,58,237,0.18), 0 4px 20px rgba(124,58,237,0.10);
+  box-shadow: 0 20px 60px rgba(220,38,38,0.18), 0 4px 20px rgba(220,38,38,0.10);
 }
 
 /* Gradient top accent bar */
@@ -157,9 +157,9 @@
 }
 
 .reel_action_btn:hover {
-  background: rgba(124,58,237,0.62);
-  border-color: rgba(168,85,247,0.72);
-  box-shadow: 0 8px 26px rgba(124,58,237,0.55);
+  background: rgba(220,38,38,0.62);
+  border-color: rgba(239,68,68,0.72);
+  box-shadow: 0 8px 26px rgba(220,38,38,0.55);
   transform: scale(1.09) translateY(-2px);
 }
 
@@ -169,10 +169,10 @@
 .reel_action_btn.reel_liked,
 .reel_action_btn.reel_disliked,
 .reel_more_btn--open {
-  background: rgba(124,58,237,0.72) !important;
-  border-color: rgba(168,85,247,0.90) !important;
+  background: rgba(220,38,38,0.72) !important;
+  border-color: rgba(239,68,68,0.90) !important;
   box-shadow:
-    0 0 22px rgba(124,58,237,0.65),
+    0 0 22px rgba(220,38,38,0.65),
     inset 0 1px 0 rgba(255,255,255,0.12) !important;
 }
 
@@ -201,7 +201,7 @@
   border-radius: 50%;
   border: 3px solid #ffffff;
   object-fit: cover;
-  box-shadow: 0 0 12px rgba(124,58,237,0.4);
+  box-shadow: 0 0 12px rgba(220,38,38,0.4);
 }
 
 .reel_username {
@@ -251,7 +251,7 @@
   transform: translate(-50%, -50%);
   font-size: 40px;
   color: #ffffff;
-  background: rgba(124,58,237,0.7);
+  background: rgba(220,38,38,0.7);
   border: 3px solid rgba(255,255,255,0.6);
   width: 70px;
   height: 70px;
@@ -262,7 +262,7 @@
   pointer-events: none;
   border-radius: 50%;
   animation: fadeOut 0.8s ease forwards;
-  box-shadow: 0 0 24px rgba(124,58,237,0.5);
+  box-shadow: 0 0 24px rgba(220,38,38,0.5);
 }
 
 @keyframes fadeOut {
@@ -306,9 +306,9 @@
 }
 
 .reel_mute_btn:hover {
-  background: rgba(124,58,237,0.62);
-  border-color: rgba(168,85,247,0.72);
-  box-shadow: 0 8px 26px rgba(124,58,237,0.55);
+  background: rgba(220,38,38,0.62);
+  border-color: rgba(239,68,68,0.72);
+  box-shadow: 0 8px 26px rgba(220,38,38,0.55);
   transform: translate(-50%, -50%) scale(1.05);
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
@@ -413,7 +413,7 @@
   overflow-y: auto;
   backdrop-filter: blur(12px);
   scrollbar-width: none;
-  box-shadow: 0 8px 32px rgba(124,58,237,0.15);
+  box-shadow: 0 8px 32px rgba(220,38,38,0.15);
 }
 
 .reel_comment_panel::-webkit-scrollbar { display: none; }
@@ -455,7 +455,7 @@
 
 .reel_comment_submit:hover {
   opacity: 0.9;
-  box-shadow: 0 4px 14px rgba(124,58,237,0.35);
+  box-shadow: 0 4px 14px rgba(220,38,38,0.35);
 }
 
 .reel_comment_item {
@@ -508,7 +508,7 @@
   left: 50%;
   transform: translateX(-50%);
   background: rgba(12, 8, 35, 0.80);
-  border: 1px solid rgba(168,85,247,0.45);
+  border: 1px solid rgba(239,68,68,0.45);
   color: #ffffff;
   padding: 9px 20px;
   border-radius: 999px;
@@ -521,6 +521,9 @@
   box-shadow: 0 4px 20px rgba(0,0,0,0.35);
 }
 
+/* NOTE: these per-action toast colors are intentionally distinct
+   (remix/sound/collab/greenscreen/cut each get their own accent) and are
+   NOT part of the red/purple theme swap — left unchanged on purpose. */
 .reel_action_toast { font-weight: 800 !important; }
 .reel_action_toast--remix       { background: linear-gradient(135deg,#7c3aed,#a855f7)!important; color:#fff!important; border:none!important; }
 .reel_action_toast--sound       { background: linear-gradient(135deg,#f97316,#fb923c)!important; color:#fff!important; border:none!important; }
@@ -540,7 +543,7 @@
   bottom: 0;
   width: 168px;
   background: rgba(12, 8, 35, 0.92);
-  border: 1px solid rgba(124,58,237,0.45);
+  border: 1px solid rgba(220,38,38,0.45);
   border-radius: 16px;
   padding: 6px 0;
   z-index: 100;
@@ -548,7 +551,7 @@
   -webkit-backdrop-filter: blur(18px);
   box-shadow:
     0 8px 32px rgba(0,0,0,0.55),
-    0 0 0 1px rgba(124,58,237,0.15);
+    0 0 0 1px rgba(220,38,38,0.15);
   animation: dropdownSlideIn 0.18s ease;
   overflow: hidden;
 }
@@ -605,8 +608,8 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  background: rgba(124,58,237,0.75);
-  border: 1px solid rgba(168,85,247,0.6);
+  background: rgba(220,38,38,0.75);
+  border: 1px solid rgba(239,68,68,0.6);
   color: #ffffff;
   font-size: 11px;
   font-family: 'Nunito', sans-serif;
@@ -622,11 +625,11 @@
   text-overflow: ellipsis;
   transition: background 0.2s, transform 0.15s;
   letter-spacing: 0.2px;
-  box-shadow: 0 4px 14px rgba(124,58,237,0.35);
+  box-shadow: 0 4px 14px rgba(220,38,38,0.35);
 }
 
 .reel_remix_origin_badge:hover {
-  background: rgba(124,58,237,0.95);
+  background: rgba(220,38,38,0.95);
   transform: scale(1.04);
 }
 
@@ -778,9 +781,9 @@ body.reels-open .reel_item   { height: 100dvh; }
 }
 
 .reels_back_btn:hover {
-  background: rgba(124,58,237,0.62);
-  border-color: rgba(168,85,247,0.72);
-  box-shadow: 0 8px 26px rgba(124,58,237,0.55);
+  background: rgba(220,38,38,0.62);
+  border-color: rgba(239,68,68,0.72);
+  box-shadow: 0 8px 26px rgba(220,38,38,0.55);
   transform: scale(1.07);
 }
 
@@ -800,7 +803,7 @@ body.reels-open .reel_item   { height: 100dvh; }
 .reel_report_btn:hover { background: rgba(244,63,94,0.55) !important; box-shadow: 0 8px 26px rgba(244,63,94,0.45) !important; }
 
 .expandable-text-toggle {
-  color: var(--zx-primary, #7c3aed);
+  color: var(--zx-primary, #dc2626);
   font-weight: 700;
   cursor: pointer;
   margin-left: 4px;
