@@ -10,6 +10,7 @@ import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import GrassOutlinedIcon from "@mui/icons-material/GrassOutlined";
 import ContentCutOutlinedIcon from "@mui/icons-material/ContentCutOutlined";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import CheckIcon from "@mui/icons-material/Check";
 import "./reels.css";
 import { Link, useLocation, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../config/supabase";
@@ -366,18 +367,26 @@ const ReelItem = ({ reel, allReels }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reel.src]);
 
+  // ── Connect / Disconnect — optimistic update so the button flips
+  //    instantly (like Subscribe/Subscribed) instead of waiting on the
+  //    Supabase round-trip. Reverts state if the request fails.
   const handleConnect = async (e) => {
     e.preventDefault();
     const userId = localStorage.getItem("userId");
     if (!userId) { alert("Please login to connect"); return; }
     if (userId === reel.username) { alert("You cannot connect to yourself"); return; }
-    if (connected) {
-      await supabase.from("connections").delete().match({ connector_id: userId, connected_to: reel.username });
-      setConnected(false);
+
+    const wasConnected = connected;
+    setConnected(!wasConnected); // optimistic flip
+
+    if (wasConnected) {
+      const { error } = await supabase.from("connections").delete().match({ connector_id: userId, connected_to: reel.username });
+      if (error) setConnected(true); // revert on failure
     } else {
       const { error } = await supabase.from("connections").insert({ connector_id: userId, connector_username: localStorage.getItem("username"), connected_to: reel.username });
-      if (!error) {
-        setConnected(true);
+      if (error) {
+        setConnected(false); // revert on failure
+      } else {
         // NEW: notify the reel owner about the new connection.
         notifyUser({
           recipientUsername: reel.username,
@@ -927,14 +936,10 @@ const ReelItem = ({ reel, allReels }) => {
             </Link>
             {loggedInUser !== reel.username && (
               <button
-                className="reel_connect_btn"
+                className={`reel_connect_btn ${connected ? "reel_connect_btn--connected" : ""}`}
                 onClick={handleConnect}
-                // CHANGED: was "#ff0000" — matches the app's actual theme
-                // red (--zx-primary: #dc2626) instead of a slightly
-                // different, off-theme pure red, so this button now
-                // visually matches the Connect button on the Video page.
-                style={{ background: connected ? "#555" : "#dc2626", color: "white" }}
               >
+                {connected && <CheckIcon style={{ fontSize: 14 }} />}
                 {connected ? "Connected" : "Connect"}
               </button>
             )}

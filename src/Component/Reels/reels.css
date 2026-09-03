@@ -213,6 +213,9 @@
 }
 
 .reel_connect_btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   background: rgba(255,255,255,0.2);
   border: 2px solid #ffffff;
   color: #ffffff;
@@ -229,6 +232,20 @@
 .reel_connect_btn:hover {
   background: rgba(255,255,255,0.35);
   box-shadow: 0 0 12px rgba(255,255,255,0.3);
+}
+
+/* "Connected" state — dimmed/outlined like YouTube's Subscribed pill,
+   with a red hover to hint it's clickable to disconnect */
+.reel_connect_btn--connected {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.85);
+}
+
+.reel_connect_btn--connected:hover {
+  background: rgba(220,38,38,0.55);
+  border-color: rgba(239,68,68,0.7);
+  color: #ffffff;
 }
 
 .reel_description {
