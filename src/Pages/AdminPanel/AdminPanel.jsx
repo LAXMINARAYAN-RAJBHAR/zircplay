@@ -3,8 +3,11 @@ import "./AdminPanel.css";
 import { supabase } from "../../config/supabase";
 import { Link } from "react-router-dom";
 
-// ── Change this to your actual username (can be an email address) ────────────
-const ADMIN_USERNAMES = ["laxminarayan.rajbhar@gmail.com"];
+// RENAMED from ADMIN_USERNAMES — the check below has only ever compared
+// against an email address, never a username, so the old name was
+// misleading about what actually gates access here.
+// ── Change this to your admin email address(es) ────────────────────────────
+const ADMIN_EMAILS = ["laxminarayan.rajbhar@gmail.com"];
 
 const STATUS_COLORS = {
   pending:   { bg: "#fff7ed", color: "#f97316", border: "#fed7aa" },
@@ -26,9 +29,34 @@ const REASON_LABELS = {
 };
 
 const AdminPanel = () => {
-  const currentUser      = localStorage.getItem("username") || "";
-  const currentUserEmail = (localStorage.getItem("email") || "").trim();
-  const isAdmin           = ADMIN_USERNAMES.includes(currentUserEmail.toLowerCase());
+  const currentUser = localStorage.getItem("username") || "";
+
+  // ── FIX: admin check no longer trusts localStorage("email") alone.
+  // Profile.js's own PATH 2 (Supabase auth-session login, as opposed to
+  // the localStorage-cache login path) never calls
+  // localStorage.setItem("email", ...) — it only persists username/
+  // channelName/profilePic/about. An admin who authenticated through
+  // that path would have an empty localStorage "email" and get bounced
+  // to "Access Denied" with no indication why. We now also check the
+  // live Supabase session's email (the same source Profile.js's PATH 2
+  // itself reads from), and gate rendering on that check completing so
+  // we don't flash "Access Denied" before it resolves.
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEmail,   setAuthEmail]   = useState("");
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getUser()
+      .then(({ data }) => {
+        if (!active) return;
+        setAuthEmail((data?.user?.email || "").trim().toLowerCase());
+      })
+      .finally(() => { if (active) setAuthChecked(true); });
+    return () => { active = false; };
+  }, []);
+
+  const localEmail = (localStorage.getItem("email") || "").trim().toLowerCase();
+  const isAdmin = ADMIN_EMAILS.includes(localEmail) || ADMIN_EMAILS.includes(authEmail);
 
   const [reports,       setReports]       = useState([]);
   const [bannedWords,   setBannedWords]   = useState([]);
@@ -36,6 +64,7 @@ const AdminPanel = () => {
   const [activeTab,     setActiveTab]     = useState("reports");
   const [filterStatus,  setFilterStatus]  = useState("pending");
   const [newWord,       setNewWord]       = useState("");
+  const [wordSaving,    setWordSaving]    = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
   const [toast,         setToast]         = useState("");
 
@@ -137,24 +166,54 @@ const AdminPanel = () => {
   };
 
   // ── Banned words actions ────────────────────────────────────────────────────
+  // FIX: this previously pushed a fake `{ id: Date.now(), ... }` row into
+  // state instead of the row Supabase actually created. removeBannedWord()
+  // deletes by that same `id`, so every removal was calling
+  // `.delete().eq("id", <fake Date.now() id>)` — a match for no real row.
+  // The chip vanished from the UI, but the word was NEVER actually removed
+  // from the banned_words table, so it silently kept blocking uploads.
+  // Selecting the inserted row back (same pattern used for comment/post
+  // inserts elsewhere in the app) fixes that at the source.
   const addBannedWord = async () => {
     const word = newWord.trim().toLowerCase();
-    if (!word) return;
-    const { error } = await supabase.from("banned_words").insert({ word, added_by: currentUser });
-    if (!error) {
-      setBannedWords((prev) => [{ id: Date.now(), word, added_by: currentUser, created_at: new Date().toISOString() }, ...prev]);
+    if (!word || wordSaving) return;
+    setWordSaving(true);
+    const { data, error } = await supabase
+      .from("banned_words")
+      .insert({ word, added_by: currentUser })
+      .select()
+      .single();
+    if (!error && data) {
+      setBannedWords((prev) => [data, ...prev]);
       setNewWord("");
       showToast(`"${word}" added to banned list`);
     } else {
       showToast("Word already exists or error occurred");
     }
+    setWordSaving(false);
   };
 
   const removeBannedWord = async (id, word) => {
-    await supabase.from("banned_words").delete().eq("id", id);
+    const { error } = await supabase.from("banned_words").delete().eq("id", id);
+    if (error) {
+      console.error("removeBannedWord error:", error);
+      showToast("❌ Failed to remove word");
+      return;
+    }
     setBannedWords((prev) => prev.filter((w) => w.id !== id));
     showToast(`"${word}" removed`);
   };
+
+  // ── Still resolving the Supabase auth-session check — avoid flashing
+  // "Access Denied" for admins whose email only lives in the live session
+  // (see the authChecked note above). ──
+  if (!authChecked) {
+    return (
+      <div className="admin_blocked">
+        <div className="admin_spinner" />
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (
@@ -162,11 +221,6 @@ const AdminPanel = () => {
         <div className="admin_blocked_icon">🔒</div>
         <h2>Access Denied</h2>
         <p>You don't have permission to view this page.</p>
-        {/* ── TEMPORARY DEBUG — remove once confirmed working ── */}
-        <p style={{ fontSize: "12px", color: "#999", wordBreak: "break-all", maxWidth: "320px" }}>
-          Debug: localStorage "email" = "{localStorage.getItem("email")}"<br />
-          Expected: "laxminarayan.rajbhar@gmail.com"
-        </p>
         <Link to="/" className="admin_back_btn">← Go Home</Link>
       </div>
     );
@@ -336,8 +390,11 @@ const AdminPanel = () => {
               value={newWord}
               onChange={(e) => setNewWord(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addBannedWord()}
+              disabled={wordSaving}
             />
-            <button className="admin_add_word_btn" onClick={addBannedWord}>+ Add</button>
+            <button className="admin_add_word_btn" onClick={addBannedWord} disabled={wordSaving}>
+              {wordSaving ? "Adding..." : "+ Add"}
+            </button>
           </div>
           <p className="admin_words_hint">These words are automatically blocked at upload time. Case-insensitive.</p>
 
