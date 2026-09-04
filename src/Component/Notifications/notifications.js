@@ -3,21 +3,33 @@
 // Notifications page — lists rows from the `notifications` table for the
 // logged-in user, lets them mark items read, and navigates to the
 // relevant content on click. Rendered at the /notifications route.
+//
+// NEW: connection_request notifications (fired by the notify_on_subscribe
+// DB trigger whenever someone sends a Connect request) now render inline
+// Accept / Decline buttons, Facebook-style, instead of just navigating
+// somewhere on click. Accepting flips the connections row's status to
+// "accepted" (which also fires notify_on_connect_accept, notifying the
+// original requester); declining deletes the row outright. Both remove
+// the notification from the list immediately once actioned.
 
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../config/supabase";
 import "./notifications.css";
-import { notifyUser, notifySubscribers } from "../../utils/notifications";
 
 // NEW: "mention" — fired from PostFeed.jsx (post creation + comments)
 // and HashtagPage.jsx (comments) whenever someone @mentions a user.
+// NEW: "connection_request" / "connection_accepted" — fired by the
+// notify_on_subscribe / notify_on_connect_accept DB triggers on the
+// connections table (see connection_request_migration.sql).
 const TYPE_ICON = {
   like: "❤️",
   comment: "💬",
   connection: "🔔",
   upload: "🎬",
   mention: "📣",
+  connection_request: "🤝",
+  connection_accepted: "✅",
 };
 
 const timeAgo = (iso) => {
@@ -41,6 +53,9 @@ const destinationFor = (n) => {
     case "post":
       return `/?tab=posts&post=${n.content_id}`;
     default:
+      // connection_request / connection_accepted notifications have
+      // content_type: "connection" — there's nowhere sensible to
+      // navigate for those, so this intentionally falls through here.
       return null;
   }
 };
@@ -49,6 +64,11 @@ export default function Notifications({ currentUser }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // NEW: tracks which connection_request notification currently has an
+  // Accept/Decline request in flight, keyed by notification id — guards
+  // against double-clicks firing two overlapping Supabase writes for
+  // the same row, same pattern as connectLoading elsewhere in the app.
+  const [connectionActionBusy, setConnectionActionBusy] = useState(null);
   const navigate = useNavigate();
 
   const fetchNotifications = useCallback(async () => {
@@ -105,7 +125,57 @@ export default function Notifications({ currentUser }) {
     }
   };
 
+  // NEW: accept a pending connection request. n.content_id holds the
+  // connections.id (set by the notify_on_subscribe trigger at insert
+  // time), so this can update the row directly with no extra lookup.
+  // Flipping status → "accepted" also fires notify_on_connect_accept
+  // server-side, notifying the original requester automatically — no
+  // client-side notification call needed here.
+  const acceptConnection = async (n) => {
+    if (connectionActionBusy) return;
+    setConnectionActionBusy(n.id);
+    const { error: updateErr } = await supabase
+      .from("connections")
+      .update({ status: "accepted", accepted_at: new Date().toISOString() })
+      .eq("id", n.content_id);
+    setConnectionActionBusy(null);
+
+    if (updateErr) {
+      console.error("[Notifications] Failed to accept connection:", updateErr);
+      return;
+    }
+
+    if (!n.is_read) markAsRead(n.id);
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+  };
+
+  // NEW: decline a pending connection request — deletes the connections
+  // row outright (same as withdrawing/disconnecting from the Connect
+  // button elsewhere), rather than leaving a permanently-declined row
+  // around. The requester simply sees "Connect" again if they check.
+  const declineConnection = async (n) => {
+    if (connectionActionBusy) return;
+    setConnectionActionBusy(n.id);
+    const { error: deleteErr } = await supabase
+      .from("connections")
+      .delete()
+      .eq("id", n.content_id);
+    setConnectionActionBusy(null);
+
+    if (deleteErr) {
+      console.error("[Notifications] Failed to decline connection:", deleteErr);
+      return;
+    }
+
+    if (!n.is_read) markAsRead(n.id);
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+  };
+
   const handleClick = (n) => {
+    // connection_request notifications are actioned via the Accept/
+    // Decline buttons below, not by clicking the row itself — clicking
+    // elsewhere on the row just marks it read without navigating
+    // anywhere (destinationFor returns null for these).
     if (!n.is_read) markAsRead(n.id);
     const dest = destinationFor(n);
     if (dest) navigate(dest);
@@ -137,22 +207,87 @@ export default function Notifications({ currentUser }) {
       )}
 
       <ul className="zx-notifications-list">
-        {notifications.map((n) => (
-          <li
-            key={n.id}
-            className={`zx-notification-item${n.is_read ? "" : " zx-notification-unread"}`}
-            onClick={() => handleClick(n)}
-          >
-            <span className="zx-notification-icon">{TYPE_ICON[n.type] || "🔔"}</span>
-            <div className="zx-notification-body">
-              <p className="zx-notification-message">
-                <strong>{n.sender_username}</strong> {n.message}
-              </p>
-              <span className="zx-notification-time">{timeAgo(n.created_at)}</span>
-            </div>
-            {!n.is_read && <span className="zx-notification-dot" />}
-          </li>
-        ))}
+        {notifications.map((n) => {
+          const isConnectionRequest = n.type === "connection_request";
+          const isBusy = connectionActionBusy === n.id;
+
+          return (
+            <li
+              key={n.id}
+              className={`zx-notification-item${n.is_read ? "" : " zx-notification-unread"}`}
+              onClick={() => handleClick(n)}
+            >
+              <span className="zx-notification-icon">{TYPE_ICON[n.type] || "🔔"}</span>
+              <div className="zx-notification-body">
+                <p className="zx-notification-message">
+                  <strong>{n.sender_username}</strong> {n.message}
+                </p>
+                <span className="zx-notification-time">{timeAgo(n.created_at)}</span>
+
+                {/* NEW: Facebook-style inline Accept / Decline row for a
+                    pending connection request. stopPropagation keeps a
+                    button click from also triggering handleClick on the
+                    parent <li> (which would otherwise just mark it read
+                    a second time — harmless, but redundant). */}
+                {isConnectionRequest && (
+                  <div
+                    className="zx-notification-actions"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      marginTop: "8px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="zx-notification-decline-btn"
+                      onClick={() => declineConnection(n)}
+                      disabled={isBusy}
+                      style={{
+                        flex: 1,
+                        maxWidth: "140px",
+                        padding: "6px 14px",
+                        borderRadius: "8px",
+                        border: "1.5px solid #d1d5db",
+                        background: "transparent",
+                        color: "#4b5563",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        cursor: isBusy ? "not-allowed" : "pointer",
+                        opacity: isBusy ? 0.6 : 1,
+                      }}
+                    >
+                      Decline
+                    </button>
+                    <button
+                      type="button"
+                      className="zx-notification-accept-btn"
+                      onClick={() => acceptConnection(n)}
+                      disabled={isBusy}
+                      style={{
+                        flex: 1,
+                        maxWidth: "140px",
+                        padding: "6px 14px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background: "#1877f2",
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        cursor: isBusy ? "not-allowed" : "pointer",
+                        opacity: isBusy ? 0.6 : 1,
+                      }}
+                    >
+                      {isBusy ? "…" : "Accept"}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {!n.is_read && <span className="zx-notification-dot" />}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

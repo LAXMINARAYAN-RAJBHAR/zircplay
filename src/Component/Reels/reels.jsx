@@ -11,9 +11,8 @@ import GrassOutlinedIcon from "@mui/icons-material/GrassOutlined";
 import ContentCutOutlinedIcon from "@mui/icons-material/ContentCutOutlined";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 // CHANGED: CheckIcon removed — the Connect button now shows a plain
-// "✓ Connected" text label, same as PostCard.jsx and Video.jsx, instead
-// of a separate MUI check icon. Keeps the three Connect buttons visually
-// and semantically identical across the app.
+// text label ("Connect" / "Requested" / "✓ Connected"), same as
+// PostCard.jsx and Video.jsx, instead of a separate MUI check icon.
 import "./reels.css";
 import { Link, useLocation, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../config/supabase";
@@ -24,13 +23,12 @@ import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ExpandableText from "../ExpandableText/ExpandableText";
 import AdUnit from "../../Component/Ads/AdUnit";
-// NOTE: like/comment notifications are now owned entirely by DB
-// triggers (notify_on_like / notify_on_comment on the likes/comments
-// tables), so this component no longer calls notifyUser() for those —
-// doing so alongside the trigger produced a duplicate notification for
-// every like and every comment. notifyUser() is still used for Connect,
-// since there's no equivalent trigger-side duplication there yet.
-import { notifyUser } from "../../utils/notifications";
+// NOTE: notifyUser() is no longer imported/used anywhere in this file.
+// Like/comment notifications are owned by the notify_on_like /
+// notify_on_comment DB triggers, and Connect requests/accepts are owned
+// by the notify_on_subscribe / notify_on_connect_accept DB triggers —
+// client-side calls for all of these were removed since they duplicated
+// the triggers' own notifications. See connection_request_migration.sql.
 
 const getVideoType = (src) => {
   if (!src) return "video/mp4";
@@ -191,7 +189,9 @@ const ReelItem = ({ reel, allReels }) => {
 
   const loggedInUser = localStorage.getItem("username") || "Guest";
 
-  const [connected, setConnected]               = useState(false);
+  // CHANGED: connected (boolean) → connectionStatus (null | "pending" |
+  // "accepted"), same three-state model as PostCard.jsx / Video.jsx.
+  const [connectionStatus, setConnectionStatus] = useState(null);
   // NEW: connectLoading — same debounce/disable guard PostCard.jsx uses,
   // so a double-click (or double-tap on mobile) can't fire two
   // overlapping Supabase requests and desync the optimistic UI state.
@@ -292,19 +292,20 @@ const ReelItem = ({ reel, allReels }) => {
   // CHANGED: this loader now also runs for the current user's own reels
   // and simply skips setting state when username === reel.username — but
   // to keep behavior identical to before (button never renders on own
-  // reels anyway) it still returns early. Kept as-is, wired the same way
-  // as PostCard.jsx / Video.jsx's connection loaders.
+  // reels anyway) it still returns early. Now also reads `status` so the
+  // button can render its three states (Connect / Requested / ✓
+  // Connected) instead of just on/off.
   useEffect(() => {
     const loadConnection = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) return;
       const { data, error } = await supabase
         .from("connections")
-        .select("id")
+        .select("id, status")
         .match({ connector_id: userId, connected_to: reel.username })
         .maybeSingle();
       if (error) console.error("loadConnection error:", error);
-      setConnected(!!data);
+      setConnectionStatus(data?.status || null);
     };
     loadConnection();
   }, [reel.username]);
@@ -337,12 +338,17 @@ const ReelItem = ({ reel, allReels }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reel.src]);
 
-  // ── Connect / Disconnect — now wired identically to PostCard.jsx and
-  //    Video.jsx: dispatch "openLogin" instead of alert() when logged
-  //    out, a self-connect guard, a connectLoading guard against
-  //    double-fires, an optimistic flip with rollback + console.error
-  //    logging on failure, and notifyUser() only after a confirmed
-  //    successful insert.
+  // ── Connect / Withdraw-Disconnect — now wired identically to
+  //    PostCard.jsx and Video.jsx: dispatch "openLogin" instead of
+  //    alert() when logged out, a self-connect guard, a connectLoading
+  //    guard against double-fires, optimistic status transitions with
+  //    rollback + console.error logging on failure. A fresh Connect
+  //    click inserts as status: "pending" instead of connecting
+  //    instantly — the other person has to accept it (from the
+  //    Notifications page) before the connection is "accepted". No
+  //    notifyUser() call on insert anymore — the notify_on_subscribe DB
+  //    trigger owns that notification now, so a client-side call here
+  //    would duplicate it.
   const handleConnect = async (e) => {
     if (e) e.preventDefault();
     if (!localStorage.getItem("username")) {
@@ -357,36 +363,32 @@ const ReelItem = ({ reel, allReels }) => {
     if (userId === reel.username) return; // self-connect guard
     if (connectLoading) return;
 
-    const wasConnected = connected;
+    const wasStatus = connectionStatus; // null | "pending" | "accepted"
     setConnectLoading(true);
-    setConnected(!wasConnected); // optimistic flip
 
     try {
-      if (wasConnected) {
+      if (wasStatus) {
+        // Withdraw a pending request, or disconnect an accepted one.
+        setConnectionStatus(null);
         const { error } = await supabase
           .from("connections")
           .delete()
           .match({ connector_id: userId, connected_to: reel.username });
         if (error) {
           console.error("handleConnect delete error:", error);
-          setConnected(true); // rollback
+          setConnectionStatus(wasStatus); // rollback
         }
       } else {
+        setConnectionStatus("pending");
         const { error } = await supabase.from("connections").insert({
           connector_id: userId,
           connector_username: loggedInUser,
           connected_to: reel.username,
+          status: "pending",
         });
         if (error) {
           console.error("handleConnect insert error:", error);
-          setConnected(false); // rollback
-        } else {
-          notifyUser({
-            recipientUsername: reel.username,
-            senderUsername: loggedInUser,
-            type: "connection",
-            message: `${loggedInUser} connected with you`,
-          });
+          setConnectionStatus(null); // rollback
         }
       }
     } finally {
@@ -403,8 +405,7 @@ const ReelItem = ({ reel, allReels }) => {
       setComments((prev) => [{ id: data.id, user: data.username, text: data.text, date: data.created_at }, ...prev]);
       // Comment notifications are handled by the notify_on_comment DB
       // trigger on the comments table — no client-side notifyUser()
-      // call here anymore (it previously duplicated the trigger's
-      // notification).
+      // call here.
     }
     setCommentText("");
   };
@@ -588,8 +589,7 @@ const ReelItem = ({ reel, allReels }) => {
       setLikeCount(await fetchCount(reel.id, "reel", "like"));
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));
       // Like notifications are handled by the notify_on_like DB trigger
-      // on the likes table — no client-side notifyUser() call here
-      // anymore (it previously duplicated the trigger's notification).
+      // on the likes table — no client-side notifyUser() call here.
     } finally { setIsActing(false); }
   };
 
@@ -652,8 +652,7 @@ const ReelItem = ({ reel, allReels }) => {
         setLiked(true);
         // Like notifications are handled by the notify_on_like DB
         // trigger on the likes table — no client-side notifyUser()
-        // call here anymore (it previously duplicated the trigger's
-        // notification).
+        // call here.
       }
       setLikeCount(await fetchCount(reel.id, "reel", "like"));
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));
@@ -681,6 +680,13 @@ const ReelItem = ({ reel, allReels }) => {
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));
     } finally { setIsActing(false); }
   };
+
+  const connectLabel =
+    connectionStatus === "accepted"
+      ? "✓ Connected"
+      : connectionStatus === "pending"
+        ? "Requested"
+        : "Connect";
 
   return (
     <div className="reel_item" id={`reel-${reel.id}`} ref={containerRef}>
@@ -870,17 +876,17 @@ const ReelItem = ({ reel, allReels }) => {
             <Link to={`/user/${reel.username}`} style={{ textDecoration: "none", color: "white" }}>
               <span className="reel_username">{reel.user}</span>
             </Link>
-            {/* CHANGED: Connect is now a <button>, matching PostCard.jsx
-                and Video.jsx (was a <div>). Same disabled-while-loading
-                guard, same "✓ Connected" text label instead of a check
-                icon. */}
+            {/* CHANGED: three-state label (Connect / Requested / ✓
+                Connected), same as PostCard.jsx and Video.jsx. */}
             {loggedInUser !== reel.username && (
               <button
-                className={`reel_connect_btn ${connected ? "reel_connect_btn--connected" : ""}`}
+                className={`reel_connect_btn ${
+                  connectionStatus === "accepted" ? "reel_connect_btn--connected" : ""
+                } ${connectionStatus === "pending" ? "reel_connect_btn--pending" : ""}`}
                 onClick={handleConnect}
                 disabled={connectLoading}
               >
-                {connected ? "✓ Connected" : "Connect"}
+                {connectLabel}
               </button>
             )}
           </div>
