@@ -459,8 +459,17 @@ const PostCard = ({
     setEditImages((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  // FIX: this guard used to be `!editText.trim() && editImages.length === 0`,
+  // which never accounted for a video-only post. A video post has no
+  // image_url/image_urls, so editImages starts empty — meaning saveEdit()
+  // silently no-op'd for any video post with no caption, with nothing in
+  // the UI explaining why. `post.video_url` is now treated as "has media"
+  // too, same as the equivalent fix already applied in Profile.js's
+  // ProfilePostCard.handleSaveEditPost.
+  const hasMedia = editImages.length > 0 || !!post.video_url;
+
   const saveEdit = async () => {
-    if (!editText.trim() && editImages.length === 0) return;
+    if (!editText.trim() && !hasMedia) return;
     setSavingEdit(true);
     try {
       await onEdit(post.id, {
@@ -680,6 +689,30 @@ const PostCard = ({
               </div>
             )}
 
+            {/* NEW: video preview + note in edit mode — video posts had
+                no visual representation at all here before, and no way
+                to save an edit without adding caption text (see the
+                hasMedia fix above). Mirrors the same block already
+                shown in Profile.js's edit-post modal. */}
+            {post.video_url && (
+              <div style={{ marginTop: "10px" }}>
+                <video
+                  src={post.video_url}
+                  controls
+                  className="pf-video-preview"
+                />
+                <p
+                  style={{
+                    color: "var(--zx-text3)",
+                    fontSize: "11px",
+                    margin: "6px 0 0",
+                  }}
+                >
+                  Video can't be changed here — delete and repost to swap it.
+                </p>
+              </div>
+            )}
+
             <div style={{ marginTop: "10px" }}>
               <select
                 className="pf-privacy-select"
@@ -705,9 +738,7 @@ const PostCard = ({
               <button
                 className="pf-post-btn"
                 onClick={saveEdit}
-                disabled={
-                  savingEdit || (!editText.trim() && editImages.length === 0)
-                }
+                disabled={savingEdit || (!editText.trim() && !hasMedia)}
               >
                 {savingEdit ? "Saving…" : "Save changes"}
               </button>
