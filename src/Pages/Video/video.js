@@ -15,14 +15,13 @@ import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ReportModal from "../../Component/Moderation/ReportModal";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
 import AdSlot from "../../Component/Ads/AdSlot";
-// NEW: shared notification helper — see src/utils/notifications.js
-// NOTE: like/comment notifications are now owned entirely by DB
-// triggers (notify_on_like / notify_on_comment on the likes/comments
-// tables), so this component no longer calls notifyUser() for those —
-// doing so alongside the trigger produced a duplicate notification for
-// every like and every comment. notifyUser() is still used for Connect,
-// since there's no equivalent trigger-side duplication there yet.
-import { notifyUser } from "../../utils/notifications";
+// NOTE: notifyUser() is no longer imported/used anywhere in this file.
+// Like/comment notifications are owned by the notify_on_like /
+// notify_on_comment DB triggers (client-side calls were removed earlier
+// since they duplicated the trigger's own notification), and Connect
+// requests/accepts are now owned by the notify_on_subscribe /
+// notify_on_connect_accept DB triggers the same way — see
+// connection_request_migration.sql.
 
 // ── Relative-time formatter for comment/upload timestamps (e.g. "3h ago").
 //
@@ -182,7 +181,9 @@ const Video = ({ sideNavbar }) => {
 
   const [dbVideos, setDbVideos] = useState([]);
   const [dbLoading, setDbLoading] = useState(true);
-  const [isConnected, setIsConnected] = useState(false);
+  // CHANGED: isConnected (boolean) → connectionStatus (null | "pending" |
+  // "accepted"), same three-state model as PostCard.jsx / Reels.jsx.
+  const [connectionStatus, setConnectionStatus] = useState(null);
   const [message, setMessage] = useState("");
   const [autoPlay, setAutoPlay] = useState(true);
   const [showControls, setShowControls] = useState(true);
@@ -438,6 +439,8 @@ const Video = ({ sideNavbar }) => {
     }
   }, [video?.id, video?.isDb, loggedInUser]);
 
+  // CHANGED: now also reads `status` so the button can render its three
+  // states (Connect / Requested / ✓ Connected) instead of just on/off.
   useEffect(() => {
     const loadConnection = async () => {
       const userId = localStorage.getItem("userId");
@@ -450,11 +453,11 @@ const Video = ({ sideNavbar }) => {
       // future issues here aren't silent.
       const { data, error } = await supabase
         .from("connections")
-        .select("id")
+        .select("id, status")
         .match({ connector_id: userId, connected_to: channelUsername })
         .maybeSingle();
       if (error) console.error("loadConnection error:", error);
-      setIsConnected(!!data);
+      setConnectionStatus(data?.status || null);
     };
     loadConnection();
   }, [id, video?.username]);
@@ -488,11 +491,17 @@ const Video = ({ sideNavbar }) => {
     // NEW: same debounce/disable guard as PostCard.jsx and Reels.jsx.
   const [connectLoading, setConnectLoading] = useState(false);
 
-  // ── Connect / Disconnect — now wired identically to PostCard.jsx and
-  //    Reels.jsx: dispatch "openLogin" instead of alert() when logged
-  //    out, a self-connect guard, a connectLoading guard against
-  //    double-fires, optimistic flip with rollback + console.error
-  //    logging, and notifyUser() only after a confirmed successful insert.
+  // ── Connect / Withdraw-Disconnect — now wired identically to
+  //    PostCard.jsx and Reels.jsx: dispatch "openLogin" instead of
+  //    alert() when logged out, a self-connect guard, a connectLoading
+  //    guard against double-fires, optimistic status transitions with
+  //    rollback + console.error logging on failure. A fresh Connect
+  //    click inserts as status: "pending" instead of connecting
+  //    instantly — the other person has to accept it (from the
+  //    Notifications page) before the connection is "accepted". No
+  //    notifyUser() call on insert anymore — the notify_on_subscribe DB
+  //    trigger owns that notification now, so a client-side call here
+  //    would duplicate it.
   const handleConnect = async () => {
     if (!localStorage.getItem("username")) {
       window.dispatchEvent(new CustomEvent("openLogin"));
@@ -507,36 +516,32 @@ const Video = ({ sideNavbar }) => {
     if (userId === channelUsername) return; // self-connect guard
     if (connectLoading) return;
 
-    const wasConnected = isConnected;
+    const wasStatus = connectionStatus; // null | "pending" | "accepted"
     setConnectLoading(true);
-    setIsConnected(!wasConnected); // optimistic flip
 
     try {
-      if (wasConnected) {
+      if (wasStatus) {
+        // Withdraw a pending request, or disconnect an accepted one.
+        setConnectionStatus(null);
         const { error } = await supabase
           .from("connections")
           .delete()
           .match({ connector_id: userId, connected_to: channelUsername });
         if (error) {
           console.error("handleConnect delete error:", error);
-          setIsConnected(true); // rollback
+          setConnectionStatus(wasStatus); // rollback
         }
       } else {
+        setConnectionStatus("pending");
         const { error } = await supabase.from("connections").insert({
           connector_id: userId,
           connector_username: localStorage.getItem("username"),
           connected_to: channelUsername,
+          status: "pending",
         });
         if (error) {
           console.error("handleConnect insert error:", error);
-          setIsConnected(false); // rollback
-        } else {
-          notifyUser({
-            recipientUsername: channelUsername,
-            senderUsername: loggedInUser,
-            type: "connection",
-            message: `${loggedInUser} connected with you`,
-          });
+          setConnectionStatus(null); // rollback
         }
       }
     } finally {
@@ -585,8 +590,7 @@ const Video = ({ sideNavbar }) => {
       setLikeCount((c) => c + 1);
       if (disliked) setDisliked(false);
       // Like notifications are handled by the notify_on_like DB trigger
-      // on the likes table — no client-side notifyUser() call here
-      // anymore (it previously duplicated the trigger's notification).
+      // on the likes table — no client-side notifyUser() call here.
     }
   };
 
@@ -655,8 +659,7 @@ const Video = ({ sideNavbar }) => {
       ]);
       // Comment notifications are handled by the notify_on_comment DB
       // trigger on the comments table — no client-side notifyUser()
-      // call here anymore (it previously duplicated the trigger's
-      // notification).
+      // call here.
     }
     setMessage("");
   };
@@ -690,8 +693,7 @@ const Video = ({ sideNavbar }) => {
       setLikeCount((c) => c + 1);
       if (disliked) setDisliked(false);
       // Like notifications are handled by the notify_on_like DB trigger
-      // on the likes table — no client-side notifyUser() call here
-      // anymore (it previously duplicated the trigger's notification).
+      // on the likes table — no client-side notifyUser() call here.
     }
   };
 
@@ -871,6 +873,13 @@ const Video = ({ sideNavbar }) => {
   const channelUsername = video.username || video.channel?.toLowerCase();
 
   const overlayVisible = isMobile ? mobileOverlayVisible : showControls;
+
+  const connectLabel =
+    connectionStatus === "accepted"
+      ? "✓ Connected"
+      : connectionStatus === "pending"
+        ? "Requested"
+        : "Connect";
 
   return (
     <div className="video">
@@ -1209,14 +1218,17 @@ const Video = ({ sideNavbar }) => {
                 </div>
               </div>
                             {/* CHANGED: now a <button>, matching PostCard.jsx / Reels.jsx,
-                  disabled while a request is in flight. */}
+                  disabled while a request is in flight. Shows three
+                  states: Connect / Requested / ✓ Connected. */}
               {loggedInUser !== channelUsername && (
                 <button
-                  className={`connectBtnYoutube ${isConnected ? "connectBtnYoutube--connected" : ""}`}
+                  className={`connectBtnYoutube ${
+                    connectionStatus === "accepted" ? "connectBtnYoutube--connected" : ""
+                  } ${connectionStatus === "pending" ? "connectBtnYoutube--pending" : ""}`}
                   onClick={handleConnect}
                   disabled={connectLoading}
                 >
-                  {isConnected ? "✓ Connected" : "Connect"}
+                  {connectLabel}
                 </button>
               )}
             </div>

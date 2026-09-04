@@ -8,10 +8,11 @@ import ReportPostModal from "./ReportPostModal";
 // full-screen swipe experience. See PhotoViewer.jsx.
 import PhotoViewer from "./PhotoViewer";
 // Connect button on each post's header — same "connections" table
-// and notifyUser() pattern used by the Connect button on Video.jsx /
-// Reels.jsx (see subscriptions_to_connections_migration.sql).
+// used by the Connect button on Video.jsx / Reels.jsx (see
+// subscriptions_to_connections_migration.sql and the later
+// connection_request_migration.sql that added the pending/accepted
+// status column).
 import { supabase } from "../../config/supabase";
-import { notifyUser } from "../../utils/notifications";
 
 const REACTIONS = [
   { key: "like", emoji: "👍", label: "Like", color: "#1877f2" },
@@ -240,12 +241,18 @@ const PostCard = ({
 
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
 
-  // Connect button state — mirrors isConnected/handleConnect in
-  // Video.jsx and connected/handleConnect in Reels.jsx, against the
-  // same "connections" table. Kept in lockstep with those two files:
-  // same field names, same optimistic-update + rollback behavior,
-  // same self-connect guard, same notifyUser() call on success.
-  const [connected, setConnected] = useState(false);
+  // Connect button state — mirrors the same three-state flow used in
+  // Video.jsx and Reels.jsx, against the same "connections" table.
+  // connectionStatus is null (no relationship / never requested),
+  // "pending" (a request is outstanding — either direction), or
+  // "accepted" (both sides can message each other). Requesting a
+  // connection no longer notifies via a client-side call — the
+  // notify_on_subscribe DB trigger owns "wants to connect" notifications
+  // on insert, and notify_on_connect_accept owns "accepted your request"
+  // notifications on the status update, so this component never calls
+  // notifyUser() for Connect anymore (that previously duplicated the
+  // trigger's own notification, same issue we hit with likes/comments).
+  const [connectionStatus, setConnectionStatus] = useState(null);
   const [connectLoading, setConnectLoading] = useState(false);
 
   // ── Action bar animation state ──
@@ -345,10 +352,12 @@ const PostCard = ({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Load whether the current user is already connected to this post's
-  // author. Skipped entirely for the author's own posts, since the
-  // button never renders there anyway — same early-return shape as
-  // Reels.jsx / Video.jsx's connection loaders.
+  // Load whether the current user has a connection (of any status) with
+  // this post's author. Skipped entirely for the author's own posts,
+  // since the button never renders there anyway — same early-return
+  // shape as Reels.jsx / Video.jsx's connection loaders. Now also reads
+  // `status` so the button can render its three states (Connect /
+  // Requested / ✓ Connected) instead of just on/off.
   useEffect(() => {
     if (!post.username || post.username === currentUser) return;
     const loadConnection = async () => {
@@ -356,24 +365,24 @@ const PostCard = ({
       if (!userId) return;
       const { data, error } = await supabase
         .from("connections")
-        .select("id")
+        .select("id, status")
         .match({ connector_id: userId, connected_to: post.username })
         .maybeSingle();
       if (error) console.error("loadConnection error:", error);
-      setConnected(!!data);
+      setConnectionStatus(data?.status || null);
     };
     loadConnection();
   }, [post.username, currentUser]);
 
-  // Connect / Disconnect — unified with Reels.jsx / Video.jsx:
+  // Connect / Withdraw-Disconnect — unified with Reels.jsx / Video.jsx:
   //   • self-connect guard
   //   • optimistic flip with rollback on failure
-  //   • connector_username included on insert (this was previously
-  //     missing here, which is the same silent-insert-failure bug
-  //     Video.jsx's handleConnect comment already called out and fixed
-  //     for its own table — connections.connector_username is required
-  //     there too)
-  //   • notifyUser() only fires after a confirmed-successful insert
+  //   • connector_username included on insert
+  //   • inserts as status: "pending" — a fresh Connect click no longer
+  //     connects instantly, it sends a request the other person must
+  //     accept (see the Notifications page's Accept/Decline actions)
+  //   • clicking again while "pending" or "accepted" withdraws the
+  //     request / disconnects, same delete path either way
   const handleConnect = async () => {
     if (!currentUser || currentUser === "anonymous") {
       window.dispatchEvent(new CustomEvent("openLogin"));
@@ -387,37 +396,36 @@ const PostCard = ({
     if (userId === post.username) return; // self-connect guard
     if (connectLoading) return;
 
-    const wasConnected = connected;
+    const wasStatus = connectionStatus; // null | "pending" | "accepted"
     setConnectLoading(true);
-    setConnected(!wasConnected); // optimistic flip
 
     try {
-      if (wasConnected) {
+      if (wasStatus) {
+        // Withdraw a pending request, or disconnect an accepted one.
+        setConnectionStatus(null);
         const { error } = await supabase
           .from("connections")
           .delete()
           .match({ connector_id: userId, connected_to: post.username });
         if (error) {
           console.error("handleConnect delete error:", error);
-          setConnected(true); // rollback
+          setConnectionStatus(wasStatus); // rollback
         }
       } else {
+        setConnectionStatus("pending");
         const { error } = await supabase.from("connections").insert({
           connector_id: userId,
           connector_username: currentUser,
           connected_to: post.username,
+          status: "pending",
         });
         if (error) {
           console.error("handleConnect insert error:", error);
-          setConnected(false); // rollback
-        } else {
-          notifyUser({
-            recipientUsername: post.username,
-            senderUsername: currentUser,
-            type: "connection",
-            message: `${currentUser} connected with you`,
-          });
+          setConnectionStatus(null); // rollback
         }
+        // No notifyUser() call here — the notify_on_subscribe DB
+        // trigger sends the "wants to connect" notification on this
+        // insert, so a client-side call would duplicate it.
       }
     } finally {
       setConnectLoading(false);
@@ -459,17 +467,8 @@ const PostCard = ({
     setEditImages((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // FIX: this guard used to be `!editText.trim() && editImages.length === 0`,
-  // which never accounted for a video-only post. A video post has no
-  // image_url/image_urls, so editImages starts empty — meaning saveEdit()
-  // silently no-op'd for any video post with no caption, with nothing in
-  // the UI explaining why. `post.video_url` is now treated as "has media"
-  // too, same as the equivalent fix already applied in Profile.js's
-  // ProfilePostCard.handleSaveEditPost.
-  const hasMedia = editImages.length > 0 || !!post.video_url;
-
   const saveEdit = async () => {
-    if (!editText.trim() && !hasMedia) return;
+    if (!editText.trim() && editImages.length === 0) return;
     setSavingEdit(true);
     try {
       await onEdit(post.id, {
@@ -514,6 +513,13 @@ const PostCard = ({
     }
     callback(post.id, commentId);
   };
+
+  const connectLabel =
+    connectionStatus === "accepted"
+      ? "✓ Connected"
+      : connectionStatus === "pending"
+        ? "Requested"
+        : "Connect";
 
   return (
     <>
@@ -579,11 +585,13 @@ const PostCard = ({
 
           {!isEditing && post.username !== currentUser && (
             <button
-              className={`pf-connect-btn ${connected ? "pf-connect-btn--connected" : ""}`}
+              className={`pf-connect-btn ${
+                connectionStatus === "accepted" ? "pf-connect-btn--connected" : ""
+              } ${connectionStatus === "pending" ? "pf-connect-btn--pending" : ""}`}
               onClick={handleConnect}
               disabled={connectLoading}
             >
-              {connected ? "✓ Connected" : "Connect"}
+              {connectLabel}
             </button>
           )}
 
@@ -598,21 +606,30 @@ const PostCard = ({
               </button>
               {showMenu && (
                 <div className="pf-dropdown">
-                  {post.username !== currentUser && (
-                    <button
-                      className="pf-dropdown-item"
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent("openMessages", {
-                            detail: { username: post.username },
-                          }),
-                        );
-                        setShowMenu(false);
-                      }}
-                    >
-                      ✉️ Message {post.username}
-                    </button>
-                  )}
+                  {/* CHANGED: the Message action now only shows once the
+                      connection is actually accepted — messaging an
+                      unconnected or still-pending user isn't offered
+                      from here anymore. MessagesPanel itself still
+                      allows starting a fresh conversation as a message
+                      request via its inbox search, independent of the
+                      Connect system — this only gates the shortcut on
+                      the post card. */}
+                  {post.username !== currentUser &&
+                    connectionStatus === "accepted" && (
+                      <button
+                        className="pf-dropdown-item"
+                        onClick={() => {
+                          window.dispatchEvent(
+                            new CustomEvent("openMessages", {
+                              detail: { username: post.username },
+                            }),
+                          );
+                          setShowMenu(false);
+                        }}
+                      >
+                        ✉️ Message {post.username}
+                      </button>
+                    )}
                   {post.username === currentUser && (
                     <button className="pf-dropdown-item" onClick={startEdit}>
                       ✏️ Edit post
@@ -689,30 +706,6 @@ const PostCard = ({
               </div>
             )}
 
-            {/* NEW: video preview + note in edit mode — video posts had
-                no visual representation at all here before, and no way
-                to save an edit without adding caption text (see the
-                hasMedia fix above). Mirrors the same block already
-                shown in Profile.js's edit-post modal. */}
-            {post.video_url && (
-              <div style={{ marginTop: "10px" }}>
-                <video
-                  src={post.video_url}
-                  controls
-                  className="pf-video-preview"
-                />
-                <p
-                  style={{
-                    color: "var(--zx-text3)",
-                    fontSize: "11px",
-                    margin: "6px 0 0",
-                  }}
-                >
-                  Video can't be changed here — delete and repost to swap it.
-                </p>
-              </div>
-            )}
-
             <div style={{ marginTop: "10px" }}>
               <select
                 className="pf-privacy-select"
@@ -738,7 +731,9 @@ const PostCard = ({
               <button
                 className="pf-post-btn"
                 onClick={saveEdit}
-                disabled={savingEdit || (!editText.trim() && !hasMedia)}
+                disabled={
+                  savingEdit || (!editText.trim() && editImages.length === 0)
+                }
               >
                 {savingEdit ? "Saving…" : "Save changes"}
               </button>
