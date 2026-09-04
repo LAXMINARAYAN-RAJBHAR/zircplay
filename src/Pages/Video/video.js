@@ -16,6 +16,12 @@ import ReportModal from "../../Component/Moderation/ReportModal";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
 import AdSlot from "../../Component/Ads/AdSlot";
 // NEW: shared notification helper — see src/utils/notifications.js
+// NOTE: like/comment notifications are now owned entirely by DB
+// triggers (notify_on_like / notify_on_comment on the likes/comments
+// tables), so this component no longer calls notifyUser() for those —
+// doing so alongside the trigger produced a duplicate notification for
+// every like and every comment. notifyUser() is still used for Connect,
+// since there's no equivalent trigger-side duplication there yet.
 import { notifyUser } from "../../utils/notifications";
 
 // ── Relative-time formatter for comment/upload timestamps (e.g. "3h ago").
@@ -578,16 +584,9 @@ const Video = ({ sideNavbar }) => {
       setLiked(true);
       setLikeCount((c) => c + 1);
       if (disliked) setDisliked(false);
-      // NEW: notify the video owner about the like (not on unlike).
-      const channelUsername = video?.username || video?.channel?.toLowerCase();
-      notifyUser({
-        recipientUsername: channelUsername,
-        senderUsername: loggedInUser,
-        type: "like",
-        message: `${loggedInUser} liked your video "${video?.title || ""}"`,
-        contentId: id,
-        contentType: "video",
-      });
+      // Like notifications are handled by the notify_on_like DB trigger
+      // on the likes table — no client-side notifyUser() call here
+      // anymore (it previously duplicated the trigger's notification).
     }
   };
 
@@ -654,16 +653,10 @@ const Video = ({ sideNavbar }) => {
         },
         ...prev,
       ]);
-      // NEW: notify the video owner about the comment.
-      const channelUsername = video?.username || video?.channel?.toLowerCase();
-      notifyUser({
-        recipientUsername: channelUsername,
-        senderUsername: loggedInUser,
-        type: "comment",
-        message: `${loggedInUser} commented on your video: "${message.slice(0, 60)}"`,
-        contentId: id,
-        contentType: "video",
-      });
+      // Comment notifications are handled by the notify_on_comment DB
+      // trigger on the comments table — no client-side notifyUser()
+      // call here anymore (it previously duplicated the trigger's
+      // notification).
     }
     setMessage("");
   };
@@ -696,16 +689,9 @@ const Video = ({ sideNavbar }) => {
       setLiked(true);
       setLikeCount((c) => c + 1);
       if (disliked) setDisliked(false);
-      // NEW: notify the video owner about the double-tap like.
-      const channelUsername = video?.username || video?.channel?.toLowerCase();
-      notifyUser({
-        recipientUsername: channelUsername,
-        senderUsername: loggedInUser,
-        type: "like",
-        message: `${loggedInUser} liked your video "${video?.title || ""}"`,
-        contentId: id,
-        contentType: "video",
-      });
+      // Like notifications are handled by the notify_on_like DB trigger
+      // on the likes table — no client-side notifyUser() call here
+      // anymore (it previously duplicated the trigger's notification).
     }
   };
 

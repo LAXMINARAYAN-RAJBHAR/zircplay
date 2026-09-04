@@ -24,6 +24,12 @@ import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ExpandableText from "../ExpandableText/ExpandableText";
 import AdUnit from "../../Component/Ads/AdUnit";
+// NOTE: like/comment notifications are now owned entirely by DB
+// triggers (notify_on_like / notify_on_comment on the likes/comments
+// tables), so this component no longer calls notifyUser() for those —
+// doing so alongside the trigger produced a duplicate notification for
+// every like and every comment. notifyUser() is still used for Connect,
+// since there's no equivalent trigger-side duplication there yet.
 import { notifyUser } from "../../utils/notifications";
 
 const getVideoType = (src) => {
@@ -395,14 +401,10 @@ const ReelItem = ({ reel, allReels }) => {
     const { data, error } = await supabase.from("comments").insert({ user_id: userId, username: loggedInUser, content_id: String(reel.id), content_type: "reel", text: commentText }).select().single();
     if (!error && data) {
       setComments((prev) => [{ id: data.id, user: data.username, text: data.text, date: data.created_at }, ...prev]);
-      notifyUser({
-        recipientUsername: reel.username,
-        senderUsername: loggedInUser,
-        type: "comment",
-        message: `${loggedInUser} commented on your reel: "${commentText.slice(0, 60)}"`,
-        contentId: reel.id,
-        contentType: "reel",
-      });
+      // Comment notifications are handled by the notify_on_comment DB
+      // trigger on the comments table — no client-side notifyUser()
+      // call here anymore (it previously duplicated the trigger's
+      // notification).
     }
     setCommentText("");
   };
@@ -585,14 +587,9 @@ const ReelItem = ({ reel, allReels }) => {
       setLiked(true);
       setLikeCount(await fetchCount(reel.id, "reel", "like"));
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));
-      notifyUser({
-        recipientUsername: reel.username,
-        senderUsername: loggedInUser,
-        type: "like",
-        message: `${loggedInUser} liked your reel "${reel.title || ""}"`,
-        contentId: reel.id,
-        contentType: "reel",
-      });
+      // Like notifications are handled by the notify_on_like DB trigger
+      // on the likes table — no client-side notifyUser() call here
+      // anymore (it previously duplicated the trigger's notification).
     } finally { setIsActing(false); }
   };
 
@@ -653,14 +650,10 @@ const ReelItem = ({ reel, allReels }) => {
         }
         await supabase.from("likes").upsert({ user_id: userId, content_id: String(reel.id), content_type: "reel", reaction_type: "like" }, { onConflict: "user_id,content_id,content_type,reaction_type" });
         setLiked(true);
-        notifyUser({
-          recipientUsername: reel.username,
-          senderUsername: loggedInUser,
-          type: "like",
-          message: `${loggedInUser} liked your reel "${reel.title || ""}"`,
-          contentId: reel.id,
-          contentType: "reel",
-        });
+        // Like notifications are handled by the notify_on_like DB
+        // trigger on the likes table — no client-side notifyUser()
+        // call here anymore (it previously duplicated the trigger's
+        // notification).
       }
       setLikeCount(await fetchCount(reel.id, "reel", "like"));
       setDislikeCount(await fetchCount(reel.id, "reel", "dislike"));
