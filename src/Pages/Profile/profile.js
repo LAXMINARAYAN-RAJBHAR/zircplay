@@ -7,6 +7,10 @@ import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../config/supabase";
 import { uploadToR2, buildTransformUrl } from "../../utils/mediaUpload";
+// NEW: shared notification helper — same one PostCard.jsx / Video.jsx /
+// Reels.jsx already use for their Connect buttons. Profile.js previously
+// had no equivalent notification on a successful connect at all.
+import { notifyUser } from "../../utils/notifications";
 
 const allVideos = [
   { id: 7679, thumbnail: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTu-l3JR0guZspKsBZkVoakjkQ-qxUCCpkQnw&s", title: "Big Buck Bunny open-source film", duration: "09:56", channel: "Gangeshwary" },
@@ -421,9 +425,17 @@ const ProfilePostCard = ({ post, isOwner, onDelete, onEdit, onReactionChange, on
   );
 };
 
-// ─── Subscribers Modal ────────────────────────────────────────────────────────
-const SubscribersModal = ({ channelUsername, onClose }) => {
-  const [subscribers, setSubscribers] = useState([]);
+// ─── Connections Modal ─────────────────────────────────────────────────────
+// RENAMED from SubscribersModal. Now reads the shared `connections` table
+// (same one PostCard.jsx / Video.jsx / Reels.jsx write to via handleConnect)
+// instead of the old `subscriptions` table. This also drops the old
+// UUID-vs-username resolution hack that SubscribersModal needed — that
+// hack existed only because `subscriptions.subscriber_id` was written
+// inconsistently (sometimes a uuid, sometimes a raw username). The
+// `connections` table always stores the human-readable username directly
+// in `connector_username`, so no lookup against `profiles` is needed here.
+const ConnectionsModal = ({ channelUsername, onClose }) => {
+  const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -434,25 +446,23 @@ const SubscribersModal = ({ channelUsername, onClose }) => {
   }, [onClose]);
 
   useEffect(() => {
-    const fetchSubscribers = async () => {
+    const fetchConnections = async () => {
       setLoading(true);
-      const { data } = await supabase.from("subscriptions").select("subscriber_id, created_at").eq("subscribed_to", channelUsername).order("created_at", { ascending: false });
-      if (!data) { setSubscribers([]); setLoading(false); return; }
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const uuids = [...new Set(data.filter((s) => uuidRegex.test(s.subscriber_id)).map((s) => s.subscriber_id))];
-      let idToUsername = {};
-      if (uuids.length > 0) {
-        const { data: profilesData } = await supabase.from("profiles").select("id, username").in("id", uuids);
-        profilesData?.forEach((p) => { if (p.username && p.username.trim()) idToUsername[p.id] = p.username; });
-      }
-      setSubscribers(data.map((s) => {
-        const isUuid = uuidRegex.test(s.subscriber_id);
-        const displayName = !isUuid ? s.subscriber_id : idToUsername[s.subscriber_id] || `User ${s.subscriber_id.slice(0, 8)}`;
-        return { ...s, displayName };
-      }));
+      const { data, error } = await supabase
+        .from("connections")
+        .select("connector_username, created_at")
+        .eq("connected_to", channelUsername)
+        .order("created_at", { ascending: false });
+      if (error) console.error("fetchConnections error:", error);
+      setConnections(
+        (data || []).map((c) => ({
+          displayName: c.connector_username || "Unknown",
+          created_at: c.created_at,
+        })),
+      );
       setLoading(false);
     };
-    fetchSubscribers();
+    fetchConnections();
   }, [channelUsername]);
 
   return (
@@ -460,8 +470,8 @@ const SubscribersModal = ({ channelUsername, onClose }) => {
       <div style={{ background:"#ffffff", borderRadius:"16px", width:"100%", maxWidth:"420px", maxHeight:"75vh", display:"flex", flexDirection:"column", border:"2px solid var(--zx-border)", overflow:"hidden", boxShadow:"0 8px 40px rgba(124,58,237,0.2)" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"20px 24px 16px", borderBottom:"1px solid var(--zx-border)" }}>
           <div>
-            <h2 style={{ color:"var(--zx-text)", margin:0, fontSize:"18px", fontWeight:"700", fontFamily:"Nunito, sans-serif" }}>👥 Subscribers</h2>
-            <p style={{ color:"var(--zx-text3)", margin:"2px 0 0", fontSize:"13px" }}>{subscribers.length} {subscribers.length === 1 ? "person" : "people"} subscribed</p>
+            <h2 style={{ color:"var(--zx-text)", margin:0, fontSize:"18px", fontWeight:"700", fontFamily:"Nunito, sans-serif" }}>👥 Connections</h2>
+            <p style={{ color:"var(--zx-text3)", margin:"2px 0 0", fontSize:"13px" }}>{connections.length} {connections.length === 1 ? "person" : "people"} connected</p>
           </div>
           <button onClick={onClose} style={{ background:"rgba(124,58,237,0.1)", border:"none", color:"var(--zx-primary)", width:"36px", height:"36px", borderRadius:"50%", cursor:"pointer", fontSize:"16px", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
         </div>
@@ -470,22 +480,22 @@ const SubscribersModal = ({ channelUsername, onClose }) => {
             <div style={{ display:"flex", justifyContent:"center", padding:"40px 0" }}>
               <div style={{ width:"32px", height:"32px", border:"3px solid #e0d4ff", borderTop:"3px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
             </div>
-          ) : subscribers.length === 0 ? (
+          ) : connections.length === 0 ? (
             <div style={{ textAlign:"center", padding:"40px 0", color:"var(--zx-text3)" }}>
               <div style={{ fontSize:"36px", marginBottom:"10px" }}>👤</div>
-              <p style={{ margin:0, fontSize:"14px" }}>No subscribers yet.</p>
+              <p style={{ margin:0, fontSize:"14px" }}>No connections yet.</p>
             </div>
           ) : (
-            subscribers.map((sub, idx) => (
+            connections.map((c, idx) => (
               <div key={idx} style={{ display:"flex", alignItems:"center", gap:"12px", padding:"10px 8px", borderRadius:"10px", transition:"background 0.15s", cursor:"default" }}
                 onMouseEnter={(e) => e.currentTarget.style.background = "rgba(124,58,237,0.06)"}
                 onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
                 <div style={{ width:"40px", height:"40px", borderRadius:"50%", background:"linear-gradient(135deg, #7c3aed, #a855f7)", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontWeight:"700", fontSize:"14px", flexShrink:0, textTransform:"uppercase" }}>
-                  {(sub.displayName || "?").slice(0, 2).toUpperCase()}
+                  {(c.displayName || "?").slice(0, 2).toUpperCase()}
                 </div>
                 <div style={{ flex:1 }}>
-                  <div style={{ color:"var(--zx-text)", fontWeight:"600", fontSize:"14px" }}>{sub.displayName}</div>
-                  <div style={{ color:"var(--zx-text3)", fontSize:"12px" }}>Subscribed {timeAgo(sub.created_at)}</div>
+                  <div style={{ color:"var(--zx-text)", fontWeight:"600", fontSize:"14px" }}>{c.displayName}</div>
+                  <div style={{ color:"var(--zx-text3)", fontSize:"12px" }}>Connected {timeAgo(c.created_at)}</div>
                 </div>
               </div>
             ))
@@ -511,10 +521,15 @@ const Profile = ({ sideNavbar }) => {
   const [videoCounts, setVideoCounts] = useState({});
   const [reelCounts, setReelCounts]   = useState({});
 
-  const [subscriberCount, setSubscriberCount]       = useState(0);
-  const [isSubscribed, setIsSubscribed]             = useState(false);
-  const [subLoading, setSubLoading]                 = useState(false);
-  const [showSubscribersModal, setShowSubscribersModal] = useState(false);
+  // RENAMED from subscriberCount / isSubscribed / subLoading /
+  // showSubscribersModal — now backed by the shared `connections` table
+  // instead of a Profile-only `subscriptions` table. See handleConnect
+  // below for the write-side wiring, matched to PostCard.jsx / Video.jsx
+  // / Reels.jsx's handleConnect implementations.
+  const [connectionCount, setConnectionCount]       = useState(0);
+  const [connected, setConnected]                   = useState(false);
+  const [connectLoading, setConnectLoading]         = useState(false);
+  const [showConnectionsModal, setShowConnectionsModal] = useState(false);
 
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editName, setEditName]   = useState("");
@@ -726,20 +741,27 @@ const Profile = ({ sideNavbar }) => {
         })));
       }
 
-      // ── Subscriber count ──
-      const { count: subCount } = await supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("subscribed_to", key);
+      // ── Connection count / connected state ──
+      // RENAMED from the old "Subscriber count" block. Reads the shared
+      // `connections` table instead of `subscriptions`, and — since
+      // `connections` always stores a real userId in `connector_id` (no
+      // legacy username-as-id rows like `subscriptions` had) — only needs
+      // a single lookup instead of the old id-then-username double-check.
+      const { count: connCount } = await supabase.from("connections").select("*", { count: "exact", head: true }).eq("connected_to", key);
       const currentUser   = localStorage.getItem("username") || "";
       const currentUserId = localStorage.getItem("userId") || "";
-      let alreadySubscribed = false;
-      if (currentUser && currentUser.toLowerCase() !== key) {
-        const { data: subCheckById } = currentUserId
-          ? await supabase.from("subscriptions").select("id").eq("subscriber_id", currentUserId).eq("subscribed_to", key).maybeSingle()
-          : { data: null };
-        const { data: subCheckByUsername } = await supabase.from("subscriptions").select("id").eq("subscriber_id", currentUser).eq("subscribed_to", key).maybeSingle();
-        alreadySubscribed = !!(subCheckById || subCheckByUsername);
+      let alreadyConnected = false;
+      if (currentUserId && currentUser && currentUser.toLowerCase() !== key) {
+        const { data: connCheck, error: connCheckError } = await supabase
+          .from("connections")
+          .select("id")
+          .match({ connector_id: currentUserId, connected_to: key })
+          .maybeSingle();
+        if (connCheckError) console.error("connection check error:", connCheckError);
+        alreadyConnected = !!connCheck;
       }
-      setSubscriberCount(subCount || 0);
-      setIsSubscribed(alreadySubscribed);
+      setConnectionCount(connCount || 0);
+      setConnected(alreadyConnected);
       setLoading(false);
     };
 
@@ -750,21 +772,61 @@ const Profile = ({ sideNavbar }) => {
   const allUserVideos   = [...dbVideos, ...hardcodedVideos];
   const allUserReels    = dbReels;
 
-  const handleSubscribe = async () => {
+  // RENAMED from handleSubscribe — now writes to the shared `connections`
+  // table with the same shape (`connector_id` / `connector_username` /
+  // `connected_to`) and the same optimistic-flip-with-rollback +
+  // connectLoading-guard + notifyUser() pattern used by
+  // PostCard.jsx / Video.jsx / Reels.jsx's handleConnect. Also swaps the
+  // old alert() login gate for the shared "openLogin" event, matching
+  // those same three files.
+  const handleConnect = async () => {
     const currentUser   = localStorage.getItem("username") || "";
     const currentUserId = localStorage.getItem("userId") || "";
-    if (!currentUser || !currentUserId) { alert("Please log in to subscribe."); return; }
-    if (currentUser.toLowerCase() === key) return;
-    setSubLoading(true);
-    if (isSubscribed) {
-      await supabase.from("subscriptions").delete().eq("subscriber_id", currentUserId).eq("subscribed_to", key);
-      await supabase.from("subscriptions").delete().eq("subscriber_id", currentUser).eq("subscribed_to", key);
-      setIsSubscribed(false); setSubscriberCount((n) => Math.max(0, n - 1));
-    } else {
-      await supabase.from("subscriptions").insert({ subscriber_id: currentUserId, subscribed_to: key });
-      setIsSubscribed(true); setSubscriberCount((n) => n + 1);
+    if (!currentUser || !currentUserId) {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
     }
-    setSubLoading(false);
+    if (currentUser.toLowerCase() === key) return; // self-connect guard
+    if (connectLoading) return;
+
+    const wasConnected = connected;
+    setConnectLoading(true);
+    setConnected(!wasConnected); // optimistic flip
+
+    try {
+      if (wasConnected) {
+        const { error } = await supabase
+          .from("connections")
+          .delete()
+          .match({ connector_id: currentUserId, connected_to: key });
+        if (error) {
+          console.error("handleConnect delete error:", error);
+          setConnected(true); // rollback
+        } else {
+          setConnectionCount((n) => Math.max(0, n - 1));
+        }
+      } else {
+        const { error } = await supabase.from("connections").insert({
+          connector_id: currentUserId,
+          connector_username: currentUser,
+          connected_to: key,
+        });
+        if (error) {
+          console.error("handleConnect insert error:", error);
+          setConnected(false); // rollback
+        } else {
+          setConnectionCount((n) => n + 1);
+          notifyUser({
+            recipientUsername: key,
+            senderUsername: currentUser,
+            type: "connection",
+            message: `${currentUser} connected with you`,
+          });
+        }
+      }
+    } finally {
+      setConnectLoading(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -1013,9 +1075,9 @@ const Profile = ({ sideNavbar }) => {
             <div className="profile_top_section_About_Name">{user.name}</div>
             <div className="profile_top_section_info">
               {user.handle} ·{" "}
-              <button onClick={() => setShowSubscribersModal(true)} title="View subscribers"
+              <button onClick={() => setShowConnectionsModal(true)} title="View connections"
                 style={{ background:"none", border:"none", padding:0, color:"inherit", fontSize:"inherit", cursor:"pointer", textDecoration:"underline", textDecorationStyle:"dotted", textUnderlineOffset:"3px" }}>
-                {subscriberCount.toLocaleString()} subscriber{subscriberCount !== 1 ? "s" : ""}
+                {connectionCount.toLocaleString()} connection{connectionCount !== 1 ? "s" : ""}
               </button>
               {" "}· {allUserVideos.length} videos · {allUserReels.length} reels · {userPosts.length} posts
             </div>
@@ -1030,20 +1092,20 @@ const Profile = ({ sideNavbar }) => {
                     style={{ background:"#f0f4ff", color:"#1e1b4b", border:"2px solid #e0d4ff", borderRadius:"20px", padding:"8px 20px", fontSize:"14px", fontWeight:"600", cursor:"pointer" }}>
                     ✏️ Edit Profile
                   </button>
-                  <button onClick={() => setShowSubscribersModal(true)}
+                  <button onClick={() => setShowConnectionsModal(true)}
                     style={{ background:"#f0f4ff", color:"#1e1b4b", border:"2px solid #e0d4ff", borderRadius:"20px", padding:"8px 20px", fontSize:"14px", fontWeight:"600", cursor:"pointer" }}>
-                    👥 View Subscribers
+                    👥 View Connections
                   </button>
                 </>
               ) : (
-                <button onClick={handleSubscribe} disabled={subLoading}
-                  style={{ background: isSubscribed ? "#f0f4ff" : "var(--zx-primary)", color: isSubscribed ? "#1e1b4b" : "white", border: isSubscribed ? "2px solid #e0d4ff" : "none", borderRadius:"20px", padding:"8px 24px", fontSize:"14px", fontWeight:"600", cursor: subLoading ? "not-allowed" : "pointer", transition:"all 0.2s", opacity: subLoading ? 0.7 : 1, display:"flex", alignItems:"center", gap:"6px" }}>
-                  {subLoading ? (
+                <button onClick={handleConnect} disabled={connectLoading}
+                  style={{ background: connected ? "#f0f4ff" : "var(--zx-primary)", color: connected ? "#1e1b4b" : "white", border: connected ? "2px solid #e0d4ff" : "none", borderRadius:"20px", padding:"8px 24px", fontSize:"14px", fontWeight:"600", cursor: connectLoading ? "not-allowed" : "pointer", transition:"all 0.2s", opacity: connectLoading ? 0.7 : 1, display:"flex", alignItems:"center", gap:"6px" }}>
+                  {connectLoading ? (
                     <span style={{ display:"flex", alignItems:"center", gap:"6px" }}>
                       <span style={{ width:"14px", height:"14px", border:"2px solid rgba(255,255,255,0.4)", borderTop:"2px solid white", borderRadius:"50%", animation:"spin 0.7s linear infinite", display:"inline-block" }} />
-                      {isSubscribed ? "Unsubscribing..." : "Subscribing..."}
+                      {connected ? "Disconnecting..." : "Connecting..."}
                     </span>
-                  ) : isSubscribed ? "✓ Subscribed" : "Subscribe"}
+                  ) : connected ? "✓ Connected" : "Connect"}
                 </button>
               )}
             </div>
@@ -1192,8 +1254,8 @@ const Profile = ({ sideNavbar }) => {
         {/* ── end swipeable tab content ── */}
       </div>
 
-      {/* ── Subscribers Modal ── */}
-      {showSubscribersModal && <SubscribersModal channelUsername={key} onClose={() => setShowSubscribersModal(false)} />}
+      {/* ── Connections Modal ── */}
+      {showConnectionsModal && <ConnectionsModal channelUsername={key} onClose={() => setShowConnectionsModal(false)} />}
 
       {/* ── Edit Profile Modal ── */}
       {showEditProfile && (
