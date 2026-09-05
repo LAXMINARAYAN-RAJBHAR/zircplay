@@ -276,6 +276,11 @@ const TagBadge = ({ tag }) => {
 };
 
 // ─── Notification helpers ──────────────────────────────────────────────────────
+// NEW: "connection_request" / "connection_accepted" — fired by the
+// notify_on_subscribe / notify_on_connect_accept DB triggers on the
+// connections table (see connection_request_migration.sql). This bell
+// dropdown has its own separate style map from the full /notifications
+// page's TYPE_ICON — keep both in sync when adding new notification types.
 const getNotifStyle = (type) => {
   switch (type) {
     case "upload":
@@ -288,6 +293,10 @@ const getNotifStyle = (type) => {
       return { color: "#4caf50", icon: "🔔" };
     case "post":
       return { color: "#a78bfa", icon: "📝" };
+    case "connection_request":
+      return { color: "#1877f2", icon: "🤝" };
+    case "connection_accepted":
+      return { color: "#22c55e", icon: "✅" };
     default:
       return { color: "#aaa", icon: "📢" };
   }
@@ -333,6 +342,10 @@ const Navbar = ({
   const [searchBarActive, setSearchBarActive] = useState(false);
   const [logoHovered, setLogoHovered] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  // NEW: tracks which connection_request notification currently has an
+  // Accept/Decline request in flight, keyed by notification id — same
+  // debounce/disable guard used on the full /notifications page.
+  const [connectionActionBusy, setConnectionActionBusy] = useState(null);
 
   const dropdownRef = useRef(null);
   const notifRef = useRef(null);
@@ -459,6 +472,7 @@ const Navbar = ({
             type: n.type,
             message: n.message,
             avatar: n.sender_username?.[0]?.toUpperCase() || "?",
+            senderUsername: n.sender_username,
             time: timeAgo(n.created_at),
             read: n.is_read,
             contentId: n.content_id ?? null,
@@ -493,6 +507,7 @@ const Navbar = ({
               type: n.type,
               message: n.message,
               avatar: n.sender_username?.[0]?.toUpperCase() || "?",
+              senderUsername: n.sender_username,
               time: "just now",
               read: false,
               contentId: n.content_id ?? null,
@@ -761,6 +776,55 @@ const Navbar = ({
     if (n.contentType === "reel") navigate(`/reels/${n.contentId}`);
     else if (n.contentType === "video") navigate(`/video/${n.contentId}`);
     else if (n.contentType === "post") navigate(`/feed?post=${n.contentId}`);
+    // connection_request / connection_accepted notifications carry
+    // content_type: "connection" — nothing to navigate to, so this
+    // intentionally falls through and just marks the item read.
+  };
+
+  // NEW: accept a pending connection request from the bell dropdown.
+  // n.contentId holds the connections.id (set by the notify_on_subscribe
+  // trigger at insert time), so this updates that row directly. Flipping
+  // status → "accepted" also fires notify_on_connect_accept server-side,
+  // notifying the original requester automatically — no client-side
+  // notification call needed here. Mirrors acceptConnection in the full
+  // /notifications page (Component/Notifications/notifications.js) —
+  // keep both in sync if this logic ever changes.
+  const acceptConnection = async (n) => {
+    if (connectionActionBusy) return;
+    setConnectionActionBusy(n.id);
+    const { error } = await supabase
+      .from("connections")
+      .update({ status: "accepted", accepted_at: new Date().toISOString() })
+      .eq("id", n.contentId);
+    setConnectionActionBusy(null);
+
+    if (error) {
+      console.error("[navbar] Failed to accept connection:", error);
+      return;
+    }
+
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+  };
+
+  // NEW: decline a pending connection request — deletes the connections
+  // row outright (same as withdrawing/disconnecting from any Connect
+  // button elsewhere), rather than leaving a permanently-declined row
+  // around. Mirrors declineConnection in the full /notifications page.
+  const declineConnection = async (n) => {
+    if (connectionActionBusy) return;
+    setConnectionActionBusy(n.id);
+    const { error } = await supabase
+      .from("connections")
+      .delete()
+      .eq("id", n.contentId);
+    setConnectionActionBusy(null);
+
+    if (error) {
+      console.error("[navbar] Failed to decline connection:", error);
+      return;
+    }
+
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
   };
 
   const historyCount = suggestionData.history.length;
@@ -1238,6 +1302,12 @@ const Navbar = ({
                 ) : (
                   notifications.map((n) => {
                     const { color, icon } = getNotifStyle(n.type);
+                    // NEW: Facebook-style inline Accept/Decline for a
+                    // pending connection request, rendered right in the
+                    // bell dropdown so the person doesn't have to visit
+                    // the full /notifications page to respond.
+                    const isConnectionRequest = n.type === "connection_request";
+                    const isBusy = connectionActionBusy === n.id;
                     return (
                       <div
                         key={n.id}
@@ -1276,8 +1346,54 @@ const Navbar = ({
                             {n.message}
                           </p>
                           <span style={{ color: "#666", fontSize: "11px" }}>{n.time}</span>
+
+                          {isConnectionRequest && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ display: "flex", gap: "8px", marginTop: "8px" }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => declineConnection(n)}
+                                disabled={isBusy}
+                                style={{
+                                  flex: 1,
+                                  padding: "6px 12px",
+                                  borderRadius: "8px",
+                                  border: "1.5px solid #444",
+                                  background: "transparent",
+                                  color: "#ccc",
+                                  fontWeight: 700,
+                                  fontSize: "12px",
+                                  cursor: isBusy ? "not-allowed" : "pointer",
+                                  opacity: isBusy ? 0.6 : 1,
+                                }}
+                              >
+                                Decline
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => acceptConnection(n)}
+                                disabled={isBusy}
+                                style={{
+                                  flex: 1,
+                                  padding: "6px 12px",
+                                  borderRadius: "8px",
+                                  border: "none",
+                                  background: "#1877f2",
+                                  color: "#fff",
+                                  fontWeight: 700,
+                                  fontSize: "12px",
+                                  cursor: isBusy ? "not-allowed" : "pointer",
+                                  opacity: isBusy ? 0.6 : 1,
+                                }}
+                              >
+                                {isBusy ? "…" : "Accept"}
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        {!n.read && (
+                        {!n.read && !isConnectionRequest && (
                           <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#ff8a80", flexShrink: 0, marginTop: "4px" }} />
                         )}
                       </div>
