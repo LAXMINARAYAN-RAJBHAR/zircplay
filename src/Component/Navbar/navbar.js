@@ -796,13 +796,19 @@ const Navbar = ({
       .from("connections")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })
       .eq("id", n.contentId);
-    setConnectionActionBusy(null);
 
     if (error) {
       console.error("[navbar] Failed to accept connection:", error);
+      setConnectionActionBusy(null);
       return;
     }
 
+    // FIX: delete the notification row itself, not just local state —
+    // otherwise a refetch (page reload, dropdown reopen) pulls this same
+    // connection_request row back from the DB and the Accept/Decline
+    // buttons reappear even though it's already been actioned.
+    await supabase.from("notifications").delete().eq("id", n.id);
+    setConnectionActionBusy(null);
     setNotifications((prev) => prev.filter((x) => x.id !== n.id));
   };
 
@@ -817,13 +823,17 @@ const Navbar = ({
       .from("connections")
       .delete()
       .eq("id", n.contentId);
-    setConnectionActionBusy(null);
 
     if (error) {
       console.error("[navbar] Failed to decline connection:", error);
+      setConnectionActionBusy(null);
       return;
     }
 
+    // FIX: same as acceptConnection above — delete the notification row
+    // too, not just local state, so it doesn't come back on refetch.
+    await supabase.from("notifications").delete().eq("id", n.id);
+    setConnectionActionBusy(null);
     setNotifications((prev) => prev.filter((x) => x.id !== n.id));
   };
 

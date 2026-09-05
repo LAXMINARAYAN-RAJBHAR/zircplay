@@ -11,6 +11,13 @@
 // "accepted" (which also fires notify_on_connect_accept, notifying the
 // original requester); declining deletes the row outright. Both remove
 // the notification from the list immediately once actioned.
+//
+// FIX: accepting/declining now also deletes the notification row itself
+// in the DB, not just the local React state. Previously only local state
+// was updated, so a refetch (page reload, dropdown reopen) would pull the
+// same connection_request row back from the DB — still with its original
+// type — and the Accept/Decline buttons would reappear even though the
+// connection had already been actioned.
 
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -138,14 +145,20 @@ export default function Notifications({ currentUser }) {
       .from("connections")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })
       .eq("id", n.content_id);
-    setConnectionActionBusy(null);
 
     if (updateErr) {
       console.error("[Notifications] Failed to accept connection:", updateErr);
+      setConnectionActionBusy(null);
       return;
     }
 
-    if (!n.is_read) markAsRead(n.id);
+    // FIX: delete the notification row itself, not just update local
+    // state — otherwise a refetch (page reload, dropdown reopen) pulls
+    // this same connection_request row back from the DB and the
+    // Accept/Decline buttons reappear even though it's already been
+    // actioned.
+    await supabase.from("notifications").delete().eq("id", n.id);
+    setConnectionActionBusy(null);
     setNotifications((prev) => prev.filter((x) => x.id !== n.id));
   };
 
@@ -160,14 +173,17 @@ export default function Notifications({ currentUser }) {
       .from("connections")
       .delete()
       .eq("id", n.content_id);
-    setConnectionActionBusy(null);
 
     if (deleteErr) {
       console.error("[Notifications] Failed to decline connection:", deleteErr);
+      setConnectionActionBusy(null);
       return;
     }
 
-    if (!n.is_read) markAsRead(n.id);
+    // FIX: same as acceptConnection above — delete the notification row
+    // too, not just local state, so it doesn't come back on refetch.
+    await supabase.from("notifications").delete().eq("id", n.id);
+    setConnectionActionBusy(null);
     setNotifications((prev) => prev.filter((x) => x.id !== n.id));
   };
 
