@@ -355,14 +355,15 @@ const PostCard = ({
   // Load whether the current user has a connection (of any status) with
   // this post's author. Skipped entirely for the author's own posts,
   // since the button never renders there anyway — same early-return
-  // shape as Reels.jsx / Video.jsx's connection loaders. Now also reads
-  // `status` so the button can render its three states (Connect /
-  // Requested / ✓ Connected) instead of just on/off.
+  // shape as Reels.jsx / Video.jsx's connection loaders. Reads `status`
+  // so the button can render its three states (Connect / Requested /
+  // ✓ Connected) instead of just on/off.
   useEffect(() => {
     if (!post.username || post.username === currentUser) return;
+    const userId = localStorage.getItem("userId");
+    if (!userId) return;
+
     const loadConnection = async () => {
-      const userId = localStorage.getItem("userId");
-      if (!userId) return;
       const { data, error } = await supabase
         .from("connections")
         .select("id, status")
@@ -372,6 +373,43 @@ const PostCard = ({
       setConnectionStatus(data?.status || null);
     };
     loadConnection();
+
+    // FIX: keep connectionStatus in sync when the other person accepts
+    // or declines from elsewhere (the bell dropdown or /notifications
+    // page) while this card is already mounted. Previously this effect
+    // only ever fetched once on mount, so a card kept showing
+    // "Requested" indefinitely — the accept happened on a totally
+    // different component (Navbar/Notifications) with its own local
+    // state, and nothing here ever re-queried the connections table
+    // until a full page reload re-ran loadConnection.
+    //
+    // Realtime filters can only match a single column server-side, so
+    // this subscribes on connector_id (always this viewer's own userId
+    // — set at insert time in handleConnect below) and then narrows to
+    // this specific post's author client-side. Same per-user channel
+    // scoping pattern already used for the notifications/DM-badge
+    // channels in Navbar.jsx.
+    const channel = supabase
+      .channel(`postcard-connection-${userId}-${post.username}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "connections",
+          filter: `connector_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.eventType === "DELETE" ? payload.old : payload.new;
+          if (row?.connected_to !== post.username) return;
+          setConnectionStatus(
+            payload.eventType === "DELETE" ? null : payload.new?.status || null,
+          );
+        },
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, [post.username, currentUser]);
 
   // Connect / Withdraw-Disconnect — unified with Reels.jsx / Video.jsx:

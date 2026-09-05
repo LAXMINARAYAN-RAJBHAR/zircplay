@@ -442,10 +442,12 @@ const Video = ({ sideNavbar }) => {
   // CHANGED: now also reads `status` so the button can render its three
   // states (Connect / Requested / ✓ Connected) instead of just on/off.
   useEffect(() => {
+    const userId = localStorage.getItem("userId");
+    if (!userId || !video) return;
+    const channelUsername = video.username || video.channel?.toLowerCase();
+    if (!channelUsername) return;
+
     const loadConnection = async () => {
-      const userId = localStorage.getItem("userId");
-      if (!userId || !video) return;
-      const channelUsername = video.username || video.channel?.toLowerCase();
       // FIX: was .single(), which throws a Supabase error whenever zero
       // rows match — i.e. every time the viewer hasn't connected yet.
       // .maybeSingle() (what Reels.jsx already uses for this same check)
@@ -460,7 +462,41 @@ const Video = ({ sideNavbar }) => {
       setConnectionStatus(data?.status || null);
     };
     loadConnection();
-  }, [id, video?.username]);
+
+    // FIX: keep connectionStatus in sync when the other person accepts
+    // or declines from elsewhere (the bell dropdown or /notifications
+    // page) while this page is already open. Previously this only ever
+    // fetched once on mount/video-change, so the button stayed stuck on
+    // "Requested" until a full page reload re-ran loadConnection.
+    //
+    // Realtime filters can only match a single column server-side, so
+    // this subscribes on connector_id (always this viewer's own userId
+    // — set at insert time in handleConnect below) and narrows to this
+    // specific channel client-side. Same per-user channel-scoping
+    // pattern already used for the notifications/DM-badge channels in
+    // Navbar.jsx and the connection-status channel in PostCard.jsx.
+    const channel = supabase
+      .channel(`video-connection-${userId}-${channelUsername}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "connections",
+          filter: `connector_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.eventType === "DELETE" ? payload.old : payload.new;
+          if (row?.connected_to !== channelUsername) return;
+          setConnectionStatus(
+            payload.eventType === "DELETE" ? null : payload.new?.status || null,
+          );
+        },
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [id, video?.username, video?.channel]);
 
   // ── Fetch the channel/uploader's real avatar from the profiles table.
   //    Falls back to null (handled at render time + onError) if missing or on error.
