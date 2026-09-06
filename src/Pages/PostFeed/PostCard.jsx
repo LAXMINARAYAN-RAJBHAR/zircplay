@@ -425,6 +425,19 @@ const PostCard = ({
   const shareRef = useRef();
   const menuRef = useRef();
 
+  // NEW: unique per-mount suffix for this card's connection-status
+  // realtime channel (see the connection useEffect below). Supabase's
+  // client REUSES a channel object whenever `.channel(name)` is called
+  // with a name that's already subscribed elsewhere — so without this,
+  // two posts from the same author both showing in the feed would build
+  // the identical channel name (same viewer + same author), and the
+  // second card's `.on()` call would land on the first card's
+  // already-subscribed channel, crashing with "cannot add
+  // postgres_changes callbacks ... after subscribe()". A random
+  // per-instance suffix guarantees every mounted PostCard gets its own
+  // channel even when several reference the same (viewer, author) pair.
+  const channelInstanceIdRef = useRef(Math.random().toString(36).slice(2));
+
   // NEW: root card ref + one-shot guard for the view-count
   // IntersectionObserver below. Mirrors ShortCard's viewFiredRef pattern
   // on the homepage — fires at most once per mount, once the card is
@@ -543,7 +556,9 @@ const PostCard = ({
     // channel-scoping pattern already used in Navbar.jsx / Video.jsx /
     // Reels.jsx.
     const channel = supabase
-      .channel(`postcard-connection-${userId}-${post.username}`)
+      .channel(
+        `postcard-connection-${userId}-${post.username}-${channelInstanceIdRef.current}`,
+      )
       .on(
         "postgres_changes",
         {

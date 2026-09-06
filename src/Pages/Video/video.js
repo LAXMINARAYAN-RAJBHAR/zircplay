@@ -384,6 +384,14 @@ const Video = ({ sideNavbar }) => {
   // fullscreening the <video> alone only shows the video and native chrome.
   const playerWrapperRef = useRef(null);
 
+  // NEW: unique per-mount suffix for this page's connection-status
+  // realtime channel (see the connection useEffect below). Supabase's
+  // client REUSES a channel object whenever `.channel(name)` is called
+  // with a name that's already subscribed elsewhere — this guards
+  // against the same crash covered in PostCard.jsx / Reels.jsx (e.g. a
+  // fast remount briefly overlapping the previous channel's teardown).
+  const channelInstanceIdRef = useRef(Math.random().toString(36).slice(2));
+
   useViewTracker({
     contentId: id,
     contentType: "video",

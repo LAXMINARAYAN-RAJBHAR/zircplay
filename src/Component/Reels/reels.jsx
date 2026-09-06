@@ -287,6 +287,22 @@ const ReelItem = ({ reel, allReels }) => {
 
   const loggedInUser = localStorage.getItem("username") || "Guest";
 
+  // NEW: unique per-mount suffix for this ReelItem's connection-status
+  // realtime channel (see the useEffect below). Supabase's client
+  // REUSES a channel object whenever `.channel(name)` is called with a
+  // name that's already subscribed elsewhere — so without this, two
+  // reels from the same uploader both showing in the feed would build
+  // the identical channel name (same viewer + same uploader), the
+  // second .on() call would land on the first instance's already-
+  // subscribed channel, and Supabase throws "cannot add
+  // postgres_changes callbacks ... after subscribe()", crashing the
+  // page. A random per-instance suffix guarantees every mounted
+  // ReelItem gets its own channel even when several reference the same
+  // (viewer, uploader) pair.
+  const channelInstanceIdRef = useRef(
+    Math.random().toString(36).slice(2),
+  );
+
   // CHANGED: connected (boolean) → connectionStatus (null | "pending" |
   // "accepted"), same three-state model as PostCard.jsx / Video.jsx.
   const [connectionStatus, setConnectionStatus] = useState(null);
@@ -432,7 +448,9 @@ const ReelItem = ({ reel, allReels }) => {
     // DM-badge channels in Navbar.jsx and the connection-status channel
     // in PostCard.jsx / Video.jsx.
     const channel = supabase
-      .channel(`reel-connection-${userId}-${reel.username}`)
+      .channel(
+        `reel-connection-${userId}-${reel.username}-${channelInstanceIdRef.current}`,
+      )
       .on(
         "postgres_changes",
         {
