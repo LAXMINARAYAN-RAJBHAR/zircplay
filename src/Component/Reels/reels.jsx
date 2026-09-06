@@ -296,10 +296,9 @@ const ReelItem = ({ reel, allReels }) => {
   // button can render its three states (Connect / Requested / ✓
   // Connected) instead of just on/off.
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    if (!userId) return;
-
     const loadConnection = async () => {
+      const userId = localStorage.getItem("userId");
+      if (!userId) return;
       const { data, error } = await supabase
         .from("connections")
         .select("id, status")
@@ -309,42 +308,6 @@ const ReelItem = ({ reel, allReels }) => {
       setConnectionStatus(data?.status || null);
     };
     loadConnection();
-
-    // FIX: keep connectionStatus in sync when the other person accepts
-    // or declines from elsewhere (the bell dropdown or /notifications
-    // page) while this reel is already mounted. Previously this only
-    // ever fetched once on mount, so the button stayed stuck on
-    // "Requested" indefinitely — nothing here ever re-queried the
-    // connections table until the reel remounted or the page reloaded.
-    //
-    // Realtime filters can only match a single column server-side, so
-    // this subscribes on connector_id (always this viewer's own userId
-    // — set at insert time in handleConnect below) and narrows to this
-    // specific reel's uploader client-side. Same per-user
-    // channel-scoping pattern already used for the notifications/
-    // DM-badge channels in Navbar.jsx and the connection-status channel
-    // in PostCard.jsx / Video.jsx.
-    const channel = supabase
-      .channel(`reel-connection-${userId}-${reel.username}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "connections",
-          filter: `connector_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.eventType === "DELETE" ? payload.old : payload.new;
-          if (row?.connected_to !== reel.username) return;
-          setConnectionStatus(
-            payload.eventType === "DELETE" ? null : payload.new?.status || null,
-          );
-        },
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
   }, [reel.username]);
 
   useEffect(() => {
