@@ -494,34 +494,12 @@
   padding-left: 10px;
 }
 
-/* NEW: a full comment thread — a top-level comment, its optional reply
-   input, and its indented replies — grouped so spacing between whole
-   threads is a bit more generous than spacing within one. */
-.reel_comment_thread {
-  margin-bottom: 10px;
-}
-
-/* NEW: indented reply row, nested visually under its parent comment. */
-.reel_comment_item--reply {
-  margin-left: 22px;
-  margin-top: 6px;
-  border-left-color: var(--zx-accent2);
-  opacity: 0.96;
-}
-
-/* ── Comment header row: username + relative timestamp + kebab menu ── */
+/* ── Comment header row: username + relative timestamp ── */
 .reel_comment_item_header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.reel_comment_header_right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
 }
 
 .reel_comment_user {
@@ -545,109 +523,6 @@
   font-size: 13px;
   color: #4c4589;
   font-family: 'Outfit', sans-serif;
-}
-
-/* NEW: per-comment kebab (⋯) menu — Share / Report / Save */
-.reel_comment_menu_wrap {
-  position: relative;
-}
-
-.reel_comment_menu_btn {
-  font-size: 15px;
-  font-weight: 900;
-  color: #8b84c4;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  user-select: none;
-}
-.reel_comment_menu_btn:hover { color: var(--zx-primary); }
-
-.reel_comment_dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background: #ffffff;
-  border: 2px solid var(--zx-border);
-  border-radius: 10px;
-  min-width: 130px;
-  overflow: hidden;
-  z-index: 40;
-  box-shadow: 0 8px 24px rgba(220,38,38,0.18);
-}
-
-.reel_comment_dropdown_item {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  font-family: 'Nunito', sans-serif;
-  color: var(--zx-text2);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-.reel_comment_dropdown_item:hover {
-  background: var(--zx-surface2);
-  color: var(--zx-primary);
-}
-
-/* NEW: Like / Dislike / Reply / Translate action row under a comment */
-.reel_comment_action_row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
-  flex-wrap: wrap;
-}
-
-.reel_comment_like_btn,
-.reel_comment_dislike_btn,
-.reel_comment_reply_btn,
-.reel_comment_translate_btn {
-  background: transparent;
-  border: none;
-  font-family: 'Nunito', sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  color: #8b84c4;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
-}
-
-.reel_comment_like_btn:hover,
-.reel_comment_dislike_btn:hover,
-.reel_comment_reply_btn:hover,
-.reel_comment_translate_btn:hover {
-  color: var(--zx-primary);
-  background: var(--zx-surface2);
-}
-
-.reel_comment_like_active { color: var(--zx-primary); }
-.reel_comment_dislike_active { color: var(--zx-text2); }
-
-.reel_comment_translate_btn {
-  color: var(--zx-accent3);
-}
-.reel_comment_translate_btn:hover {
-  color: #0891b2;
-}
-
-/* NEW: inline reply input row, shown under a top-level comment when its
-   Reply button is clicked. */
-.reel_reply_input_row {
-  display: flex;
-  gap: 8px;
-  margin: 6px 0 6px 22px;
-}
-
-/* ── Comment header row: username + relative timestamp ── */
-.reel_comment_item_header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 /* ══════════════════════════════════════
@@ -854,9 +729,6 @@ body.reels-open .reel_item   { height: 100dvh; }
     from { opacity: 0; transform: translateY(8px) scale(0.96); }
     to   { opacity: 1; transform: translateY(0)   scale(1);    }
   }
-
-  .reel_comment_item--reply { margin-left: 14px; }
-  .reel_reply_input_row { margin-left: 14px; }
 }
 
 /* ══════════════════════════════════════

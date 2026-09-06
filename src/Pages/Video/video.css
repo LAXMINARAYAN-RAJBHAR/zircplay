@@ -638,13 +638,12 @@
   margin-top: 14px;
 }
 
-.others_commentSection { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.others_commentSection { display: flex; flex-direction: column; }
 
 .others_commentSectionHeader {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
   gap: 10px;
+  align-items: center;
 }
 
 .channelName_comment {
@@ -659,7 +658,6 @@
   font-size: 11px;
   color: var(--zx-text3);
   font-weight: 600;
-  white-space: nowrap;
 }
 
 .otherCommentSectionComment {
@@ -670,118 +668,6 @@
   padding-left: 12px;
   border-left: 3px solid var(--zx-border);
   line-height: 1.5;
-}
-
-/* NEW: full comment thread grouping (top-level + optional reply input +
-   its indented replies). */
-.yt_comment_thread {
-  margin-bottom: 4px;
-}
-
-/* NEW: indented reply row */
-.yt_comment_item--reply {
-  margin-left: 24px;
-  margin-top: 8px;
-  opacity: 0.96;
-}
-.yt_comment_item--reply .otherCommentSectionComment {
-  border-left-color: var(--zx-accent2);
-}
-
-.yt_comment_header_right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-/* NEW: per-comment kebab (⋯) menu — Share / Report / Save */
-.yt_comment_menu_wrap { position: relative; }
-
-.yt_comment_menu_btn {
-  font-size: 16px;
-  font-weight: 900;
-  color: var(--zx-text3);
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  user-select: none;
-}
-.yt_comment_menu_btn:hover { color: var(--zx-primary); }
-
-.yt_comment_dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background: var(--zx-surface);
-  border: 2px solid var(--zx-border);
-  border-radius: 10px;
-  min-width: 130px;
-  overflow: hidden;
-  z-index: 40;
-  box-shadow: 0 8px 24px rgba(124,58,237,0.15);
-}
-
-.yt_comment_dropdown_item {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  font-family: 'Nunito', sans-serif;
-  color: var(--zx-text2);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-.yt_comment_dropdown_item:hover {
-  background: var(--zx-surface2);
-  color: var(--zx-primary);
-}
-
-/* NEW: Like / Dislike / Reply / Translate action row under a comment */
-.yt_comment_action_row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 6px;
-  padding-left: 12px;
-  flex-wrap: wrap;
-}
-
-.yt_comment_like_btn,
-.yt_comment_dislike_btn,
-.yt_comment_reply_btn,
-.yt_comment_translate_btn {
-  background: transparent;
-  border: none;
-  font-family: 'Nunito', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--zx-text3);
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
-}
-
-.yt_comment_like_btn:hover,
-.yt_comment_dislike_btn:hover,
-.yt_comment_reply_btn:hover,
-.yt_comment_translate_btn:hover {
-  color: var(--zx-primary);
-  background: var(--zx-surface2);
-}
-
-.yt_comment_like_active { color: var(--zx-primary); }
-.yt_comment_dislike_active { color: var(--zx-text2); }
-
-.yt_comment_translate_btn { color: var(--zx-accent3); }
-.yt_comment_translate_btn:hover { color: #0891b2; }
-
-/* NEW: inline reply input row, shown under a top-level comment when its
-   Reply button is clicked. Reuses .addACommentInput / .cancelcomment for
-   visual consistency with the main comment box. */
-.yt_reply_input_row {
-  margin: 8px 0 8px 24px;
 }
 
 /* ══════════════════════════════════════
@@ -961,10 +847,6 @@
   .video_tap_overlay { bottom: 0; }
 
   .video_heart_burst { font-size: 48px; }
-
-  .yt_comment_item--reply { margin-left: 14px; }
-  .yt_reply_input_row { margin-left: 14px; }
-  .yt_comment_action_row { padding-left: 0; }
 }
 
 /* ══════════════════════════════════════

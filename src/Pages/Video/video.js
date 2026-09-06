@@ -53,103 +53,6 @@ const timeAgo = (dateStr) => {
   return `${Math.floor(diff / 31536000)}y ago`;
 };
 
-// ── Comment translate stub — see the matching note in Reels.jsx. This
-// is NOT a real translation service, just a small word-swap dictionary
-// so "Translate to Hindi" does something visible. Swap the body of this
-// function for a real API call later without touching any call sites.
-const HINDI_STUB_DICT = {
-  hello: "नमस्ते", hi: "नमस्ते", love: "प्यार", you: "तुम", beautiful: "खूबसूरत",
-  nice: "अच्छा", good: "अच्छा", great: "शानदार", awesome: "बहुत बढ़िया",
-  thanks: "धन्यवाद", thank: "धन्यवाद", amazing: "अद्भुत", wow: "वाह",
-  song: "गाना", dance: "नृत्य", video: "वीडियो", congratulations: "बधाई हो",
-  congrats: "बधाई हो", happy: "खुश", cute: "प्यारा", pretty: "सुंदर",
-};
-const stubTranslateToHindi = (text) => {
-  if (!text) return text;
-  const translated = text.replace(/[A-Za-z']+/g, (word) => {
-    const hit = HINDI_STUB_DICT[word.toLowerCase()];
-    return hit || word;
-  });
-  return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
-};
-
-// ── Single comment row — used for both top-level comments and their
-//    (one level deep) replies. Renders the kebab menu (Share/Report/
-//    Save), Like/Dislike with counts, a Reply button (top-level only),
-//    and the Translate-to-Hindi toggle. Mirrors ReelCommentRow in
-//    Reels.jsx, styled for the light youtube-style comment section here.
-const VideoCommentRow = ({
-  comment,
-  currentUser,
-  isReply,
-  isTranslated,
-  isMenuOpen,
-  onToggleMenu,
-  onLike,
-  onDislike,
-  onSave,
-  onShare,
-  onReport,
-  onToggleTranslate,
-  onReplyClick,
-}) => {
-  const iLiked = comment.likedBy.includes(currentUser);
-  const iDisliked = comment.dislikedBy.includes(currentUser);
-  const iSaved = comment.savedBy.includes(currentUser);
-  const displayText = isTranslated ? stubTranslateToHindi(comment.text) : comment.text;
-
-  return (
-    <div className="youtubeSelfComment">
-      <img
-        className="video_youtubeSelfCommentProfile"
-        src={`https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user || "U")}&background=7c3aed&color=fff&size=42`}
-        alt="commenter"
-      />
-      <div className={`others_commentSection${isReply ? " yt_comment_item--reply" : ""}`}>
-        <div className="others_commentSectionHeader">
-          <div className="channelName_comment">{comment.user}</div>
-          <div className="yt_comment_header_right">
-            {comment.date && <div className="commentTimingOthers">{timeAgo(comment.date)}</div>}
-            <div className="yt_comment_menu_wrap">
-              <span className="yt_comment_menu_btn" onClick={onToggleMenu}>⋯</span>
-              {isMenuOpen && (
-                <div className="yt_comment_dropdown">
-                  <div className="yt_comment_dropdown_item" onClick={onShare}>↪ Share</div>
-                  <div className="yt_comment_dropdown_item" onClick={onReport}>🚩 Report</div>
-                  <div className="yt_comment_dropdown_item" onClick={onSave}>
-                    {iSaved ? "🔖 Unsave" : "🔖 Save"}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="otherCommentSectionComment">{displayText}</div>
-        <div className="yt_comment_action_row">
-          <button
-            className={`yt_comment_like_btn${iLiked ? " yt_comment_like_active" : ""}`}
-            onClick={onLike}
-          >
-            👍{comment.likedBy.length > 0 ? ` ${comment.likedBy.length}` : ""}
-          </button>
-          <button
-            className={`yt_comment_dislike_btn${iDisliked ? " yt_comment_dislike_active" : ""}`}
-            onClick={onDislike}
-          >
-            👎{comment.dislikedBy.length > 0 ? ` ${comment.dislikedBy.length}` : ""}
-          </button>
-          {!isReply && (
-            <button className="yt_comment_reply_btn" onClick={onReplyClick}>Reply</button>
-          )}
-          <button className="yt_comment_translate_btn" onClick={onToggleTranslate}>
-            {isTranslated ? "Show original" : "Translate to Hindi"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const getCloudinaryThumbnail = (videoUrl) => {
   if (!videoUrl || !videoUrl.includes("cloudinary.com")) return null;
   return videoUrl
@@ -311,15 +214,6 @@ const Video = ({ sideNavbar }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const moreMenuRef = useRef(null);
 
-  // NEW: per-comment feature state — kebab menu, one-level replies, and
-  // the translate-to-Hindi toggle (per comment id). Mirrors Reels.jsx.
-  const [commentMenuOpenId, setCommentMenuOpenId] = useState(null);
-  const [replyingToId, setReplyingToId] = useState(null);
-  const [replyText, setReplyText] = useState("");
-  const [translatedIds, setTranslatedIds] = useState(() => new Set());
-  const [savedToast, setSavedToast] = useState(false);
-  const [reportCommentTarget, setReportCommentTarget] = useState(null);
-
   // NEW: lets the person hide the Like/Dislike/Share/Fullscreen row while
   // in fullscreen (toggled from the ⋮ "More" menu), so the video isn't
   // partly covered. The "More" button itself always stays visible so they
@@ -383,14 +277,6 @@ const Video = ({ sideNavbar }) => {
   // <video> is what keeps our custom controls visible once fullscreen —
   // fullscreening the <video> alone only shows the video and native chrome.
   const playerWrapperRef = useRef(null);
-
-  // NEW: unique per-mount suffix for this page's connection-status
-  // realtime channel (see the connection useEffect below). Supabase's
-  // client REUSES a channel object whenever `.channel(name)` is called
-  // with a name that's already subscribed elsewhere — this guards
-  // against the same crash covered in PostCard.jsx / Reels.jsx (e.g. a
-  // fast remount briefly overlapping the previous channel's teardown).
-  const channelInstanceIdRef = useRef(Math.random().toString(36).slice(2));
 
   useViewTracker({
     contentId: id,
@@ -556,12 +442,10 @@ const Video = ({ sideNavbar }) => {
   // CHANGED: now also reads `status` so the button can render its three
   // states (Connect / Requested / ✓ Connected) instead of just on/off.
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    if (!userId || !video) return;
-    const channelUsername = video.username || video.channel?.toLowerCase();
-    if (!channelUsername) return;
-
     const loadConnection = async () => {
+      const userId = localStorage.getItem("userId");
+      if (!userId || !video) return;
+      const channelUsername = video.username || video.channel?.toLowerCase();
       // FIX: was .single(), which throws a Supabase error whenever zero
       // rows match — i.e. every time the viewer hasn't connected yet.
       // .maybeSingle() (what Reels.jsx already uses for this same check)
@@ -576,41 +460,7 @@ const Video = ({ sideNavbar }) => {
       setConnectionStatus(data?.status || null);
     };
     loadConnection();
-
-    // FIX: keep connectionStatus in sync when the other person accepts
-    // or declines from elsewhere (the bell dropdown or /notifications
-    // page) while this page is already open. Previously this only ever
-    // fetched once on mount/video-change, so the button stayed stuck on
-    // "Requested" until a full page reload re-ran loadConnection.
-    //
-    // Realtime filters can only match a single column server-side, so
-    // this subscribes on connector_id (always this viewer's own userId
-    // — set at insert time in handleConnect below) and narrows to this
-    // specific channel client-side. Same per-user channel-scoping
-    // pattern already used for the notifications/DM-badge channels in
-    // Navbar.jsx and the connection-status channel in PostCard.jsx.
-    const channel = supabase
-      .channel(`video-connection-${userId}-${channelUsername}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "connections",
-          filter: `connector_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.eventType === "DELETE" ? payload.old : payload.new;
-          if (row?.connected_to !== channelUsername) return;
-          setConnectionStatus(
-            payload.eventType === "DELETE" ? null : payload.new?.status || null,
-          );
-        },
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [id, video?.username, video?.channel]);
+  }, [id, video?.username]);
 
   // ── Fetch the channel/uploader's real avatar from the profiles table.
   //    Falls back to null (handled at render time + onError) if missing or on error.
@@ -779,13 +629,8 @@ const Video = ({ sideNavbar }) => {
     setTimeout(() => setShareToast(false), 2500);
   };
 
-  // CHANGED: now accepts an optional parentId — omitted (or null) for a
-  // fresh top-level comment, or a top-level comment's id when posting a
-  // reply. Reads from either `message` (top-level) or replyText (reply),
-  // resetting the right one on success.
-  const handleCommentSubmit = async (parentId = null) => {
-    const text = parentId ? replyText : message;
-    if (!text.trim()) return;
+  const handleCommentSubmit = async () => {
+    if (!message.trim()) return;
     const userId = localStorage.getItem("userId");
     if (!userId) {
       alert("Please login to comment");
@@ -798,127 +643,25 @@ const Video = ({ sideNavbar }) => {
         username: loggedInUser,
         content_id: String(id),
         content_type: "video",
-        text: text.trim(),
-        parent_comment_id: parentId,
+        text: message,
       })
       .select()
       .single();
     if (!error && data) {
       setAllComments((prev) => [
-        ...prev,
         {
           id: data.id,
           user: data.username,
           text: data.text,
           date: data.created_at,
-          likedBy: [],
-          dislikedBy: [],
-          savedBy: [],
-          parentId: data.parent_comment_id || null,
         },
+        ...prev,
       ]);
       // Comment notifications are handled by the notify_on_comment DB
       // trigger on the comments table — no client-side notifyUser()
       // call here.
     }
-    if (parentId) {
-      setReplyText("");
-      setReplyingToId(null);
-    } else {
-      setMessage("");
-    }
-  };
-
-  // NEW: Like / Dislike a single comment (top-level or reply) — same
-  // mutually-exclusive toggle pattern as PostCard.jsx's
-  // handleCommentReaction / Reels.jsx's toggleCommentReaction.
-  const toggleCommentReaction = async (comment, type) => {
-    const userId = localStorage.getItem("userId");
-    if (!userId) { window.dispatchEvent(new CustomEvent("openLogin")); return; }
-
-    const isLike = type === "like";
-    const sameList = isLike ? comment.likedBy : comment.dislikedBy;
-    const otherList = isLike ? comment.dislikedBy : comment.likedBy;
-    const alreadyActive = sameList.includes(loggedInUser);
-
-    const nextSameList = alreadyActive
-      ? sameList.filter((u) => u !== loggedInUser)
-      : [...sameList, loggedInUser];
-    const nextOtherList = otherList.filter((u) => u !== loggedInUser);
-
-    const nextLikedBy = isLike ? nextSameList : nextOtherList;
-    const nextDislikedBy = isLike ? nextOtherList : nextSameList;
-
-    setAllComments((prev) =>
-      prev.map((c) =>
-        c.id === comment.id ? { ...c, likedBy: nextLikedBy, dislikedBy: nextDislikedBy } : c,
-      ),
-    );
-
-    const { error } = await supabase
-      .from("comments")
-      .update({ liked_by: nextLikedBy, disliked_by: nextDislikedBy })
-      .eq("id", comment.id);
-
-    if (error) {
-      console.error("toggleCommentReaction error:", error);
-      setAllComments((prev) =>
-        prev.map((c) =>
-          c.id === comment.id
-            ? { ...c, likedBy: comment.likedBy, dislikedBy: comment.dislikedBy }
-            : c,
-        ),
-      );
-    }
-  };
-
-  // NEW: kebab menu "Save" action — toggles the current user in the
-  // comment's saved_by list.
-  const toggleSaveComment = async (comment) => {
-    const userId = localStorage.getItem("userId");
-    if (!userId) { window.dispatchEvent(new CustomEvent("openLogin")); return; }
-    const isSaved = comment.savedBy.includes(loggedInUser);
-    const nextSavedBy = isSaved
-      ? comment.savedBy.filter((u) => u !== loggedInUser)
-      : [...comment.savedBy, loggedInUser];
-
-    setAllComments((prev) =>
-      prev.map((c) => (c.id === comment.id ? { ...c, savedBy: nextSavedBy } : c)),
-    );
-    setCommentMenuOpenId(null);
-    if (!isSaved) {
-      setSavedToast(true);
-      setTimeout(() => setSavedToast(false), 1800);
-    }
-
-    const { error } = await supabase
-      .from("comments")
-      .update({ saved_by: nextSavedBy })
-      .eq("id", comment.id);
-    if (error) console.error("toggleSaveComment error:", error);
-  };
-
-  // NEW: kebab menu "Share" action — copies a link back to this video
-  // with the comment's id tagged on, same URL shape used for the
-  // video-level Share button.
-  const handleShareComment = (comment) => {
-    const shareId = video?.short_id || id;
-    const url = `https://zixplon.in/api/og?type=video&id=${shareId}&comment=${comment.id}`;
-    navigator.clipboard.writeText(url).catch(() => {});
-    setCommentMenuOpenId(null);
-    setShareToast(true);
-    setTimeout(() => setShareToast(false), 2500);
-  };
-
-  // NEW: per-comment translate toggle, backed by the stub dictionary
-  // near the top of this file.
-  const toggleTranslate = (commentId) => {
-    setTranslatedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(commentId)) next.delete(commentId);
-      else next.add(commentId);
-      return next;
-    });
+    setMessage("");
   };
 
   // ── Double-tap-to-like: fires a heart burst at the tap point and
@@ -1021,10 +764,6 @@ const Video = ({ sideNavbar }) => {
     loadLikes();
   }, [id]);
 
-  // CHANGED: now also pulls liked_by / disliked_by / saved_by /
-  // parent_comment_id (see comment_features_migration.sql), and orders
-  // ascending so top-level comments and their replies build into a
-  // proper thread — see the render below.
   useEffect(() => {
     const loadComments = async () => {
       setCommentsLoading(true);
@@ -1032,7 +771,7 @@ const Video = ({ sideNavbar }) => {
         .from("comments")
         .select("*")
         .match({ content_id: String(id), content_type: "video" })
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
       if (data && data.length > 0) {
         setAllComments(
           data.map((c) => ({
@@ -1040,10 +779,6 @@ const Video = ({ sideNavbar }) => {
             user: c.username,
             text: c.text,
             date: c.created_at,
-            likedBy: c.liked_by || [],
-            dislikedBy: c.disliked_by || [],
-            savedBy: c.saved_by || [],
-            parentId: c.parent_comment_id || null,
           })),
         );
       } else {
@@ -1145,9 +880,6 @@ const Video = ({ sideNavbar }) => {
       : connectionStatus === "pending"
         ? "Requested"
         : "Connect";
-
-  const topLevelComments = [...allComments].filter((c) => !c.parentId).reverse();
-  const repliesFor = (parentId) => allComments.filter((c) => c.parentId === parentId);
 
   return (
     <div className="video">
@@ -1521,25 +1253,6 @@ const Video = ({ sideNavbar }) => {
             </div>
           )}
 
-          {savedToast && (
-            <div
-              style={{
-                position: "fixed",
-                bottom: 24,
-                left: "50%",
-                transform: "translateX(-50%)",
-                background: "#333",
-                color: "#fff",
-                padding: "8px 18px",
-                borderRadius: "999px",
-                fontSize: "13px",
-                zIndex: 999,
-              }}
-            >
-              🔖 Comment saved
-            </div>
-          )}
-
           {description ? (
             <div>
               <ExpandableText text={description} maxChars={200} />
@@ -1601,7 +1314,7 @@ const Video = ({ sideNavbar }) => {
                   <div className="cancelcomment" onClick={() => setMessage("")}>
                     Cancel
                   </div>
-                  <div className="cancelcomment" onClick={() => handleCommentSubmit()}>
+                  <div className="cancelcomment" onClick={handleCommentSubmit}>
                     Comment
                   </div>
                 </div>
@@ -1612,7 +1325,7 @@ const Video = ({ sideNavbar }) => {
                 <p style={{ color: "#aaa", fontSize: "13px" }}>
                   Loading comments...
                 </p>
-              ) : topLevelComments.length === 0 ? (
+              ) : allComments.length === 0 ? (
                 <p
                   style={{
                     color: "#8b84c4",
@@ -1624,60 +1337,26 @@ const Video = ({ sideNavbar }) => {
                   No comments yet. Be the first to comment!
                 </p>
               ) : (
-                topLevelComments.map((c) => (
-                  <div key={c.id} className="yt_comment_thread">
-                    <VideoCommentRow
-                      comment={c}
-                      currentUser={loggedInUser}
-                      isReply={false}
-                      isTranslated={translatedIds.has(c.id)}
-                      isMenuOpen={commentMenuOpenId === c.id}
-                      onToggleMenu={() => setCommentMenuOpenId((v) => (v === c.id ? null : c.id))}
-                      onLike={() => toggleCommentReaction(c, "like")}
-                      onDislike={() => toggleCommentReaction(c, "dislike")}
-                      onSave={() => toggleSaveComment(c)}
-                      onShare={() => handleShareComment(c)}
-                      onReport={() => { setReportCommentTarget(c); setCommentMenuOpenId(null); }}
-                      onToggleTranslate={() => toggleTranslate(c.id)}
-                      onReplyClick={() => setReplyingToId((v) => (v === c.id ? null : c.id))}
+                allComments.map((c) => (
+                  <div className="youtubeSelfComment" key={c.id}>
+                    <img
+                      className="video_youtubeSelfCommentProfile"
+                      src={getFallbackAvatar(c.user)}
+                      alt="commenter"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = getFallbackAvatar(c.user);
+                      }}
                     />
-
-                    {replyingToId === c.id && (
-                      <div className="yt_reply_input_row">
-                        <input
-                          type="text"
-                          value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleCommentSubmit(c.id)}
-                          placeholder={`Reply to ${c.user}...`}
-                          className="addACommentInput"
-                          autoFocus
-                        />
-                        <div className="cancelSubmitComment">
-                          <div className="cancelcomment" onClick={() => setReplyingToId(null)}>Cancel</div>
-                          <div className="cancelcomment" onClick={() => handleCommentSubmit(c.id)}>Reply</div>
+                    <div className="others_commentSection">
+                      <div className="others_commentSectionHeader">
+                        <div className="channelName_comment">{c.user}</div>
+                        <div className="commentTimingOthers">
+                          {timeAgo(c.date)}
                         </div>
                       </div>
-                    )}
-
-                    {repliesFor(c.id).map((r) => (
-                      <VideoCommentRow
-                        key={r.id}
-                        comment={r}
-                        currentUser={loggedInUser}
-                        isReply
-                        isTranslated={translatedIds.has(r.id)}
-                        isMenuOpen={commentMenuOpenId === r.id}
-                        onToggleMenu={() => setCommentMenuOpenId((v) => (v === r.id ? null : r.id))}
-                        onLike={() => toggleCommentReaction(r, "like")}
-                        onDislike={() => toggleCommentReaction(r, "dislike")}
-                        onSave={() => toggleSaveComment(r)}
-                        onShare={() => handleShareComment(r)}
-                        onReport={() => { setReportCommentTarget(r); setCommentMenuOpenId(null); }}
-                        onToggleTranslate={() => toggleTranslate(r.id)}
-                        onReplyClick={() => setReplyingToId(c.id)}
-                      />
-                    ))}
+                      <div className="otherCommentSectionComment">{c.text}</div>
+                    </div>
                   </div>
                 ))
               )}
@@ -1728,19 +1407,6 @@ const Video = ({ sideNavbar }) => {
           contentTitle={video.title}
           contentOwner={channelUsername}
           onClose={() => setShowReportModal(false)}
-        />
-      )}
-
-      {/* NEW: reporting an individual comment — reuses the same generic
-          ReportModal used for the video itself, just pointed at
-          contentType "comment" instead. */}
-      {reportCommentTarget && (
-        <ReportModal
-          contentType="comment"
-          contentId={reportCommentTarget.id}
-          contentTitle={reportCommentTarget.text?.slice(0, 80) || "Comment"}
-          contentOwner={reportCommentTarget.user}
-          onClose={() => setReportCommentTarget(null)}
         />
       )}
     </div>

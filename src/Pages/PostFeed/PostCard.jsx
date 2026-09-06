@@ -7,12 +7,6 @@ import ReportPostModal from "./ReportPostModal";
 // which adds per-photo like/comment/share/copy-link on top of the same
 // full-screen swipe experience. See PhotoViewer.jsx.
 import PhotoViewer from "./PhotoViewer";
-// NEW: generic content-report modal (contentType/contentId/contentTitle/
-// contentOwner/onClose), same component already used by Video.jsx and
-// Reels.jsx for reel/video/comment reports. ReportPostModal above stays
-// dedicated to post-level reports; this one is only used for individual
-// comment reports (see the kebab menu below).
-import ReportModal from "../../Component/Moderation/ReportModal";
 // Connect button on each post's header — same "connections" table
 // used by the Connect button on Video.jsx / Reels.jsx (see
 // subscriptions_to_connections_migration.sql and the later
@@ -51,26 +45,6 @@ const formatViews = (n) => {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M views";
   if (n >= 1000) return (n / 1000).toFixed(1) + "K views";
   return n + " views";
-};
-
-// ── Comment translate stub — same as Reels.jsx / Video.jsx. NOT a real
-// translation service, just a small word-swap dictionary so "Translate
-// to Hindi" does something visible. Swap the body of this function for
-// a real API call later without touching any call sites.
-const HINDI_STUB_DICT = {
-  hello: "नमस्ते", hi: "नमस्ते", love: "प्यार", you: "तुम", beautiful: "खूबसूरत",
-  nice: "अच्छा", good: "अच्छा", great: "शानदार", awesome: "बहुत बढ़िया",
-  thanks: "धन्यवाद", thank: "धन्यवाद", amazing: "अद्भुत", wow: "वाह",
-  song: "गाना", dance: "नृत्य", video: "वीडियो", congratulations: "बधाई हो",
-  congrats: "बधाई हो", happy: "खुश", cute: "प्यारा", pretty: "सुंदर",
-};
-const stubTranslateToHindi = (text) => {
-  if (!text) return text;
-  const translated = text.replace(/[A-Za-z']+/g, (word) => {
-    const hit = HINDI_STUB_DICT[word.toLowerCase()];
-    return hit || word;
-  });
-  return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,121 +203,6 @@ const ImageGrid = ({ images, onOpenViewer }) => {
 };
 
 /* ─────────────────────────────────────────
-   COMMENT ROW — used for both top-level comments and their (one level
-   deep) replies. Renders the kebab menu (Share/Report/Save), the
-   existing Like/Dislike actions, a Reply button (top-level only), and
-   the Translate-to-Hindi toggle. Mirrors ReelCommentRow / VideoCommentRow
-   in Reels.jsx / Video.jsx.
-───────────────────────────────────────── */
-const PostCommentRow = ({
-  comment,
-  currentUser,
-  isReply,
-  isTranslated,
-  isMenuOpen,
-  onToggleMenu,
-  onLike,
-  onDislike,
-  onSave,
-  onShare,
-  onReport,
-  onToggleTranslate,
-  onReplyClick,
-}) => {
-  const likedBy = comment.liked_by || [];
-  const dislikedBy = comment.disliked_by || [];
-  const savedBy = comment.saved_by || [];
-  const iLikedComment = likedBy.includes(currentUser);
-  const iDislikedComment = dislikedBy.includes(currentUser);
-  const iSaved = savedBy.includes(currentUser);
-  const displayText = isTranslated
-    ? stubTranslateToHindi(comment.text)
-    : comment.text;
-
-  return (
-    <div className={`pf-comment${isReply ? " pf-comment--reply" : ""}`}>
-      <Link
-        to={`/user/${comment.username}`}
-        className="pf-avatar pf-avatar-sm pf-avatar-amber pf-avatar-link"
-        title={`View ${comment.username}'s profile`}
-      >
-        {(comment.username || "?").slice(0, 2).toUpperCase()}
-      </Link>
-      <div className="pf-comment-bubble">
-        <div className="pf-comment-bubble-header">
-          <Link
-            to={`/user/${comment.username}`}
-            className="pf-comment-author-link"
-          >
-            <p className="pf-comment-author">{comment.username}</p>
-          </Link>
-          <div className="pf-comment-header-right">
-            {comment.created_at && (
-              <span className="pf-comment-time">{timeAgo(comment.created_at)}</span>
-            )}
-            <div className="pf-comment-menu-wrap">
-              <span className="pf-comment-menu-btn" onClick={onToggleMenu}>⋯</span>
-              {isMenuOpen && (
-                <div className="pf-comment-dropdown">
-                  <div className="pf-comment-dropdown-item" onClick={onShare}>
-                    ↪ Share
-                  </div>
-                  <div className="pf-comment-dropdown-item" onClick={onReport}>
-                    🚩 Report
-                  </div>
-                  <div className="pf-comment-dropdown-item" onClick={onSave}>
-                    {iSaved ? "🔖 Unsave" : "🔖 Save"}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <p className="pf-comment-text">{displayText}</p>
-
-        {/* Like + Dislike actions with counts, plus Reply (top-level
-            only) and the Translate toggle. */}
-        <div className="pf-comment-actions">
-          <button
-            className={`pf-comment-like-btn ${
-              iLikedComment ? "pf-comment-like-active" : ""
-            }`}
-            onClick={onLike}
-          >
-            👍 Like
-          </button>
-          {likedBy.length > 0 && (
-            <span className="pf-comment-like-count">{likedBy.length}</span>
-          )}
-
-          <button
-            className={`pf-comment-dislike-btn ${
-              iDislikedComment ? "pf-comment-dislike-active" : ""
-            }`}
-            onClick={onDislike}
-          >
-            👎 Dislike
-          </button>
-          {dislikedBy.length > 0 && (
-            <span className="pf-comment-like-count">{dislikedBy.length}</span>
-          )}
-
-          {!isReply && (
-            <button className="pf-comment-reply-btn" onClick={onReplyClick}>
-              Reply
-            </button>
-          )}
-
-          <button className="pf-comment-translate-btn" onClick={onToggleTranslate}>
-            {isTranslated ? "Show original" : "Translate to Hindi"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────
    POST CARD
 ───────────────────────────────────────── */
 const PostCard = ({
@@ -356,11 +215,10 @@ const PostCard = ({
   onDelete,
   onEdit,
   onReport,
-  onLikeComment, // like/unlike a single comment
-  onDislikeComment, // dislike/undislike a single comment
-  onSaveComment, // NEW: (postId, commentId) => void — kebab menu "Save"
-  viewCount = 0, // this post's total view count, from PostFeed's viewCounts map
-  onView, // (postId) => void — called once per mount when the card scrolls into view
+  onLikeComment, // NEW: like/unlike a single comment
+  onDislikeComment, // NEW: dislike/undislike a single comment
+  viewCount = 0, // NEW: this post's total view count, from PostFeed's viewCounts map
+  onView, // NEW: (postId) => void — called once per mount when the card scrolls into view
 }) => {
   const [commentText, setCommentText] = useState("");
   const [showPicker, setShowPicker] = useState(false);
@@ -382,19 +240,6 @@ const PostCard = ({
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
-
-  // NEW: per-comment feature state — kebab menu, one-level replies, and
-  // the translate-to-Hindi toggle (per comment id). Mirrors Reels.jsx /
-  // Video.jsx.
-  const [commentMenuOpenId, setCommentMenuOpenId] = useState(null);
-  const [replyingToId, setReplyingToId] = useState(null);
-  const [replyText, setReplyText] = useState("");
-  const [translatedCommentIds, setTranslatedCommentIds] = useState(
-    () => new Set(),
-  );
-  const [reportCommentTarget, setReportCommentTarget] = useState(null);
-  const [commentShareToast, setCommentShareToast] = useState(false);
-  const [commentSavedToast, setCommentSavedToast] = useState(false);
 
   // Connect button state — mirrors the same three-state flow used in
   // Video.jsx and Reels.jsx, against the same "connections" table.
@@ -424,19 +269,6 @@ const PostCard = ({
   const pickerRef = useRef();
   const shareRef = useRef();
   const menuRef = useRef();
-
-  // NEW: unique per-mount suffix for this card's connection-status
-  // realtime channel (see the connection useEffect below). Supabase's
-  // client REUSES a channel object whenever `.channel(name)` is called
-  // with a name that's already subscribed elsewhere — so without this,
-  // two posts from the same author both showing in the feed would build
-  // the identical channel name (same viewer + same author), and the
-  // second card's `.on()` call would land on the first card's
-  // already-subscribed channel, crashing with "cannot add
-  // postgres_changes callbacks ... after subscribe()". A random
-  // per-instance suffix guarantees every mounted PostCard gets its own
-  // channel even when several reference the same (viewer, author) pair.
-  const channelInstanceIdRef = useRef(Math.random().toString(36).slice(2));
 
   // NEW: root card ref + one-shot guard for the view-count
   // IntersectionObserver below. Mirrors ShortCard's viewFiredRef pattern
@@ -523,15 +355,14 @@ const PostCard = ({
   // Load whether the current user has a connection (of any status) with
   // this post's author. Skipped entirely for the author's own posts,
   // since the button never renders there anyway — same early-return
-  // shape as Reels.jsx / Video.jsx's connection loaders. Reads `status`
-  // so the button can render its three states (Connect / Requested /
-  // ✓ Connected) instead of just on/off.
+  // shape as Reels.jsx / Video.jsx's connection loaders. Now also reads
+  // `status` so the button can render its three states (Connect /
+  // Requested / ✓ Connected) instead of just on/off.
   useEffect(() => {
     if (!post.username || post.username === currentUser) return;
-    const userId = localStorage.getItem("userId");
-    if (!userId) return;
-
     const loadConnection = async () => {
+      const userId = localStorage.getItem("userId");
+      if (!userId) return;
       const { data, error } = await supabase
         .from("connections")
         .select("id, status")
@@ -541,43 +372,6 @@ const PostCard = ({
       setConnectionStatus(data?.status || null);
     };
     loadConnection();
-
-    // FIX: keep connectionStatus in sync when the other person accepts
-    // or declines from elsewhere (the bell dropdown or /notifications
-    // page) while this card is already mounted. Previously this effect
-    // only ever fetched once on mount, so the button stayed stuck on
-    // "Requested" indefinitely — nothing here ever re-queried the
-    // connections table until a full page reload re-ran loadConnection.
-    //
-    // Realtime filters can only match a single column server-side, so
-    // this subscribes on connector_id (always this viewer's own userId
-    // — set at insert time in handleConnect below) and then narrows to
-    // this specific post's author client-side — matches the per-user
-    // channel-scoping pattern already used in Navbar.jsx / Video.jsx /
-    // Reels.jsx.
-    const channel = supabase
-      .channel(
-        `postcard-connection-${userId}-${post.username}-${channelInstanceIdRef.current}`,
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "connections",
-          filter: `connector_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.eventType === "DELETE" ? payload.old : payload.new;
-          if (row?.connected_to !== post.username) return;
-          setConnectionStatus(
-            payload.eventType === "DELETE" ? null : payload.new?.status || null,
-          );
-        },
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
   }, [post.username, currentUser]);
 
   // Connect / Withdraw-Disconnect — unified with Reels.jsx / Video.jsx:
@@ -648,62 +442,12 @@ const PostCard = ({
     }
   };
 
-  // NEW: submit a one-level-deep reply to a top-level comment. Same
-  // onComment callback as a fresh comment, just with the parent's id as
-  // the third argument (see PostFeed.jsx's handleComment).
-  const handleReplySubmit = (parentId) => {
-    if (!replyText.trim()) return;
-    onComment(post.id, replyText, parentId);
-    setReplyText("");
-    setReplyingToId(null);
-  };
-
   const handleCopyLink = () => {
     const shareUrl = `https://zixplon.in/api/og?type=post&id=${post.id}`;
     navigator.clipboard?.writeText(shareUrl).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     setShowShareMenu(false);
-  };
-
-  // NEW: kebab menu "Share" action for an individual comment — copies a
-  // link back to this post with the comment's id tagged on, same shape
-  // as the post-level Share/Copy link.
-  const handleShareComment = (comment) => {
-    const shareUrl = `https://zixplon.in/api/og?type=post&id=${post.id}&comment=${comment.id}`;
-    navigator.clipboard?.writeText(shareUrl).catch(() => {});
-    setCommentMenuOpenId(null);
-    setCommentShareToast(true);
-    setTimeout(() => setCommentShareToast(false), 2000);
-  };
-
-  // NEW: kebab menu "Save" action for an individual comment — delegates
-  // the actual state update + Supabase write up to PostFeed via the
-  // passed-in onSaveComment callback, same delegation pattern already
-  // used for onLikeComment/onDislikeComment.
-  const handleSaveCommentClick = (comment) => {
-    if (!currentUser || currentUser === "anonymous") {
-      window.dispatchEvent(new CustomEvent("openLogin"));
-      return;
-    }
-    onSaveComment?.(post.id, comment.id);
-    setCommentMenuOpenId(null);
-    const isSaved = (comment.saved_by || []).includes(currentUser);
-    if (!isSaved) {
-      setCommentSavedToast(true);
-      setTimeout(() => setCommentSavedToast(false), 1800);
-    }
-  };
-
-  // NEW: per-comment translate toggle, backed by the stub dictionary
-  // near the top of this file.
-  const toggleTranslate = (commentId) => {
-    setTranslatedCommentIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(commentId)) next.delete(commentId);
-      else next.add(commentId);
-      return next;
-    });
   };
 
   const startEdit = () => {
@@ -770,35 +514,12 @@ const PostCard = ({
     callback(post.id, commentId);
   };
 
-  // NEW: kebab menu "Report" action for an individual comment.
-  const handleReportCommentClick = (comment) => {
-    if (!currentUser || currentUser === "anonymous") {
-      window.dispatchEvent(new CustomEvent("openLogin"));
-      setCommentMenuOpenId(null);
-      return;
-    }
-    setReportCommentTarget(comment);
-    setCommentMenuOpenId(null);
-  };
-
   const connectLabel =
     connectionStatus === "accepted"
       ? "✓ Connected"
       : connectionStatus === "pending"
         ? "Requested"
         : "Connect";
-
-  // NEW: build the top-level/reply comment tree. Top-level comments
-  // (parent_comment_id null) are reversed for newest-first display;
-  // each thread's replies stay in their natural chronological order
-  // (post.comments is already sorted ascending in PostFeed's
-  // enrichPost).
-  const allComments = post.comments || [];
-  const topLevelComments = [...allComments]
-    .filter((c) => !c.parent_comment_id)
-    .reverse();
-  const repliesFor = (parentId) =>
-    allComments.filter((c) => c.parent_comment_id === parentId);
 
   return (
     <>
@@ -820,19 +541,6 @@ const PostCard = ({
           post={post}
           onClose={() => setShowReportModal(false)}
           onReport={onReport}
-        />
-      )}
-
-      {/* NEW: reporting an individual comment — reuses the same generic
-          ReportModal used by Video.jsx / Reels.jsx, pointed at
-          contentType "comment". */}
-      {reportCommentTarget && (
-        <ReportModal
-          contentType="comment"
-          contentId={reportCommentTarget.id}
-          contentTitle={reportCommentTarget.text?.slice(0, 80) || "Comment"}
-          contentOwner={reportCommentTarget.username}
-          onClose={() => setReportCommentTarget(null)}
         />
       )}
 
@@ -1247,86 +955,80 @@ const PostCard = ({
         {/* ── Comments ── */}
         {!isEditing && post.showComments && (
           <div className="pf-comments-section">
-            {commentShareToast && (
-              <div className="pf-comment-toast">🔗 Link copied</div>
-            )}
-            {commentSavedToast && (
-              <div className="pf-comment-toast">🔖 Comment saved</div>
-            )}
+            {(post.comments || []).map((c) => {
+              // NEW: per-comment like/dislike state. liked_by and
+              // disliked_by are text[] columns on post_comments (see
+              // migration note) holding the usernames who've liked /
+              // disliked this comment. The two are mutually exclusive
+              // per-user, enforced server-side in handleCommentReaction.
+              const likedBy = c.liked_by || [];
+              const dislikedBy = c.disliked_by || [];
+              const iLikedComment = likedBy.includes(currentUser);
+              const iDislikedComment = dislikedBy.includes(currentUser);
 
-            {topLevelComments.length === 0 ? (
-              <p className="pf-comment-empty">No comments yet. Be the first!</p>
-            ) : (
-              topLevelComments.map((c) => (
-                <div className="pf-comment-thread" key={c.id}>
-                  <PostCommentRow
-                    comment={c}
-                    currentUser={currentUser}
-                    isReply={false}
-                    isTranslated={translatedCommentIds.has(c.id)}
-                    isMenuOpen={commentMenuOpenId === c.id}
-                    onToggleMenu={() =>
-                      setCommentMenuOpenId((v) => (v === c.id ? null : c.id))
-                    }
-                    onLike={() => handleCommentReactionClick(c.id, onLikeComment)}
-                    onDislike={() =>
-                      handleCommentReactionClick(c.id, onDislikeComment)
-                    }
-                    onSave={() => handleSaveCommentClick(c)}
-                    onShare={() => handleShareComment(c)}
-                    onReport={() => handleReportCommentClick(c)}
-                    onToggleTranslate={() => toggleTranslate(c.id)}
-                    onReplyClick={() =>
-                      setReplyingToId((v) => (v === c.id ? null : c.id))
-                    }
-                  />
-
-                  {replyingToId === c.id && (
-                    <div className="pf-reply-input-row">
-                      <div className="pf-avatar pf-avatar-sm">
-                        {(currentUser || "?").slice(0, 2).toUpperCase()}
-                      </div>
-                      <input
-                        className="pf-comment-input"
-                        placeholder={`Reply to ${c.username}…`}
-                        value={replyText}
-                        onChange={(e) => setReplyText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleReplySubmit(c.id);
-                          }
-                        }}
-                        autoFocus
-                      />
+              return (
+                <div className="pf-comment" key={c.id}>
+                  <Link
+                    to={`/user/${c.username}`}
+                    className="pf-avatar pf-avatar-sm pf-avatar-amber pf-avatar-link"
+                    title={`View ${c.username}'s profile`}
+                  >
+                    {(c.username || "?").slice(0, 2).toUpperCase()}
+                  </Link>
+                  <div className="pf-comment-bubble">
+                    <div className="pf-comment-bubble-header">
+                      <Link
+                        to={`/user/${c.username}`}
+                        className="pf-comment-author-link"
+                      >
+                        <p className="pf-comment-author">{c.username}</p>
+                      </Link>
+                      {c.created_at && (
+                        <span className="pf-comment-time">
+                          {timeAgo(c.created_at)}
+                        </span>
+                      )}
                     </div>
-                  )}
+                    <p className="pf-comment-text">{c.text}</p>
 
-                  {repliesFor(c.id).map((r) => (
-                    <PostCommentRow
-                      key={r.id}
-                      comment={r}
-                      currentUser={currentUser}
-                      isReply
-                      isTranslated={translatedCommentIds.has(r.id)}
-                      isMenuOpen={commentMenuOpenId === r.id}
-                      onToggleMenu={() =>
-                        setCommentMenuOpenId((v) => (v === r.id ? null : r.id))
-                      }
-                      onLike={() => handleCommentReactionClick(r.id, onLikeComment)}
-                      onDislike={() =>
-                        handleCommentReactionClick(r.id, onDislikeComment)
-                      }
-                      onSave={() => handleSaveCommentClick(r)}
-                      onShare={() => handleShareComment(r)}
-                      onReport={() => handleReportCommentClick(r)}
-                      onToggleTranslate={() => toggleTranslate(r.id)}
-                      onReplyClick={() => setReplyingToId(c.id)}
-                    />
-                  ))}
+                    {/* NEW: Like + Dislike actions with counts for this comment */}
+                    <div className="pf-comment-actions">
+                      <button
+                        className={`pf-comment-like-btn ${
+                          iLikedComment ? "pf-comment-like-active" : ""
+                        }`}
+                        onClick={() =>
+                          handleCommentReactionClick(c.id, onLikeComment)
+                        }
+                      >
+                        👍 Like
+                      </button>
+                      {likedBy.length > 0 && (
+                        <span className="pf-comment-like-count">
+                          {likedBy.length}
+                        </span>
+                      )}
+
+                      <button
+                        className={`pf-comment-dislike-btn ${
+                          iDislikedComment ? "pf-comment-dislike-active" : ""
+                        }`}
+                        onClick={() =>
+                          handleCommentReactionClick(c.id, onDislikeComment)
+                        }
+                      >
+                        👎 Dislike
+                      </button>
+                      {dislikedBy.length > 0 && (
+                        <span className="pf-comment-like-count">
+                          {dislikedBy.length}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))
-            )}
+              );
+            })}
 
             <div className="pf-comment-input-row">
               <div className="pf-avatar pf-avatar-sm">
