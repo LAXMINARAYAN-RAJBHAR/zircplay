@@ -125,6 +125,104 @@ const isNewReel = (reel) => {
   return false;
 };
 
+// ── Comment translate stub ─────────────────────────────────────────────
+// NOT a real translation service — this is a placeholder swap of a
+// handful of common English words to Hindi, purely so the "Translate to
+// Hindi" affordance exists and does *something* visible. Swap this out
+// for a real call (e.g. Google Cloud Translation API) when ready; the
+// toggleTranslate() call site below doesn't need to change, just this
+// function's implementation.
+const HINDI_STUB_DICT = {
+  hello: "नमस्ते", hi: "नमस्ते", love: "प्यार", you: "तुम", beautiful: "खूबसूरत",
+  nice: "अच्छा", good: "अच्छा", great: "शानदार", awesome: "बहुत बढ़िया",
+  thanks: "धन्यवाद", thank: "धन्यवाद", amazing: "अद्भुत", wow: "वाह",
+  song: "गाना", dance: "नृत्य", video: "वीडियो", congratulations: "बधाई हो",
+  congrats: "बधाई हो", happy: "खुश", cute: "प्यारा", pretty: "सुंदर",
+};
+const stubTranslateToHindi = (text) => {
+  if (!text) return text;
+  const translated = text.replace(/[A-Za-z']+/g, (word) => {
+    const hit = HINDI_STUB_DICT[word.toLowerCase()];
+    return hit || word;
+  });
+  return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
+};
+
+// ── Single comment row — used for both top-level comments and their
+//    (one level deep) replies. Renders the kebab menu (Share/Report/
+//    Save), Like/Dislike with counts, a Reply button (top-level only),
+//    and the Translate-to-Hindi toggle.
+const ReelCommentRow = ({
+  comment,
+  currentUser,
+  isReply,
+  isTranslated,
+  isMenuOpen,
+  onToggleMenu,
+  onLike,
+  onDislike,
+  onSave,
+  onShare,
+  onReport,
+  onToggleTranslate,
+  onReplyClick,
+}) => {
+  const iLiked = comment.likedBy.includes(currentUser);
+  const iDisliked = comment.dislikedBy.includes(currentUser);
+  const iSaved = comment.savedBy.includes(currentUser);
+  const displayText = isTranslated ? stubTranslateToHindi(comment.text) : comment.text;
+
+  return (
+    <div className={`reel_comment_item${isReply ? " reel_comment_item--reply" : ""}`}>
+      <div className="reel_comment_item_header">
+        <span className="reel_comment_user">{comment.user}</span>
+        <div className="reel_comment_header_right">
+          {comment.date && <span className="reel_comment_time">{timeAgo(comment.date)}</span>}
+          <div className="reel_comment_menu_wrap">
+            <span className="reel_comment_menu_btn" onClick={onToggleMenu}>⋯</span>
+            {isMenuOpen && (
+              <div className="reel_comment_dropdown">
+                <div className="reel_comment_dropdown_item" onClick={onShare}>
+                  ↪ Share
+                </div>
+                <div className="reel_comment_dropdown_item" onClick={onReport}>
+                  🚩 Report
+                </div>
+                <div className="reel_comment_dropdown_item" onClick={onSave}>
+                  {iSaved ? "🔖 Unsave" : "🔖 Save"}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <span className="reel_comment_text">{displayText}</span>
+      <div className="reel_comment_action_row">
+        <button
+          className={`reel_comment_like_btn${iLiked ? " reel_comment_like_active" : ""}`}
+          onClick={onLike}
+        >
+          👍{comment.likedBy.length > 0 ? ` ${comment.likedBy.length}` : ""}
+        </button>
+        <button
+          className={`reel_comment_dislike_btn${iDisliked ? " reel_comment_dislike_active" : ""}`}
+          onClick={onDislike}
+        >
+          👎{comment.dislikedBy.length > 0 ? ` ${comment.dislikedBy.length}` : ""}
+        </button>
+        {!isReply && (
+          <button className="reel_comment_reply_btn" onClick={onReplyClick}>
+            Reply
+          </button>
+        )}
+        <button className="reel_comment_translate_btn" onClick={onToggleTranslate}>
+          {isTranslated ? "Show original" : "Translate to Hindi"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const MoreDropdown = ({ onRemix, onSound, onCollab, onGreenScreen, onCut, onReport, onClose }) => {
   const ref = useRef(null);
 
@@ -218,6 +316,15 @@ const ReelItem = ({ reel, allReels }) => {
   const [showReportModal, setShowReportModal]   = useState(false);
   const [progress, setProgress]                 = useState(0);
 
+  // NEW: per-comment feature state — kebab menu, one-level replies,
+  // and the translate-to-Hindi toggle (per comment id).
+  const [commentMenuOpenId, setCommentMenuOpenId] = useState(null);
+  const [replyingToId, setReplyingToId]           = useState(null);
+  const [replyText, setReplyText]                 = useState("");
+  const [translatedIds, setTranslatedIds]         = useState(() => new Set());
+  const [savedToast, setSavedToast]               = useState(false);
+  const [reportCommentTarget, setReportCommentTarget] = useState(null);
+
   const quality = useNetworkQuality();
 
   useEffect(() => {
@@ -296,9 +403,10 @@ const ReelItem = ({ reel, allReels }) => {
   // button can render its three states (Connect / Requested / ✓
   // Connected) instead of just on/off.
   useEffect(() => {
+    const userId = localStorage.getItem("userId");
+    if (!userId) return;
+
     const loadConnection = async () => {
-      const userId = localStorage.getItem("userId");
-      if (!userId) return;
       const { data, error } = await supabase
         .from("connections")
         .select("id, status")
@@ -308,13 +416,70 @@ const ReelItem = ({ reel, allReels }) => {
       setConnectionStatus(data?.status || null);
     };
     loadConnection();
+
+    // FIX: keep connectionStatus in sync when the other person accepts
+    // or declines from elsewhere (the bell dropdown or /notifications
+    // page) while this reel is already mounted. Previously this only
+    // ever fetched once on mount, so the button stayed stuck on
+    // "Requested" indefinitely — nothing here ever re-queried the
+    // connections table until the reel remounted or the page reloaded.
+    //
+    // Realtime filters can only match a single column server-side, so
+    // this subscribes on connector_id (always this viewer's own userId
+    // — set at insert time in handleConnect below) and narrows to this
+    // specific reel's uploader client-side. Same per-user
+    // channel-scoping pattern already used for the notifications/
+    // DM-badge channels in Navbar.jsx and the connection-status channel
+    // in PostCard.jsx / Video.jsx.
+    const channel = supabase
+      .channel(`reel-connection-${userId}-${reel.username}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "connections",
+          filter: `connector_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.eventType === "DELETE" ? payload.old : payload.new;
+          if (row?.connected_to !== reel.username) return;
+          setConnectionStatus(
+            payload.eventType === "DELETE" ? null : payload.new?.status || null,
+          );
+        },
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, [reel.username]);
 
+  // CHANGED: now also pulls liked_by / disliked_by / saved_by /
+  // parent_comment_id (see comment_features_migration.sql), and orders
+  // ascending so top-level comments and their replies build into a
+  // proper thread — see the render below, which reverses only the
+  // top-level list for newest-first display while keeping each
+  // thread's replies in chronological order.
   useEffect(() => {
     const loadComments = async () => {
-      const { data } = await supabase.from("comments").select("*").match({ content_id: String(reel.id), content_type: "reel" }).order("created_at", { ascending: false });
-      if (data && data.length > 0) {
-        setComments(data.map((c) => ({ id: c.id, user: c.username, text: c.text, date: c.created_at })));
+      const { data } = await supabase
+        .from("comments")
+        .select("*")
+        .match({ content_id: String(reel.id), content_type: "reel" })
+        .order("created_at", { ascending: true });
+      if (data) {
+        setComments(
+          data.map((c) => ({
+            id: c.id,
+            user: c.username,
+            text: c.text,
+            date: c.created_at,
+            likedBy: c.liked_by || [],
+            dislikedBy: c.disliked_by || [],
+            savedBy: c.saved_by || [],
+            parentId: c.parent_comment_id || null,
+          })),
+        );
       }
     };
     loadComments();
@@ -396,18 +561,147 @@ const ReelItem = ({ reel, allReels }) => {
     }
   };
 
-  const handleCommentSubmit = async () => {
-    if (!commentText.trim()) return;
+  // CHANGED: now accepts an optional parentId — omitted (or null) for a
+  // fresh top-level comment, or a top-level comment's id when posting a
+  // reply. Reads from either commentText (top-level) or replyText
+  // (reply), and resets the right one on success.
+  const handleCommentSubmit = async (parentId = null) => {
+    const text = parentId ? replyText : commentText;
+    if (!text.trim()) return;
     const userId = localStorage.getItem("userId");
     if (!userId) { alert("Please login to comment"); return; }
-    const { data, error } = await supabase.from("comments").insert({ user_id: userId, username: loggedInUser, content_id: String(reel.id), content_type: "reel", text: commentText }).select().single();
+    const { data, error } = await supabase
+      .from("comments")
+      .insert({
+        user_id: userId,
+        username: loggedInUser,
+        content_id: String(reel.id),
+        content_type: "reel",
+        text: text.trim(),
+        parent_comment_id: parentId,
+      })
+      .select()
+      .single();
     if (!error && data) {
-      setComments((prev) => [{ id: data.id, user: data.username, text: data.text, date: data.created_at }, ...prev]);
+      setComments((prev) => [
+        ...prev,
+        {
+          id: data.id,
+          user: data.username,
+          text: data.text,
+          date: data.created_at,
+          likedBy: [],
+          dislikedBy: [],
+          savedBy: [],
+          parentId: data.parent_comment_id || null,
+        },
+      ]);
       // Comment notifications are handled by the notify_on_comment DB
       // trigger on the comments table — no client-side notifyUser()
       // call here.
     }
-    setCommentText("");
+    if (parentId) {
+      setReplyText("");
+      setReplyingToId(null);
+    } else {
+      setCommentText("");
+    }
+  };
+
+  // NEW: Like / Dislike a single comment (top-level or reply) — same
+  // mutually-exclusive toggle pattern as PostCard.jsx's
+  // handleCommentReaction, just against the "comments" table instead of
+  // "post_comments".
+  const toggleCommentReaction = async (comment, type) => {
+    const userId = localStorage.getItem("userId");
+    if (!userId) { window.dispatchEvent(new CustomEvent("openLogin")); return; }
+
+    const isLike = type === "like";
+    const sameList = isLike ? comment.likedBy : comment.dislikedBy;
+    const otherList = isLike ? comment.dislikedBy : comment.likedBy;
+    const alreadyActive = sameList.includes(loggedInUser);
+
+    const nextSameList = alreadyActive
+      ? sameList.filter((u) => u !== loggedInUser)
+      : [...sameList, loggedInUser];
+    const nextOtherList = otherList.filter((u) => u !== loggedInUser);
+
+    const nextLikedBy = isLike ? nextSameList : nextOtherList;
+    const nextDislikedBy = isLike ? nextOtherList : nextSameList;
+
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === comment.id ? { ...c, likedBy: nextLikedBy, dislikedBy: nextDislikedBy } : c,
+      ),
+    );
+
+    const { error } = await supabase
+      .from("comments")
+      .update({ liked_by: nextLikedBy, disliked_by: nextDislikedBy })
+      .eq("id", comment.id);
+
+    if (error) {
+      console.error("toggleCommentReaction error:", error);
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === comment.id
+            ? { ...c, likedBy: comment.likedBy, dislikedBy: comment.dislikedBy }
+            : c,
+        ),
+      );
+    }
+  };
+
+  // NEW: kebab menu "Save" action — toggles the current user in the
+  // comment's saved_by list.
+  const toggleSaveComment = async (comment) => {
+    const userId = localStorage.getItem("userId");
+    if (!userId) { window.dispatchEvent(new CustomEvent("openLogin")); return; }
+    const isSaved = comment.savedBy.includes(loggedInUser);
+    const nextSavedBy = isSaved
+      ? comment.savedBy.filter((u) => u !== loggedInUser)
+      : [...comment.savedBy, loggedInUser];
+
+    setComments((prev) =>
+      prev.map((c) => (c.id === comment.id ? { ...c, savedBy: nextSavedBy } : c)),
+    );
+    setCommentMenuOpenId(null);
+    if (!isSaved) {
+      setSavedToast(true);
+      setTimeout(() => setSavedToast(false), 1800);
+    }
+
+    const { error } = await supabase
+      .from("comments")
+      .update({ saved_by: nextSavedBy })
+      .eq("id", comment.id);
+    if (error) console.error("toggleSaveComment error:", error);
+  };
+
+  // NEW: kebab menu "Share" action — copies a link back to this reel
+  // with the comment's id tagged on, same URL shape used for the
+  // reel-level Share button.
+  const handleShareComment = (comment) => {
+    const isDbReel = String(reel.id).startsWith("db_");
+    const shareId = reel.short_id || String(reel.id).replace("db_", "");
+    const url = isDbReel
+      ? `https://zixplon.in/api/og?type=reel&id=${shareId}&comment=${comment.id}`
+      : `https://zixplon.in/reels/${reel.id}?comment=${comment.id}`;
+    navigator.clipboard.writeText(url).catch(() => {});
+    setCommentMenuOpenId(null);
+    setShareToast(true);
+    setTimeout(() => setShareToast(false), 2500);
+  };
+
+  // NEW: per-comment translate toggle, backed by the stub dictionary
+  // near the top of this file.
+  const toggleTranslate = (commentId) => {
+    setTranslatedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(commentId)) next.delete(commentId);
+      else next.add(commentId);
+      return next;
+    });
   };
 
   const handleShare = () => {
@@ -688,6 +982,9 @@ const ReelItem = ({ reel, allReels }) => {
         ? "Requested"
         : "Connect";
 
+  const topLevelComments = [...comments].filter((c) => !c.parentId).reverse();
+  const repliesFor = (parentId) => comments.filter((c) => c.parentId === parentId);
+
   return (
     <div className="reel_item" id={`reel-${reel.id}`} ref={containerRef}>
       <div className="reel_video_wrapper">
@@ -829,19 +1126,63 @@ const ReelItem = ({ reel, allReels }) => {
                 placeholder="Add a comment..."
                 className="reel_comment_input"
               />
-              <button className="reel_comment_submit" onClick={handleCommentSubmit}>Post</button>
+              <button className="reel_comment_submit" onClick={() => handleCommentSubmit()}>Post</button>
             </div>
             <div className="reel_comment_list">
-              {comments.length === 0 ? (
+              {topLevelComments.length === 0 ? (
                 <div className="reel_comment_item" style={{ color: "#aaa", fontSize: "13px" }}>No comments yet. Be the first!</div>
               ) : (
-                comments.map((c) => (
-                  <div key={c.id} className="reel_comment_item">
-                    <div className="reel_comment_item_header">
-                      <span className="reel_comment_user">{c.user}</span>
-                      {c.date && <span className="reel_comment_time">{timeAgo(c.date)}</span>}
-                    </div>
-                    <span className="reel_comment_text">{c.text}</span>
+                topLevelComments.map((c) => (
+                  <div key={c.id} className="reel_comment_thread">
+                    <ReelCommentRow
+                      comment={c}
+                      currentUser={loggedInUser}
+                      isReply={false}
+                      isTranslated={translatedIds.has(c.id)}
+                      isMenuOpen={commentMenuOpenId === c.id}
+                      onToggleMenu={() => setCommentMenuOpenId((v) => (v === c.id ? null : c.id))}
+                      onLike={() => toggleCommentReaction(c, "like")}
+                      onDislike={() => toggleCommentReaction(c, "dislike")}
+                      onSave={() => toggleSaveComment(c)}
+                      onShare={() => handleShareComment(c)}
+                      onReport={() => { setReportCommentTarget(c); setCommentMenuOpenId(null); }}
+                      onToggleTranslate={() => toggleTranslate(c.id)}
+                      onReplyClick={() => setReplyingToId((v) => (v === c.id ? null : c.id))}
+                    />
+
+                    {replyingToId === c.id && (
+                      <div className="reel_reply_input_row">
+                        <input
+                          type="text"
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleCommentSubmit(c.id)}
+                          placeholder={`Reply to ${c.user}...`}
+                          className="reel_comment_input"
+                          autoFocus
+                        />
+                        <button className="reel_comment_submit" onClick={() => handleCommentSubmit(c.id)}>Post</button>
+                      </div>
+                    )}
+
+                    {repliesFor(c.id).map((r) => (
+                      <ReelCommentRow
+                        key={r.id}
+                        comment={r}
+                        currentUser={loggedInUser}
+                        isReply
+                        isTranslated={translatedIds.has(r.id)}
+                        isMenuOpen={commentMenuOpenId === r.id}
+                        onToggleMenu={() => setCommentMenuOpenId((v) => (v === r.id ? null : r.id))}
+                        onLike={() => toggleCommentReaction(r, "like")}
+                        onDislike={() => toggleCommentReaction(r, "dislike")}
+                        onSave={() => toggleSaveComment(r)}
+                        onShare={() => handleShareComment(r)}
+                        onReport={() => { setReportCommentTarget(r); setCommentMenuOpenId(null); }}
+                        onToggleTranslate={() => toggleTranslate(r.id)}
+                        onReplyClick={() => setReplyingToId(c.id)}
+                      />
+                    ))}
                   </div>
                 ))
               )}
@@ -850,6 +1191,7 @@ const ReelItem = ({ reel, allReels }) => {
         )}
 
         {shareToast && <div className="reel_share_toast">Link copied to clipboard ✓</div>}
+        {savedToast && <div className="reel_share_toast">🔖 Comment saved</div>}
 
         {actionToast.show && (
           <div className={`reel_share_toast reel_action_toast reel_action_toast--${actionToast.type}`}>
@@ -864,6 +1206,19 @@ const ReelItem = ({ reel, allReels }) => {
             contentTitle={reel.title}
             contentOwner={reel.username}
             onClose={() => setShowReportModal(false)}
+          />
+        )}
+
+        {/* NEW: reporting an individual comment — reuses the same
+            generic ReportModal used for the reel itself, just pointed
+            at contentType "comment" instead. */}
+        {reportCommentTarget && (
+          <ReportModal
+            contentType="comment"
+            contentId={reportCommentTarget.id}
+            contentTitle={reportCommentTarget.text?.slice(0, 80) || "Comment"}
+            contentOwner={reportCommentTarget.user}
+            onClose={() => setReportCommentTarget(null)}
           />
         )}
 

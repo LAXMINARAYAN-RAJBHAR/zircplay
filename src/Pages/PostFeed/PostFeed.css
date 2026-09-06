@@ -595,9 +595,48 @@
      corners to match the card's radius, so the visual result is
      identical to before — just without clipping the emoji picker. */
   border-radius: 0 0 14px 14px;
+  position: relative;
 }
 
 .pf-comment { display: flex; gap: 8px; align-items: flex-start; }
+
+/* NEW: full comment thread grouping (top-level + optional reply input +
+   its indented replies), and the indented reply row itself. */
+.pf-comment-thread { display: flex; flex-direction: column; gap: 8px; }
+
+.pf-comment--reply {
+  margin-left: 26px;
+  opacity: 0.97;
+}
+.pf-comment--reply .pf-comment-bubble {
+  border-left: 3px solid var(--zx-accent2);
+}
+
+.pf-comment-empty {
+  color: var(--zx-text3);
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 4px 0;
+}
+
+/* NEW: small floating confirmation toast for comment-level Share/Save
+   actions, positioned inside the comments section itself. */
+.pf-comment-toast {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  background: rgba(26, 20, 20, 0.85);
+  color: #ffffff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  z-index: 60;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
 
 .pf-comment-bubble {
   background: var(--zx-surface);
@@ -619,6 +658,15 @@
 
 .pf-comment-bubble-header .pf-comment-author {
   margin-bottom: 0;
+}
+
+/* NEW: groups the timestamp + kebab menu on the right side of the
+   comment header row. */
+.pf-comment-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .pf-comment-time {
@@ -646,12 +694,55 @@
   word-break: break-word; /* FIX */
 }
 
+/* NEW: per-comment kebab (⋯) menu — Share / Report / Save */
+.pf-comment-menu-wrap { position: relative; }
+
+.pf-comment-menu-btn {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--zx-text3);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  user-select: none;
+}
+.pf-comment-menu-btn:hover { color: var(--zx-primary); }
+
+.pf-comment-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--zx-surface);
+  border: 2px solid var(--zx-border);
+  border-radius: 10px;
+  min-width: 130px;
+  overflow: hidden;
+  z-index: 70;
+  box-shadow: 0 8px 24px rgba(124,58,237,0.15);
+}
+
+.pf-comment-dropdown-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+  color: var(--zx-text2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.pf-comment-dropdown-item:hover {
+  background: var(--zx-surface2);
+  color: var(--zx-primary);
+}
+
 /* ── NEW: Like action row under each comment's text ── */
 .pf-comment-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .pf-comment-like-btn {
@@ -703,6 +794,38 @@
   font-size: 11px;
   font-weight: 700;
   color: var(--zx-text3);
+}
+
+/* NEW: Reply + Translate buttons, same visual weight as Like/Dislike. */
+.pf-comment-reply-btn,
+.pf-comment-translate-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--zx-text3);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.pf-comment-reply-btn:hover,
+.pf-comment-translate-btn:hover {
+  color: var(--zx-primary);
+  background: var(--zx-bg);
+}
+.pf-comment-translate-btn { color: var(--zx-accent3); }
+.pf-comment-translate-btn:hover { color: #0891b2; }
+
+/* NEW: inline reply input row, shown under a top-level comment when its
+   Reply button is clicked. Reuses .pf-comment-input for visual
+   consistency with the main comment box. */
+.pf-reply-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: 26px;
 }
 
 .pf-comment-input-row {
@@ -928,6 +1051,9 @@
   .pf-avatar-sm { width: 26px; height: 26px; font-size: 9px; }
   .pf-card-author { font-size: 13px; }
   .pf-card-text { font-size: 13px; }
+
+  .pf-comment--reply { margin-left: 16px; }
+  .pf-reply-input-row { margin-left: 16px; }
 
   /* NEW: strip the side/frame borders from post images and videos on
      mobile — single image (.pf-card-image), the image carousel
