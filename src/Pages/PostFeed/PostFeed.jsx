@@ -53,6 +53,14 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
   useEffect(() => { loadingMoreRef.current = loadingMore; }, [loadingMore]);
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
 
+  // NEW: select list for post_comments, shared across fetchPosts,
+  // handleRealtimeInsert, and ensurePostLoaded below — now also pulls
+  // saved_by (kebab-menu "Save" action) and parent_comment_id (one-level
+  // reply threading), in addition to the existing liked_by/disliked_by.
+  // See comment_features_migration.sql for the columns this depends on.
+  const POST_COMMENTS_SELECT =
+    "id, text, username, created_at, liked_by, disliked_by, saved_by, parent_comment_id";
+
   const enrichPost = useCallback(
     (p) => ({
       ...p,
@@ -132,9 +140,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         .select(`
           *,
           post_reactions ( type, username ),
-          post_comments (
-            id, text, username, created_at, liked_by, disliked_by
-          )
+          post_comments ( ${POST_COMMENTS_SELECT} )
         `)
         .order("created_at", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
@@ -184,7 +190,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         .select(`
           *,
           post_reactions ( type, username ),
-          post_comments ( id, text, username, created_at, liked_by, disliked_by )
+          post_comments ( ${POST_COMMENTS_SELECT} )
         `)
         .eq("id", newId)
         .maybeSingle();
@@ -264,7 +270,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         .select(`
           *,
           post_reactions ( type, username ),
-          post_comments ( id, text, username, created_at, liked_by, disliked_by )
+          post_comments ( ${POST_COMMENTS_SELECT} )
         `)
         .eq("id", sharedPostId)
         .maybeSingle();
@@ -401,7 +407,13 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     }
   };
 
-  const handleComment = async (postId, text) => {
+  // CHANGED: now accepts an optional parentId — omitted (or null) for a
+  // fresh top-level comment, or a top-level comment's id when posting a
+  // one-level-deep reply (see PostCard.jsx's Reply button). Notifies the
+  // post owner as before, and ALSO notifies the parent comment's author
+  // when replying (unless that's the same person, to avoid a double
+  // notification, or the person replying to their own comment).
+  const handleComment = async (postId, text, parentId = null) => {
     if (!currentUser || currentUser === "anonymous") {
       window.dispatchEvent(new CustomEvent("openLogin"));
       return;
@@ -412,10 +424,18 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     // and handleShare already do this same lookup; handleComment
     // previously didn't need `post` for anything else).
     const post = posts.find((p) => p.id === postId);
+    const parentComment = parentId
+      ? post?.comments.find((c) => c.id === parentId)
+      : null;
 
     const { data, error: err } = await supabase
       .from("post_comments")
-      .insert({ post_id: postId, username: currentUser, text: text.trim() })
+      .insert({
+        post_id: postId,
+        username: currentUser,
+        text: text.trim(),
+        parent_comment_id: parentId,
+      })
       .select()
       .single();
     if (err) return;
@@ -427,9 +447,31 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
       )
     );
 
+    // NEW: notify the comment's parent author when this is a reply,
+    // unless they're replying to their own comment.
+    if (
+      parentComment?.username &&
+      parentComment.username !== currentUser
+    ) {
+      notifyUser({
+        recipientUsername: parentComment.username,
+        senderUsername: currentUser,
+        type: "comment",
+        message: `${currentUser} replied to your comment: "${text.trim().slice(0, 60)}"`,
+        contentId: postId,
+        contentType: "post",
+      });
+    }
+
     // NEW: notify the post owner about the comment, unless they're
-    // commenting on their own post.
-    if (post?.username && post.username !== currentUser) {
+    // commenting on their own post, or they're the same person already
+    // notified above as the parent comment's author (avoids a double
+    // notification for one reply).
+    if (
+      post?.username &&
+      post.username !== currentUser &&
+      post.username !== parentComment?.username
+    ) {
       notifyUser({
         recipientUsername: post.username,
         senderUsername: currentUser,
@@ -441,10 +483,15 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     }
 
     // NEW: notify anyone @mentioned in the comment — skipping the
-    // commenter themselves and the post owner (already notified above,
-    // so they'd otherwise get two notifications for one comment).
+    // commenter themselves and anyone already notified above (post
+    // owner / parent comment author), so a mention doesn't triple up.
     extractMentions(text).forEach((mentioned) => {
-      if (mentioned === currentUser || mentioned === post?.username) return;
+      if (
+        mentioned === currentUser ||
+        mentioned === post?.username ||
+        mentioned === parentComment?.username
+      )
+        return;
       notifyUser({
         recipientUsername: mentioned,
         senderUsername: currentUser,
@@ -546,6 +593,45 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         contentType: "post",
       });
     }
+  };
+
+  // NEW: kebab menu "Save" action for a single comment — toggles the
+  // current user in that comment's saved_by list. Same optimistic
+  // update + rollback-via-refetch shape as handleCommentReaction above.
+  const handleSaveComment = async (postId, commentId) => {
+    if (!currentUser || currentUser === "anonymous") {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
+    const post = posts.find((p) => p.id === postId);
+    const comment = post?.comments.find((c) => c.id === commentId);
+    if (!comment) return;
+
+    const savedBy = comment.saved_by || [];
+    const isSaved = savedBy.includes(currentUser);
+    const nextSavedBy = isSaved
+      ? savedBy.filter((u) => u !== currentUser)
+      : [...savedBy, currentUser];
+
+    setPosts((all) =>
+      all.map((p) =>
+        p.id !== postId
+          ? p
+          : {
+              ...p,
+              comments: p.comments.map((c) =>
+                c.id === commentId ? { ...c, saved_by: nextSavedBy } : c,
+              ),
+            },
+      ),
+    );
+
+    const { error: err } = await supabase
+      .from("post_comments")
+      .update({ saved_by: nextSavedBy })
+      .eq("id", commentId);
+
+    if (err) fetchPosts(true);
   };
 
   const handleToggleComments = (postId) => {
@@ -752,6 +838,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
                 onDislikeComment={(postId, commentId) =>
                   handleCommentReaction(postId, commentId, "dislike")
                 }
+                onSaveComment={handleSaveComment}
                 viewCount={viewCounts[String(post.id)] ?? 0}
                 onView={incrementView}
               />
