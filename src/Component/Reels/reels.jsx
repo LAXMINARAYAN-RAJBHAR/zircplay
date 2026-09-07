@@ -125,28 +125,11 @@ const isNewReel = (reel) => {
   return false;
 };
 
-// ── Comment translate stub ─────────────────────────────────────────────
-// NOT a real translation service — this is a placeholder swap of a
-// handful of common English words to Hindi, purely so the "Translate to
-// Hindi" affordance exists and does *something* visible. Swap this out
-// for a real call (e.g. Google Cloud Translation API) when ready; the
-// toggleTranslate() call site below doesn't need to change, just this
-// function's implementation.
-const HINDI_STUB_DICT = {
-  hello: "नमस्ते", hi: "नमस्ते", love: "प्यार", you: "तुम", beautiful: "खूबसूरत",
-  nice: "अच्छा", good: "अच्छा", great: "शानदार", awesome: "बहुत बढ़िया",
-  thanks: "धन्यवाद", thank: "धन्यवाद", amazing: "अद्भुत", wow: "वाह",
-  song: "गाना", dance: "नृत्य", video: "वीडियो", congratulations: "बधाई हो",
-  congrats: "बधाई हो", happy: "खुश", cute: "प्यारा", pretty: "सुंदर",
-};
-const stubTranslateToHindi = (text) => {
-  if (!text) return text;
-  const translated = text.replace(/[A-Za-z']+/g, (word) => {
-    const hit = HINDI_STUB_DICT[word.toLowerCase()];
-    return hit || word;
-  });
-  return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
-};
+// NEW: real translation via a self-hosted LibreTranslate server — see
+// src/utils/translate.js for the endpoint/API-key config and the
+// caching + fallback-on-error behavior. Replaces the earlier stub
+// dictionary that only swapped a handful of hardcoded words.
+import { translateToHindi } from "../../utils/translate";
 
 // ── Single comment row — used for both top-level comments and their
 //    (one level deep) replies. Renders the kebab menu (Share/Report/
@@ -157,6 +140,8 @@ const ReelCommentRow = ({
   currentUser,
   isReply,
   isTranslated,
+  isTranslating,
+  translatedText,
   isMenuOpen,
   onToggleMenu,
   onLike,
@@ -170,7 +155,8 @@ const ReelCommentRow = ({
   const iLiked = comment.likedBy.includes(currentUser);
   const iDisliked = comment.dislikedBy.includes(currentUser);
   const iSaved = comment.savedBy.includes(currentUser);
-  const displayText = isTranslated ? stubTranslateToHindi(comment.text) : comment.text;
+  const displayText =
+    isTranslated && translatedText ? translatedText : comment.text;
 
   return (
     <div className={`reel_comment_item${isReply ? " reel_comment_item--reply" : ""}`}>
@@ -215,8 +201,16 @@ const ReelCommentRow = ({
             Reply
           </button>
         )}
-        <button className="reel_comment_translate_btn" onClick={onToggleTranslate}>
-          {isTranslated ? "Show original" : "Translate to Hindi"}
+        <button
+          className="reel_comment_translate_btn"
+          onClick={onToggleTranslate}
+          disabled={isTranslating}
+        >
+          {isTranslating
+            ? "Translating…"
+            : isTranslated
+              ? "Show original"
+              : "Translate to Hindi"}
         </button>
       </div>
     </div>
@@ -338,6 +332,8 @@ const ReelItem = ({ reel, allReels }) => {
   const [replyingToId, setReplyingToId]           = useState(null);
   const [replyText, setReplyText]                 = useState("");
   const [translatedIds, setTranslatedIds]         = useState(() => new Set());
+  const [translatedTextMap, setTranslatedTextMap] = useState({});
+  const [translatingIds, setTranslatingIds]       = useState(() => new Set());
   const [savedToast, setSavedToast]               = useState(false);
   const [reportCommentTarget, setReportCommentTarget] = useState(null);
 
@@ -711,15 +707,39 @@ const ReelItem = ({ reel, allReels }) => {
     setTimeout(() => setShareToast(false), 2500);
   };
 
-  // NEW: per-comment translate toggle, backed by the stub dictionary
-  // near the top of this file.
-  const toggleTranslate = (commentId) => {
-    setTranslatedIds((prev) => {
+  // NEW: per-comment translate toggle — now calls the real
+  // LibreTranslate endpoint (src/utils/translate.js) instead of the old
+  // stub dictionary. Caches the translated text per comment id so
+  // re-toggling "Show original" / "Translate to Hindi" on the same
+  // comment doesn't re-hit the network, and tracks in-flight requests
+  // in translatingIds so the button can show "Translating…" and stay
+  // disabled until the response comes back.
+  const toggleTranslate = async (comment) => {
+    const commentId = comment.id;
+
+    if (translatedIds.has(commentId)) {
+      setTranslatedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(commentId);
+        return next;
+      });
+      return;
+    }
+
+    if (translatedTextMap[commentId]) {
+      setTranslatedIds((prev) => new Set(prev).add(commentId));
+      return;
+    }
+
+    setTranslatingIds((prev) => new Set(prev).add(commentId));
+    const translated = await translateToHindi(comment.text);
+    setTranslatedTextMap((prev) => ({ ...prev, [commentId]: translated }));
+    setTranslatingIds((prev) => {
       const next = new Set(prev);
-      if (next.has(commentId)) next.delete(commentId);
-      else next.add(commentId);
+      next.delete(commentId);
       return next;
     });
+    setTranslatedIds((prev) => new Set(prev).add(commentId));
   };
 
   const handleShare = () => {
@@ -1177,6 +1197,8 @@ const ReelItem = ({ reel, allReels }) => {
                       currentUser={loggedInUser}
                       isReply={false}
                       isTranslated={translatedIds.has(c.id)}
+                      isTranslating={translatingIds.has(c.id)}
+                      translatedText={translatedTextMap[c.id]}
                       isMenuOpen={commentMenuOpenId === c.id}
                       onToggleMenu={() => setCommentMenuOpenId((v) => (v === c.id ? null : c.id))}
                       onLike={() => toggleCommentReaction(c, "like")}
@@ -1184,7 +1206,7 @@ const ReelItem = ({ reel, allReels }) => {
                       onSave={() => toggleSaveComment(c)}
                       onShare={() => handleShareComment(c)}
                       onReport={() => { setReportCommentTarget(c); setCommentMenuOpenId(null); }}
-                      onToggleTranslate={() => toggleTranslate(c.id)}
+                      onToggleTranslate={() => toggleTranslate(c)}
                       onReplyClick={() => setReplyingToId((v) => (v === c.id ? null : c.id))}
                     />
 
@@ -1210,6 +1232,8 @@ const ReelItem = ({ reel, allReels }) => {
                         currentUser={loggedInUser}
                         isReply
                         isTranslated={translatedIds.has(r.id)}
+                        isTranslating={translatingIds.has(r.id)}
+                        translatedText={translatedTextMap[r.id]}
                         isMenuOpen={commentMenuOpenId === r.id}
                         onToggleMenu={() => setCommentMenuOpenId((v) => (v === r.id ? null : r.id))}
                         onLike={() => toggleCommentReaction(r, "like")}
@@ -1217,7 +1241,7 @@ const ReelItem = ({ reel, allReels }) => {
                         onSave={() => toggleSaveComment(r)}
                         onShare={() => handleShareComment(r)}
                         onReport={() => { setReportCommentTarget(r); setCommentMenuOpenId(null); }}
-                        onToggleTranslate={() => toggleTranslate(r.id)}
+                        onToggleTranslate={() => toggleTranslate(r)}
                         onReplyClick={() => setReplyingToId(c.id)}
                       />
                     ))}
