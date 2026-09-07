@@ -3,7 +3,7 @@
 .pv-overlay {
   position: fixed;
   inset: 0;
-  background: #000;
+  background: rgba(0, 0, 0, 0.92);
   z-index: 999999;
   overflow: hidden;
 }
@@ -23,79 +23,39 @@
   z-index: 10;
 }
 
-/* ── Left/right chevron nav buttons — fixed, vertically centered over
-   the whole viewport. Only rendered when there's an adjacent photo to
-   go to. ── */
-.pv-nav-btn--fixed {
-  position: fixed;
-  top: 42vh;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  font-size: 24px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 10;
-  opacity: 0.65;
-  transition: opacity 0.15s, background 0.15s;
-}
-.pv-nav-btn--fixed:hover {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.22);
-}
-.pv-nav-btn--prev.pv-nav-btn--fixed { left: 16px; }
-.pv-nav-btn--next.pv-nav-btn--fixed { right: 16px; }
-
-/* ── Carousel viewport + track ──
-   .pv-viewport clips the track to exactly one screen's width at a
-   time; .pv-track is the flex row of full-width slide-wraps whose
-   translateX (set inline, driven by currentIndex + live drag offset)
-   determines which photo is showing. Each slide scrolls vertically on
-   its own if its panel/comment list makes it taller than the screen —
-   this is independent of, and doesn't interfere with, the horizontal
-   swipe-between-photos gesture (which is scoped to the image only). ── */
-.pv-viewport {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-
-.pv-track {
-  display: flex;
-  height: 100%;
-  width: 100%;
-}
-
-.pv-slide-wrap {
-  flex: 0 0 100%;
-  width: 100%;
+/* ── Vertical stack — every photo in the post, one below another.
+   Scrolls the whole overlay; each PhotoBlock is a natural-height row
+   rather than a fixed-height slide, so tall/short photos and open
+   comment panels don't fight for space like a fixed viewport would. ── */
+.pv-scroll-stack {
   height: 100%;
   overflow-y: auto;
+  scroll-behavior: auto;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 70px 0 40px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+.pv-scroll-stack::-webkit-scrollbar { width: 6px; }
+.pv-scroll-stack::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
 }
 
-.pv-slide {
+.pv-block {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(100vw, 480px);
-  padding: 60px 0 24px;
-  min-height: 100%;
-  box-sizing: border-box;
+  width: min(92vw, 480px);
+  scroll-margin-top: 70px; /* keeps scrollIntoView from tucking under pv-close */
 }
 
 .pv-block-counter {
   align-self: flex-start;
-  margin-left: 4px;
   color: #fff;
   font-family: "Nunito", sans-serif;
   font-size: 12px;
@@ -106,18 +66,58 @@
   margin-bottom: 8px;
 }
 
+/* ── NEW: wraps the image + left/right nav buttons, so the buttons can
+   be absolutely positioned relative to just the image, not the whole
+   block (which also includes the like/comment/share panel below). ── */
+.pv-image-wrap {
+  position: relative;
+  width: 100%;
+}
+
 .pv-block-image {
   width: 100%;
-  max-height: 65vh;
+  max-height: 70vh;
   object-fit: contain;
   border-radius: 8px 8px 0 0;
   display: block;
   background: #000;
   user-select: none;
   -webkit-user-drag: none;
-  touch-action: pan-y;
-  cursor: grab;
 }
+
+/* ── NEW: left/right chevron buttons for jumping directly to the next/
+   previous photo — the click-based counterpart to swipe/drag/arrow-key
+   navigation. Only rendered when there's more than one photo, and only
+   on the end where there IS an adjacent photo (no "prev" on the first
+   photo, no "next" on the last). Hidden by default on touch devices via
+   opacity, but always present/clickable — hover reveals them on
+   desktop; always visible-ish on mobile since there's no hover state. ── */
+.pv-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s;
+}
+.pv-nav-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.7);
+}
+.pv-nav-btn--prev { left: 10px; }
+.pv-nav-btn--next { right: 10px; }
 
 .pv-panel {
   width: 100%;
@@ -231,12 +231,12 @@
 }
 
 @media (max-width: 480px) {
-  .pv-slide { width: 100vw; padding: 56px 0 20px; }
-  .pv-block-image { max-height: 58vh; border-radius: 0; }
+  .pv-block { width: 100vw; }
+  .pv-block-image { max-height: 60vh; border-radius: 0; }
   .pv-panel { border-radius: 0; }
-  .pv-nav-btn--fixed {
-    width: 36px;
-    height: 36px;
-    font-size: 20px;
-  }
+
+  /* Slightly more visible by default on touch, since there's no hover
+     to reveal them — still not fully opaque so they don't distract
+     from the photo itself. */
+  .pv-nav-btn { opacity: 0.7; }
 }
