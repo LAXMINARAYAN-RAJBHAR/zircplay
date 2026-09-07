@@ -20,25 +20,21 @@ const timeAgo = (dateStr) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
-// Minimum horizontal drag/swipe distance (px) before it counts as a
-// deliberate "go to next/previous photo" gesture rather than an
-// incidental wiggle or the start of a vertical scroll.
-const SWIPE_THRESHOLD = 50;
+// Minimum horizontal drag distance (px), as a fraction of the
+// viewport's own width, before a released drag commits to the
+// next/previous photo instead of snapping back to the current one.
+const SWIPE_COMMIT_RATIO = 0.18;
 
 /*
- * PhotoBlock — one photo + its own like/comment/share, rendered as one
- * "row" in PhotoViewer's vertical stack. All state for this photo lives
- * here so each block is independent — commenting on photo 3 doesn't
+ * PhotoSlide — one photo + its own like/comment/share panel directly
+ * below it, rendered as one full-width "slide" in the horizontal
+ * carousel track — matches Facebook's own full-screen photo viewer
+ * (X/⋮ at top, photo, caption + reaction row underneath, swipe to move
+ * between photos). All reaction/comment state for this photo lives
+ * here so each slide is independent — commenting on photo 3 doesn't
  * re-render or reset photo 1's picker/input state.
- *
- * NEW: the image itself now also supports horizontal swipe (touch),
- * click-and-drag (mouse), and left/right chevron buttons to jump
- * directly to the next/previous photo — on top of (not instead of) the
- * existing vertical scroll between blocks. onNavigate(direction) is
- * called with -1 (previous) or +1 (next); the parent (PhotoViewer)
- * owns actually scrolling to that block, since it holds all the refs.
  */
-const PhotoBlock = ({
+const PhotoSlide = ({
   src,
   index,
   total,
@@ -49,8 +45,6 @@ const PhotoBlock = ({
   initialReactions,
   initialComments,
   loading,
-  blockRef,
-  onNavigate,
 }) => {
   const [reactionCounts, setReactionCounts] = useState(initialReactions.counts);
   const [myReaction, setMyReaction] = useState(initialReactions.mine);
@@ -61,18 +55,6 @@ const PhotoBlock = ({
   const [copied, setCopied] = useState(false);
   const pickerRef = useRef(null);
 
-  // ── Horizontal swipe / drag tracking ──
-  // dragState holds the in-progress gesture's start point and axis lock
-  // decision. axisLockRef prevents a gesture from being reinterpreted
-  // mid-drag — once we've decided "this is horizontal" or "this is
-  // vertical" based on the first few pixels of movement, we stick with
-  // that decision for the rest of the gesture.
-  const dragStartRef = useRef(null); // { x, y } | null
-  const axisLockRef = useRef(null); // "horizontal" | "vertical" | null
-  const isMouseDraggingRef = useRef(false);
-
-  // Keep in sync if the parent's initial fetch resolves after mount
-  // (e.g. this block was rendered before the batched query returned).
   useEffect(() => {
     setReactionCounts(initialReactions.counts);
     setMyReaction(initialReactions.mine);
@@ -172,137 +154,20 @@ const PhotoBlock = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ── Touch swipe handlers ──
-  // Only the image itself is the swipe surface (see JSX below) — the
-  // panel underneath (like/comment/share, comment list) keeps its
-  // normal touch behavior untouched.
-  const handleTouchStart = (e) => {
-    const t = e.touches[0];
-    dragStartRef.current = { x: t.clientX, y: t.clientY };
-    axisLockRef.current = null;
-  };
-
-  const handleTouchMove = (e) => {
-    if (!dragStartRef.current) return;
-    const t = e.touches[0];
-    const dx = t.clientX - dragStartRef.current.x;
-    const dy = t.clientY - dragStartRef.current.y;
-
-    if (!axisLockRef.current) {
-      // Decide once, on the first meaningfully-sized movement, whether
-      // this gesture is horizontal (photo nav) or vertical (let the
-      // page's normal scroll handle it — don't preventDefault in that
-      // case, or scrolling between blocks would break).
-      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-        axisLockRef.current = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
-      }
-    }
-
-    if (axisLockRef.current === "horizontal") {
-      // Prevent the browser from also trying to scroll/pan while we're
-      // handling a horizontal swipe ourselves.
-      e.preventDefault();
-    }
-  };
-
-  const handleTouchEnd = (e) => {
-    if (!dragStartRef.current || axisLockRef.current !== "horizontal") {
-      dragStartRef.current = null;
-      axisLockRef.current = null;
-      return;
-    }
-    const t = e.changedTouches[0];
-    const dx = t.clientX - dragStartRef.current.x;
-    dragStartRef.current = null;
-    axisLockRef.current = null;
-
-    if (Math.abs(dx) < SWIPE_THRESHOLD) return;
-    // Swiped left (dx negative) → advance to next photo.
-    // Swiped right (dx positive) → go back to previous photo.
-    onNavigate(dx < 0 ? 1 : -1);
-  };
-
-  // ── Mouse drag handlers (desktop) — mirrors the touch gesture above ──
-  const handleMouseDown = (e) => {
-    isMouseDraggingRef.current = true;
-    dragStartRef.current = { x: e.clientX, y: e.clientY };
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isMouseDraggingRef.current || !dragStartRef.current) return;
-    // No preventDefault needed here — native image drag-ghosting is
-    // already suppressed via draggable={false} on the <img> below.
-  };
-
-  const handleMouseUp = (e) => {
-    if (!isMouseDraggingRef.current || !dragStartRef.current) {
-      isMouseDraggingRef.current = false;
-      dragStartRef.current = null;
-      return;
-    }
-    const dx = e.clientX - dragStartRef.current.x;
-    isMouseDraggingRef.current = false;
-    dragStartRef.current = null;
-
-    if (Math.abs(dx) < SWIPE_THRESHOLD) return;
-    onNavigate(dx < 0 ? 1 : -1);
-  };
-
-  const handleMouseLeave = () => {
-    // Cancel an in-progress drag if the pointer leaves the image
-    // entirely (e.g. user drags off the edge) — avoids a stale
-    // dragStartRef causing a spurious jump on the next mouseup
-    // elsewhere on the page.
-    isMouseDraggingRef.current = false;
-    dragStartRef.current = null;
-  };
-
   return (
-    <div className="pv-block" ref={blockRef}>
+    <div className="pv-slide">
       {total > 1 && (
         <span className="pv-block-counter">
           {index + 1} / {total}
         </span>
       )}
 
-      <div className="pv-image-wrap">
-        {total > 1 && index > 0 && (
-          <button
-            type="button"
-            className="pv-nav-btn pv-nav-btn--prev"
-            onClick={() => onNavigate(-1)}
-            aria-label="Previous photo"
-          >
-            ‹
-          </button>
-        )}
-
-        <img
-          src={src}
-          alt={`Photo ${index + 1}`}
-          className="pv-block-image"
-          draggable={false}
-          onTouchStart={total > 1 ? handleTouchStart : undefined}
-          onTouchMove={total > 1 ? handleTouchMove : undefined}
-          onTouchEnd={total > 1 ? handleTouchEnd : undefined}
-          onMouseDown={total > 1 ? handleMouseDown : undefined}
-          onMouseMove={total > 1 ? handleMouseMove : undefined}
-          onMouseUp={total > 1 ? handleMouseUp : undefined}
-          onMouseLeave={total > 1 ? handleMouseLeave : undefined}
-          style={total > 1 ? { cursor: "grab", touchAction: "pan-y" } : undefined}
-        />
-
-        {total > 1 && index < total - 1 && (
-          <button
-            type="button"
-            className="pv-nav-btn pv-nav-btn--next"
-            onClick={() => onNavigate(1)}
-            aria-label="Next photo"
-          >
-            ›
-          </button>
-        )}
-      </div>
+      <img
+        src={src}
+        alt={`Photo ${index + 1}`}
+        className="pv-block-image"
+        draggable={false}
+      />
 
       <div className="pv-panel">
         <div className="pv-summary">
@@ -401,30 +266,39 @@ const PhotoBlock = ({
 };
 
 /*
- * PhotoViewer — Facebook-style vertical photo feed for multi-image (and
- * single-image) posts. Clicking any tile in ImageGrid opens this; every
- * photo in the post is shown stacked one below another (scroll to move
- * between photos), and the view auto-scrolls to the tapped photo's
- * position on open.
+ * PhotoViewer — Facebook/Instagram-style full-screen, one-photo-at-a-
+ * time viewer for multi-image (and single-image) posts. Clicking any
+ * tile in ImageGrid opens this, landing directly on the tapped photo.
+ * Matches Facebook's own full-screen photo viewer layout: ✕ close
+ * button top-left, the photo, and directly below it a caption/reaction
+ * row with Like/Comment/Share — swipe (or drag/arrows/buttons) moves to
+ * the next or previous photo, each with its own independent panel.
  *
- * NEW: each photo's image also supports jumping directly to the next/
- * previous photo via touch swipe, mouse drag, on-screen ‹ › buttons, or
- * the ArrowLeft/ArrowRight keys — all of these funnel through
- * scrollToIndex() below, which just smooth-scrolls the vertical stack
- * to that photo's block. This is additive: the vertical scroll-through-
- * all-photos behavior is unchanged, horizontal navigation is just a
- * faster way to get to a specific adjacent photo without scrolling
- * past its whole panel.
+ * Implementation: all photos sit in a flex row (.pv-track), each
+ * exactly 100% of the viewport wide. The track's transform is driven by
+ * currentIndex (its resting position) plus, while a drag is in
+ * progress, a live pixel offset that follows the finger/mouse — so the
+ * photo visibly tracks the gesture instead of only responding on
+ * release. Releasing past SWIPE_COMMIT_RATIO of the viewport's width
+ * commits to the next/previous photo; anything less snaps back to the
+ * current one. A CSS transition is toggled on/off so mid-drag tracking
+ * is instant (no lag behind the finger) while the settle/commit
+ * animation itself is smoothly eased.
  *
- * Each photo gets its OWN like/comment/share, independent of the
- * post-level reactions shown on the feed card. Per-photo reactions/
- * comments are keyed by a deterministic `${postId}_${index}` string
- * rather than a real foreign key into a dedicated photos table — this
- * works retroactively on every existing post's `image_urls` array with
- * zero changes to the upload flow (PostComposer.jsx). Tradeoff: if a
- * post's photos are ever reordered or individually removed after the
- * fact, the index-based key can point at the wrong photo's history. Not
- * a concern for normal add/delete-the-whole-post usage.
+ * Unlike an image-only lightbox, tapping the photo does NOT close the
+ * viewer here (matching Facebook, where tapping the photo has no
+ * special effect and only the ✕ button / Escape close it) — the panel
+ * below has its own clickable Like/Comment/Share controls, so an
+ * accidental-close-on-tap would fight with those.
+ *
+ * Each photo's reactions/comments are keyed by a deterministic
+ * `${postId}_${index}` string rather than a real foreign key into a
+ * dedicated photos table — this works retroactively on every existing
+ * post's `image_urls` array with zero changes to the upload flow
+ * (PostComposer.jsx). Tradeoff: if a post's photos are ever reordered
+ * or individually removed after the fact, the index-based key can point
+ * at the wrong photo's history. Not a concern for normal
+ * add/delete-the-whole-post usage.
  *
  * All reactions/comments for every photo in the post are fetched in two
  * batched queries (image_key IN [...]) on open, rather than one query
@@ -443,8 +317,21 @@ const PhotoViewer = ({
 }) => {
   const [dataByIndex, setDataByIndex] = useState({});
   const [loading, setLoading] = useState(true);
-  const blockRefs = useRef([]);
-  const scrolledRef = useRef(false);
+  const [currentIndex, setCurrentIndex] = useState(
+    Math.min(Math.max(startIndex, 0), images.length - 1),
+  );
+
+  const viewportRef = useRef(null);
+
+  // ── Drag state ──
+  // dragOffset: live px offset applied on top of currentIndex's resting
+  // position while a gesture is in progress (0 when not dragging).
+  // isDragging drives whether the CSS transition is active — off while
+  // actively tracking the finger, on for the settle animation.
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef(null); // { x, y } | null
+  const axisLockRef = useRef(null); // "horizontal" | "vertical" | null
 
   const loadAllImageData = useCallback(async () => {
     setLoading(true);
@@ -483,55 +370,18 @@ const PhotoViewer = ({
     loadAllImageData();
   }, [loadAllImageData]);
 
-  // Jump straight to the tapped tile's photo once its block has rendered.
-  useEffect(() => {
-    if (scrolledRef.current) return;
-    const el = blockRefs.current[startIndex];
-    if (el) {
-      el.scrollIntoView({ block: "start" });
-      scrolledRef.current = true;
-    }
-  });
+  const goTo = useCallback(
+    (index) => {
+      setCurrentIndex(Math.min(Math.max(index, 0), images.length - 1));
+    },
+    [images.length],
+  );
 
-  // NEW: smooth-scrolls the stack so the given photo index's block is
-  // at the top of the view. Used by swipe/drag/button/keyboard nav —
-  // all of them just compute a target index and call this.
-  const scrollToIndex = useCallback((index) => {
-    const el = blockRefs.current[index];
-    if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
-  }, []);
-
-  // NEW: figures out which photo is currently most in view (used as
-  // the "current" position for relative navigation — swiping left on
-  // whichever photo you're looking at should go to the NEXT photo
-  // relative to that one, not relative to startIndex forever).
-  const getCurrentIndex = useCallback(() => {
-    let closestIndex = 0;
-    let closestDistance = Infinity;
-    blockRefs.current.forEach((el, i) => {
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const distance = Math.abs(rect.top);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestIndex = i;
-      }
-    });
-    return closestIndex;
-  }, []);
-
-  // direction: -1 (previous) or +1 (next), relative to whichever photo
-  // is currently most visible — not relative to the block that
-  // triggered the gesture, so this stays correct even if the person
-  // has scrolled elsewhere with normal vertical scrolling in between.
   const navigate = useCallback(
     (direction) => {
-      const current = getCurrentIndex();
-      const target = current + direction;
-      if (target < 0 || target >= images.length) return; // no-op at the ends
-      scrollToIndex(target);
+      goTo(currentIndex + direction);
     },
-    [getCurrentIndex, scrollToIndex, images.length],
+    [currentIndex, goTo],
   );
 
   useEffect(() => {
@@ -548,30 +398,171 @@ const PhotoViewer = ({
     };
   }, [onClose, navigate]);
 
+  const getViewportWidth = () => viewportRef.current?.clientWidth || window.innerWidth;
+
+  const settleDrag = (dx) => {
+    const width = getViewportWidth();
+    const commitThreshold = width * SWIPE_COMMIT_RATIO;
+
+    setDragOffset(0);
+    setIsDragging(false);
+
+    if (Math.abs(dx) > commitThreshold) {
+      navigate(dx < 0 ? 1 : -1);
+    }
+    // else: dragOffset already reset to 0 above, which snaps back to
+    // the current photo now that isDragging is false.
+  };
+
+  // ── Touch handlers — only attached on the image itself (see
+  // PhotoSlide/CSS), so touches inside the panel (Like/Comment/Share
+  // buttons, the comment input, scrolling a long comment list) behave
+  // completely normally and never get mistaken for a swipe. ──
+  const handleTouchStart = (e) => {
+    const t = e.touches[0];
+    dragStartRef.current = { x: t.clientX, y: t.clientY };
+    axisLockRef.current = null;
+  };
+
+  const handleTouchMove = (e) => {
+    if (!dragStartRef.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - dragStartRef.current.x;
+    const dy = t.clientY - dragStartRef.current.y;
+
+    if (!axisLockRef.current) {
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        axisLockRef.current = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+      }
+    }
+
+    if (axisLockRef.current === "horizontal") {
+      e.preventDefault();
+      setIsDragging(true);
+      const atStart = currentIndex === 0 && dx > 0;
+      const atEnd = currentIndex === images.length - 1 && dx < 0;
+      setDragOffset(atStart || atEnd ? dx / 2.5 : dx);
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    if (axisLockRef.current !== "horizontal") {
+      dragStartRef.current = null;
+      axisLockRef.current = null;
+      return;
+    }
+    const t = e.changedTouches[0];
+    const dx = t.clientX - dragStartRef.current.x;
+    dragStartRef.current = null;
+    axisLockRef.current = null;
+    settleDrag(dx);
+  };
+
+  // ── Mouse drag handlers (desktop) — also only on the image itself ──
+  const handleMouseDown = (e) => {
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    axisLockRef.current = "horizontal"; // mouse drag is always intentional
+    setIsDragging(true);
+  };
+
+  const handleMouseMoveGlobal = useCallback(
+    (e) => {
+      if (!dragStartRef.current) return;
+      const dx = e.clientX - dragStartRef.current.x;
+      const atStart = currentIndex === 0 && dx > 0;
+      const atEnd = currentIndex === images.length - 1 && dx < 0;
+      setDragOffset(atStart || atEnd ? dx / 2.5 : dx);
+    },
+    [currentIndex, images.length],
+  );
+
+  const handleMouseUpGlobal = useCallback(
+    (e) => {
+      if (!dragStartRef.current) return;
+      const dx = e.clientX - dragStartRef.current.x;
+      dragStartRef.current = null;
+      axisLockRef.current = null;
+      settleDrag(dx);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentIndex],
+  );
+
+  // Mouse drag needs page-level listeners since the pointer can move
+  // (and be released) outside the image element mid-drag.
+  useEffect(() => {
+    if (!isDragging) return;
+    window.addEventListener("mousemove", handleMouseMoveGlobal);
+    window.addEventListener("mouseup", handleMouseUpGlobal);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMoveGlobal);
+      window.removeEventListener("mouseup", handleMouseUpGlobal);
+    };
+  }, [isDragging, handleMouseMoveGlobal, handleMouseUpGlobal]);
+
+  const trackStyle = {
+    transform: `translateX(calc(-${currentIndex * 100}% + ${dragOffset}px))`,
+    transition: isDragging ? "none" : "transform 0.3s cubic-bezier(0.22, 1, 0.36, 1)",
+  };
+
   return (
     <div className="pv-overlay">
       <button className="pv-close" onClick={onClose} aria-label="Close">
         ✕
       </button>
 
-      <div className="pv-scroll-stack" onClick={(e) => e.stopPropagation()}>
-        {images.map((src, i) => (
-          <PhotoBlock
-            key={i}
-            src={src}
-            index={i}
-            total={images.length}
-            imageKey={`${postId}_${i}`}
-            postId={postId}
-            postUsername={postUsername}
-            currentUser={currentUser}
-            initialReactions={dataByIndex[i] || { counts: {}, mine: null }}
-            initialComments={dataByIndex[i]?.comments || []}
-            loading={loading}
-            blockRef={(el) => (blockRefs.current[i] = el)}
-            onNavigate={navigate}
-          />
-        ))}
+      {images.length > 1 && currentIndex > 0 && (
+        <button
+          type="button"
+          className="pv-nav-btn pv-nav-btn--prev pv-nav-btn--fixed"
+          onClick={() => navigate(-1)}
+          aria-label="Previous photo"
+        >
+          ‹
+        </button>
+      )}
+      {images.length > 1 && currentIndex < images.length - 1 && (
+        <button
+          type="button"
+          className="pv-nav-btn pv-nav-btn--next pv-nav-btn--fixed"
+          onClick={() => navigate(1)}
+          aria-label="Next photo"
+        >
+          ›
+        </button>
+      )}
+
+      <div className="pv-viewport" ref={viewportRef} onClick={(e) => e.stopPropagation()}>
+        <div className="pv-track" style={trackStyle}>
+          {images.map((src, i) => (
+            <div
+              className="pv-slide-wrap"
+              key={i}
+              // Swipe surface is this wrapper around image+panel — but
+              // since the panel needs normal scroll/click behavior, we
+              // only actually start tracking a gesture when it begins
+              // on the image itself. See PhotoSlide's img element below
+              // for where these get attached via event delegation.
+              onTouchStart={(e) => e.target.tagName === "IMG" && handleTouchStart(e)}
+              onTouchMove={(e) => e.target.tagName === "IMG" && handleTouchMove(e)}
+              onTouchEnd={(e) => e.target.tagName === "IMG" && handleTouchEnd(e)}
+              onMouseDown={(e) => e.target.tagName === "IMG" && handleMouseDown(e)}
+            >
+              <PhotoSlide
+                src={src}
+                index={i}
+                total={images.length}
+                imageKey={`${postId}_${i}`}
+                postId={postId}
+                postUsername={postUsername}
+                currentUser={currentUser}
+                initialReactions={dataByIndex[i] || { counts: {}, mine: null }}
+                initialComments={dataByIndex[i]?.comments || []}
+                loading={loading}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
