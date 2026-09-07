@@ -1004,8 +1004,16 @@ const ReelItem = ({ reel, allReels }) => {
   const repliesFor = (parentId) => comments.filter((c) => c.parentId === parentId);
 
   return (
-    <div className="reel_item" id={`reel-${reel.id}`} ref={containerRef}>
-      <div className="reel_video_wrapper">
+    <div
+      className={`reel_item${showComments ? " reel_item--comments-open" : ""}`}
+      id={`reel-${reel.id}`}
+      ref={containerRef}
+    >
+      <div
+        className={`reel_video_wrapper${
+          showComments ? " reel_video_wrapper--comments-open" : ""
+        }`}
+      >
 
         {isYouTube(reel.src) ? (
           <iframe className="reel_video" src={getEmbedUrl(reel.src)} frameBorder="0" allow="autoplay; fullscreen" allowFullScreen title={reel.title} />
@@ -1135,6 +1143,18 @@ const ReelItem = ({ reel, allReels }) => {
 
         {showComments && (
           <div className="reel_comment_panel" ref={commentPanelRef}>
+            <div className="reel_comment_panel_handle" />
+            <div className="reel_comment_panel_title_row">
+              <span className="reel_comment_panel_title">
+                Comments {comments.length}
+              </span>
+              <span
+                className="reel_comment_panel_close"
+                onClick={() => setShowComments(false)}
+              >
+                ✕
+              </span>
+            </div>
             <div className="reel_comment_input_row">
               <input
                 type="text"

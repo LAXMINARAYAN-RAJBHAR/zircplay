@@ -99,6 +99,29 @@
   object-fit: cover;
   border: none;
   display: block;
+  transition: height 0.32s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* NEW: when the comment sheet is open, shrink the video (or the
+   YouTube iframe, which also carries the .reel_video class) down to
+   the top half of its wrapper — its bottom edge rises to make room for
+   the comment sheet below, so the video visibly shrinks and moves
+   upward instead of the sheet just floating on top of a full-height
+   video underneath it. */
+.reel_video_wrapper--comments-open .reel_video {
+  height: 50% !important;
+  transition: height 0.32s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Fade out the floating Like/Dislike/Comment/Share/More stack while
+   comments are open — the sheet already duplicates most of what it
+   offers (comment count, closing via the ✕ or a tap on the now-visible
+   top-half video), and leaving the stack visible just clutters the
+   shrunk video area. */
+.reel_item--comments-open .reel_actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
 
 .reel_video::-webkit-media-controls-fullscreen-button { display: none !important; }
@@ -426,29 +449,87 @@
    COMMENT PANEL
 ══════════════════════════════════════ */
 
+/* CHANGED: the comment panel is now a proper bottom sheet that covers
+   the bottom half of the reel, full width, sliding up while the video
+   shrinks to make room above it (see
+   .reel_video_wrapper--comments-open further down) — instead of a
+   small floating card overlaying part of the video. */
 .reel_comment_panel {
   position: absolute;
-  bottom: 80px;
   left: 0;
-  right: 68px;
-  background: rgba(255,255,255,0.95);
-  border: 2px solid var(--zx-border);
-  border-radius: 16px;
-  padding: 14px;
-  z-index: 20;
-  max-height: 250px;
-  overflow-y: auto;
-  backdrop-filter: blur(12px);
-  scrollbar-width: none;
-  box-shadow: 0 8px 32px rgba(220,38,38,0.15);
+  right: 0;
+  top: 50%;
+  bottom: 0;
+  background: #ffffff;
+  border: none;
+  border-radius: 20px 20px 0 0;
+  padding: 8px 14px 10px;
+  z-index: 25;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.25);
+  animation: reelCommentSheetUp 0.32s cubic-bezier(0.34, 1.1, 0.64, 1);
 }
 
+@keyframes reelCommentSheetUp {
+  from { transform: translateY(16%); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* Small centered grab-handle pill, same affordance as the standard
+   IG/YouTube bottom-sheet pattern. */
+.reel_comment_panel_handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d8d8e0;
+  margin: 2px auto 8px;
+  flex-shrink: 0;
+}
+
+.reel_comment_panel_title_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.reel_comment_panel_title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--zx-text);
+}
+
+.reel_comment_panel_close {
+  font-size: 16px;
+  color: var(--zx-text3);
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+}
+.reel_comment_panel_close:hover { color: var(--zx-primary); }
+
 .reel_comment_panel::-webkit-scrollbar { display: none; }
+
+/* NEW: the comment list scrolls independently within whatever space is
+   left after the handle/title row and the input row above it. */
+.reel_comment_list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.reel_comment_list::-webkit-scrollbar { display: none; }
 
 .reel_comment_input_row {
   display: flex;
   gap: 8px;
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .reel_comment_input {
