@@ -53,11 +53,25 @@ const formatViews = (n) => {
   return n + " views";
 };
 
-// NEW: real translation via a self-hosted LibreTranslate server — see
-// src/utils/translate.js for the endpoint/API-key config and the
-// caching + fallback-on-error behavior. Replaces the earlier stub
-// dictionary that only swapped a handful of hardcoded words.
-import { translateToHindi } from "../../utils/translate";
+// ── Comment translate stub — same as Reels.jsx / Video.jsx. NOT a real
+// translation service, just a small word-swap dictionary so "Translate
+// to Hindi" does something visible. Swap the body of this function for
+// a real API call later without touching any call sites.
+const HINDI_STUB_DICT = {
+  hello: "नमस्ते", hi: "नमस्ते", love: "प्यार", you: "तुम", beautiful: "खूबसूरत",
+  nice: "अच्छा", good: "अच्छा", great: "शानदार", awesome: "बहुत बढ़िया",
+  thanks: "धन्यवाद", thank: "धन्यवाद", amazing: "अद्भुत", wow: "वाह",
+  song: "गाना", dance: "नृत्य", video: "वीडियो", congratulations: "बधाई हो",
+  congrats: "बधाई हो", happy: "खुश", cute: "प्यारा", pretty: "सुंदर",
+};
+const stubTranslateToHindi = (text) => {
+  if (!text) return text;
+  const translated = text.replace(/[A-Za-z']+/g, (word) => {
+    const hit = HINDI_STUB_DICT[word.toLowerCase()];
+    return hit || word;
+  });
+  return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // useIsMobile — same pattern used on HomePage's video/reel/trending cards,
@@ -226,8 +240,6 @@ const PostCommentRow = ({
   currentUser,
   isReply,
   isTranslated,
-  isTranslating,
-  translatedText,
   isMenuOpen,
   onToggleMenu,
   onLike,
@@ -244,8 +256,9 @@ const PostCommentRow = ({
   const iLikedComment = likedBy.includes(currentUser);
   const iDislikedComment = dislikedBy.includes(currentUser);
   const iSaved = savedBy.includes(currentUser);
-  const displayText =
-    isTranslated && translatedText ? translatedText : comment.text;
+  const displayText = isTranslated
+    ? stubTranslateToHindi(comment.text)
+    : comment.text;
 
   return (
     <div className={`pf-comment${isReply ? " pf-comment--reply" : ""}`}>
@@ -321,16 +334,8 @@ const PostCommentRow = ({
             </button>
           )}
 
-          <button
-            className="pf-comment-translate-btn"
-            onClick={onToggleTranslate}
-            disabled={isTranslating}
-          >
-            {isTranslating
-              ? "Translating…"
-              : isTranslated
-                ? "Show original"
-                : "Translate to Hindi"}
+          <button className="pf-comment-translate-btn" onClick={onToggleTranslate}>
+            {isTranslated ? "Show original" : "Translate to Hindi"}
           </button>
         </div>
       </div>
@@ -385,10 +390,6 @@ const PostCard = ({
   const [replyingToId, setReplyingToId] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [translatedCommentIds, setTranslatedCommentIds] = useState(
-    () => new Set(),
-  );
-  const [translatedTextMap, setTranslatedTextMap] = useState({});
-  const [translatingCommentIds, setTranslatingCommentIds] = useState(
     () => new Set(),
   );
   const [reportCommentTarget, setReportCommentTarget] = useState(null);
@@ -694,39 +695,15 @@ const PostCard = ({
     }
   };
 
-  // NEW: per-comment translate toggle — now calls the real
-  // LibreTranslate endpoint (src/utils/translate.js) instead of the old
-  // stub dictionary. Caches the translated text per comment id so
-  // re-toggling "Show original" / "Translate to Hindi" on the same
-  // comment doesn't re-hit the network, and tracks in-flight requests
-  // in translatingCommentIds so the button can show "Translating…" and
-  // stay disabled until the response comes back.
-  const toggleTranslate = async (comment) => {
-    const commentId = comment.id;
-
-    if (translatedCommentIds.has(commentId)) {
-      setTranslatedCommentIds((prev) => {
-        const next = new Set(prev);
-        next.delete(commentId);
-        return next;
-      });
-      return;
-    }
-
-    if (translatedTextMap[commentId]) {
-      setTranslatedCommentIds((prev) => new Set(prev).add(commentId));
-      return;
-    }
-
-    setTranslatingCommentIds((prev) => new Set(prev).add(commentId));
-    const translated = await translateToHindi(comment.text);
-    setTranslatedTextMap((prev) => ({ ...prev, [commentId]: translated }));
-    setTranslatingCommentIds((prev) => {
+  // NEW: per-comment translate toggle, backed by the stub dictionary
+  // near the top of this file.
+  const toggleTranslate = (commentId) => {
+    setTranslatedCommentIds((prev) => {
       const next = new Set(prev);
-      next.delete(commentId);
+      if (next.has(commentId)) next.delete(commentId);
+      else next.add(commentId);
       return next;
     });
-    setTranslatedCommentIds((prev) => new Set(prev).add(commentId));
   };
 
   const startEdit = () => {
@@ -1287,8 +1264,6 @@ const PostCard = ({
                     currentUser={currentUser}
                     isReply={false}
                     isTranslated={translatedCommentIds.has(c.id)}
-                    isTranslating={translatingCommentIds.has(c.id)}
-                    translatedText={translatedTextMap[c.id]}
                     isMenuOpen={commentMenuOpenId === c.id}
                     onToggleMenu={() =>
                       setCommentMenuOpenId((v) => (v === c.id ? null : c.id))
@@ -1300,7 +1275,7 @@ const PostCard = ({
                     onSave={() => handleSaveCommentClick(c)}
                     onShare={() => handleShareComment(c)}
                     onReport={() => handleReportCommentClick(c)}
-                    onToggleTranslate={() => toggleTranslate(c)}
+                    onToggleTranslate={() => toggleTranslate(c.id)}
                     onReplyClick={() =>
                       setReplyingToId((v) => (v === c.id ? null : c.id))
                     }
@@ -1334,8 +1309,6 @@ const PostCard = ({
                       currentUser={currentUser}
                       isReply
                       isTranslated={translatedCommentIds.has(r.id)}
-                      isTranslating={translatingCommentIds.has(r.id)}
-                      translatedText={translatedTextMap[r.id]}
                       isMenuOpen={commentMenuOpenId === r.id}
                       onToggleMenu={() =>
                         setCommentMenuOpenId((v) => (v === r.id ? null : r.id))
@@ -1347,7 +1320,7 @@ const PostCard = ({
                       onSave={() => handleSaveCommentClick(r)}
                       onShare={() => handleShareComment(r)}
                       onReport={() => handleReportCommentClick(r)}
-                      onToggleTranslate={() => toggleTranslate(r)}
+                      onToggleTranslate={() => toggleTranslate(r.id)}
                       onReplyClick={() => setReplyingToId(c.id)}
                     />
                   ))}
