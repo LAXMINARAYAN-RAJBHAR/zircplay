@@ -583,31 +583,42 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   CHAT INPUT ROW — FIX: send button clipping + emoji picker clipping
+   CHAT INPUT ROW — FIX: send button clipping + emoji/GIF/sticker
+   picker invisible
    ══════════════════════════════════════════════════════════════════════
-   Root cause #1 (send button clipping): flex items default to
-   `min-width: auto`, which means the browser refuses to shrink
-   .mp-chat-input below its intrinsic content width even though it's
-   `flex: 1`. When the icons + input + gaps don't fit the available
-   width, the row overflows and .mp-panel's `overflow: hidden` silently
-   clips whatever sticks out — in practice, the send button on the far
-   right. `min-width: 0` overrides that default so the input is free to
-   shrink and the row lays out inside its container on any screen width.
+   Root cause #1 (send button clipping — FIXED, still in effect below):
+   flex items default to `min-width: auto`, which means the browser
+   refuses to shrink .mp-chat-input below its intrinsic content width
+   even though it's `flex: 1`. When the icons + input + gaps don't fit
+   the available width, the row overflows and .mp-panel's
+   `overflow: hidden` silently clips whatever sticks out — in practice,
+   the send button on the far right. `min-width: 0` on .mp-chat-input
+   below (plus flex-shrink:0/min-width on the buttons) fixes this
+   without needing any `overflow` rule on the row itself.
 
-   Root cause #2 (emoji/GIF/sticker picker invisible): setting only
-   `overflow-x: hidden` here (with no `overflow-y` declared) makes the
-   browser silently compute `overflow-y: auto` instead of `visible` on
-   this element (a CSS quirk: the two overflow axes can't independently
-   be `visible`/non-visible — if either axis is non-visible, the other
-   becomes `auto` when left unset). `.mp-emoji-picker` is a child of
-   this row and is positioned with `bottom: 56px`, i.e. it extends
-   upward, OUTSIDE the row's own box — which then got clipped by the
-   implicit `overflow-y: auto`, making the whole picker unreachable even
-   though the toggle button's onClick still fired correctly. Explicitly
-   setting `overflow-y: visible` keeps the x-axis clipping fix (for the
-   send button) while letting the picker render outside the row's
-   bounds again, matching how the group-chat input row (.gcw-input-row,
-   which has no overflow rule at all) already behaves. ── */
+   Root cause #2 (picker invisible — a `overflow-x: hidden` was
+   PREVIOUSLY added here as an extra safety net for root cause #1; this
+   turned out to be the actual bug for the emoji/GIF/sticker picker
+   (.egsp-panel in EmojiGifStickerPicker.css), which is absolutely
+   positioned above this row via `bottom: 56px` — i.e. outside the
+   row's own box — so it got clipped/hidden by that overflow rule.
+
+   Per the CSS Overflow spec, overflow-x and overflow-y cannot
+   independently be `visible` vs. non-`visible` on the same element: if
+   EITHER axis is set to anything other than `visible`, the computed
+   value of the OTHER axis is forced to `auto` even if explicitly
+   written as `visible`. So `overflow-x: hidden; overflow-y: visible;`
+   does NOT behave as written — it silently becomes
+   `overflow-x: hidden; overflow-y: auto;`, and `auto` still clips
+   content that overflows the box. There is no combination of
+   overflow-x/overflow-y on this element that both (a) clips
+   horizontally and (b) lets the picker render above it — so the
+   correct fix is to declare NO overflow property here at all (the
+   default is `visible` on both axes), matching .gcw-input-row in
+   GroupChatWindow.css, which has never had an overflow rule and has
+   never had this bug. Root cause #1 is unaffected by this removal,
+   since it was already fixed by min-width:0 / flex-shrink, not by
+   the overflow rule. DO NOT re-add overflow-x/overflow-y here. ── */
 .mp-chat-input-row {
   display: flex;
   align-items: center;
@@ -616,8 +627,6 @@
   border-top: 2px solid var(--zx-border);
   background: var(--zx-surface);
   position: relative;
-  overflow-x: hidden;
-  overflow-y: visible;
 }
 
 .mp-chat-input {
