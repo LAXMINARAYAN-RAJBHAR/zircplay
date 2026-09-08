@@ -1794,3 +1794,13 @@
   border-color: var(--zx-primary);
 }
 .pf-connect-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── GIF/sticker comment rendering (comment box now uses
+   EmojiGifStickerPicker instead of the text-only EmojiPicker) ── */
+.pf-comment-media {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 10px;
+  display: block;
+  margin-top: 4px;
+}

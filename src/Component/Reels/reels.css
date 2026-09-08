@@ -1095,3 +1095,32 @@ body.reels-open .reel_item   { height: 100dvh; }
     height: 5px;
   }
 }
+
+/* ── Emoji/GIF/sticker picker trigger for the comment box ── */
+.reel_comment_attach_wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.reel_comment_emoji_btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.reel_comment_emoji_btn:hover {
+  background: var(--zx-surface2);
+}
+
+.reel_comment_media {
+  max-width: 180px;
+  max-height: 180px;
+  border-radius: 10px;
+  display: block;
+  margin-top: 4px;
+}

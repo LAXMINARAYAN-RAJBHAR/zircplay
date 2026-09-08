@@ -14,6 +14,8 @@ import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ReportModal from "../../Component/Moderation/ReportModal";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
+// NEW: shared emoji/GIF/sticker picker for the comment box.
+import EmojiGifStickerPicker from "../../Component/EmojiGifStickerPicker/EmojiGifStickerPicker";
 import AdSlot from "../../Component/Ads/AdSlot";
 // NOTE: notifyUser() is no longer imported/used anywhere in this file.
 // Like/comment notifications are owned by the notify_on_like /
@@ -73,6 +75,13 @@ const stubTranslateToHindi = (text) => {
   return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
 };
 
+// ── Media comment detection — a comment/reply whose text is just a GIF
+// or sticker URL (inserted via EmojiGifStickerPicker's onMediaSelect)
+// renders as an image instead of plain text. Mirrors Reels.jsx.
+const MEDIA_COMMENT_REGEX = /^https?:\/\/\S+\.(gif|webp|png|jpe?g)(\?\S*)?$/i;
+const isMediaComment = (text) =>
+  typeof text === "string" && MEDIA_COMMENT_REGEX.test(text.trim());
+
 // ── Single comment row — used for both top-level comments and their
 //    (one level deep) replies. Renders the kebab menu (Share/Report/
 //    Save), Like/Dislike with counts, a Reply button (top-level only),
@@ -124,7 +133,17 @@ const VideoCommentRow = ({
             </div>
           </div>
         </div>
-        <div className="otherCommentSectionComment">{displayText}</div>
+        <div className="otherCommentSectionComment">
+          {isMediaComment(comment.text) ? (
+            <img
+              src={comment.text}
+              alt="comment media"
+              className="video_comment_media"
+            />
+          ) : (
+            displayText
+          )}
+        </div>
         <div className="yt_comment_action_row">
           <button
             className={`yt_comment_like_btn${iLiked ? " yt_comment_like_active" : ""}`}
@@ -319,6 +338,10 @@ const Video = ({ sideNavbar }) => {
   const [translatedIds, setTranslatedIds] = useState(() => new Set());
   const [savedToast, setSavedToast] = useState(false);
   const [reportCommentTarget, setReportCommentTarget] = useState(null);
+  // NEW: whether the comment box's emoji/GIF/sticker picker is open, and
+  // its click-outside ref.
+  const [showCommentPicker, setShowCommentPicker] = useState(false);
+  const commentPickerRef = useRef(null);
 
   // NEW: lets the person hide the Like/Dislike/Share/Fullscreen row while
   // in fullscreen (toggled from the ⋮ "More" menu), so the video isn't
@@ -407,6 +430,19 @@ const Video = ({ sideNavbar }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // NEW: close the comment box's emoji/GIF/sticker picker on an outside
+  // click, same pattern as the "More" menu's outside-click effect above.
+  useEffect(() => {
+    if (!showCommentPicker) return;
+    const handler = (e) => {
+      if (commentPickerRef.current && !commentPickerRef.current.contains(e.target)) {
+        setShowCommentPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showCommentPicker]);
 
   // ── Track fullscreen state across all vendor-prefixed events, so the
   //    button icon (Fullscreen / FullscreenExit) always reflects reality —
@@ -781,13 +817,12 @@ const Video = ({ sideNavbar }) => {
     setTimeout(() => setShareToast(false), 2500);
   };
 
-  // CHANGED: now accepts an optional parentId — omitted (or null) for a
-  // fresh top-level comment, or a top-level comment's id when posting a
-  // reply. Reads from either `message` (top-level) or replyText (reply),
-  // resetting the right one on success.
-  const handleCommentSubmit = async (parentId = null) => {
-    const text = parentId ? replyText : message;
-    if (!text.trim()) return;
+  // CHANGED: extracted the insert into postComment() so a typed
+  // comment/reply AND a GIF/sticker picked from EmojiGifStickerPicker
+  // (handleCommentMediaSelect below) share the same insert +
+  // local-state-append path.
+  const postComment = async (text, parentId = null) => {
+    if (!text || !text.trim()) return;
     const userId = localStorage.getItem("userId");
     if (!userId) {
       alert("Please login to comment");
@@ -823,12 +858,31 @@ const Video = ({ sideNavbar }) => {
       // trigger on the comments table — no client-side notifyUser()
       // call here.
     }
+  };
+
+  // CHANGED: now accepts an optional parentId — omitted (or null) for a
+  // fresh top-level comment, or a top-level comment's id when posting a
+  // reply. Reads from either `message` (top-level) or replyText (reply),
+  // resetting the right one on success. The actual insert now lives in
+  // postComment() above, shared with handleCommentMediaSelect.
+  const handleCommentSubmit = async (parentId = null) => {
+    const text = parentId ? replyText : message;
+    await postComment(text, parentId);
     if (parentId) {
       setReplyText("");
       setReplyingToId(null);
     } else {
       setMessage("");
     }
+  };
+
+  // NEW: a GIF/sticker picked from EmojiGifStickerPicker posts
+  // immediately as a top-level comment — its URL becomes the comment's
+  // text, and VideoCommentRow detects + renders it as an image via
+  // isMediaComment().
+  const handleCommentMediaSelect = ({ url }) => {
+    setShowCommentPicker(false);
+    postComment(url, null);
   };
 
   // NEW: Like / Dislike a single comment (top-level or reply) — same
@@ -1591,14 +1645,35 @@ const Video = ({ sideNavbar }) => {
                 }}
               />
               <div className="addAComment">
-                <input
-                  type="text"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="addACommentInput"
-                  placeholder="Add a comment"
-                  onKeyDown={(e) => e.key === "Enter" && handleCommentSubmit()}
-                />
+                <div className="video_comment_input_row">
+                  <input
+                    type="text"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="addACommentInput"
+                    placeholder="Add a comment"
+                    onKeyDown={(e) => e.key === "Enter" && handleCommentSubmit()}
+                  />
+                  {/* NEW: emoji/GIF/sticker picker for the comment box.
+                      Emoji append to the message; a GIF/sticker posts
+                      immediately via handleCommentMediaSelect. */}
+                  <div className="video_comment_attach_wrap" ref={commentPickerRef}>
+                    <button
+                      type="button"
+                      className="video_comment_emoji_btn"
+                      onClick={() => setShowCommentPicker((v) => !v)}
+                      aria-label="Emoji, GIF or sticker"
+                    >
+                      🙂
+                    </button>
+                    {showCommentPicker && (
+                      <EmojiGifStickerPicker
+                        onEmojiSelect={(emoji) => setMessage((t) => t + emoji)}
+                        onMediaSelect={handleCommentMediaSelect}
+                      />
+                    )}
+                  </div>
+                </div>
                 <div className="cancelSubmitComment">
                   <div className="cancelcomment" onClick={() => setMessage("")}>
                     Cancel

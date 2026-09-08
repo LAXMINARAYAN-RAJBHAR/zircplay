@@ -1281,3 +1281,45 @@
     transform: rotate(90deg);
   }
 }
+
+/* ── Emoji/GIF/sticker picker trigger for the comment box ── */
+.video_comment_input_row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.video_comment_input_row .addACommentInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.video_comment_attach_wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.video_comment_emoji_btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  color: var(--zx-text3);
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.video_comment_emoji_btn:hover {
+  background: var(--zx-surface2);
+  color: var(--zx-primary);
+}
+
+.video_comment_media {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 10px;
+  display: block;
+  margin-top: 6px;
+}

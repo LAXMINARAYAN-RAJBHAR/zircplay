@@ -13,6 +13,11 @@ import PhotoViewer from "./PhotoViewer";
 // dedicated to post-level reports; this one is only used for individual
 // comment reports (see the kebab menu below).
 import ReportModal from "../../Component/Moderation/ReportModal";
+// NEW: shared emoji/GIF/sticker picker, same component used in the
+// comment boxes on Reels.jsx / Video.jsx. Replaces the plain EmojiPicker
+// on the comment box only — the post composer/edit textarea still use
+// the original text-only EmojiPicker.
+import EmojiGifStickerPicker from "../EmojiGifStickerPicker/EmojiGifStickerPicker";
 // Connect button on each post's header — same "connections" table
 // used by the Connect button on Video.jsx / Reels.jsx (see
 // subscriptions_to_connections_migration.sql and the later
@@ -72,6 +77,13 @@ const stubTranslateToHindi = (text) => {
   });
   return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
 };
+
+// ── Media comment detection — a comment/reply whose text is just a GIF
+// or sticker URL (inserted via EmojiGifStickerPicker's onMediaSelect)
+// renders as an image instead of plain text. Mirrors Reels.jsx / Video.jsx.
+const MEDIA_COMMENT_REGEX = /^https?:\/\/\S+\.(gif|webp|png|jpe?g)(\?\S*)?$/i;
+const isMediaComment = (text) =>
+  typeof text === "string" && MEDIA_COMMENT_REGEX.test(text.trim());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // useIsMobile — same pattern used on HomePage's video/reel/trending cards,
@@ -299,7 +311,17 @@ const PostCommentRow = ({
             </div>
           </div>
         </div>
-        <p className="pf-comment-text">{displayText}</p>
+        <p className="pf-comment-text">
+          {isMediaComment(comment.text) ? (
+            <img
+              src={comment.text}
+              alt="comment media"
+              className="pf-comment-media"
+            />
+          ) : (
+            displayText
+          )}
+        </p>
 
         {/* Like + Dislike actions with counts, plus Reply (top-level
             only) and the Translate toggle. */}
@@ -424,6 +446,8 @@ const PostCard = ({
   const pickerRef = useRef();
   const shareRef = useRef();
   const menuRef = useRef();
+  // NEW: click-outside ref for the comment box's emoji/GIF/sticker picker.
+  const commentPickerRef = useRef();
 
   // NEW: unique per-mount suffix for this card's connection-status
   // realtime channel (see the connection useEffect below). Supabase's
@@ -515,6 +539,13 @@ const PostCard = ({
         setShowShareMenu(false);
       if (menuRef.current && !menuRef.current.contains(e.target))
         setShowMenu(false);
+      // NEW: close the comment box's emoji/GIF/sticker picker on an
+      // outside click, same pattern as the other three above.
+      if (
+        commentPickerRef.current &&
+        !commentPickerRef.current.contains(e.target)
+      )
+        setShowCommentEmoji(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -656,6 +687,21 @@ const PostCard = ({
     onComment(post.id, replyText, parentId);
     setReplyText("");
     setReplyingToId(null);
+  };
+
+  // NEW: a GIF/sticker picked from EmojiGifStickerPicker posts
+  // immediately as a top-level comment — its URL becomes the comment's
+  // text, and PostCommentRow detects + renders it as an image via
+  // isMediaComment(). Goes through the same onComment callback as a
+  // typed comment, so PostFeed's insert + notification logic stays
+  // untouched.
+  const handleCommentMediaSelect = ({ url }) => {
+    if (!currentUser || currentUser === "anonymous") {
+      window.dispatchEvent(new CustomEvent("openLogin"));
+      return;
+    }
+    onComment(post.id, url);
+    setShowCommentEmoji(false);
   };
 
   const handleCopyLink = () => {
@@ -1349,20 +1395,24 @@ const PostCard = ({
                     : {}
                 }
               />
-              <div className="pf-attach-wrap">
+              {/* CHANGED: EmojiPicker → EmojiGifStickerPicker, so the
+                  comment box can also send a GIF or sticker, not just
+                  emoji. A picked GIF/sticker posts immediately as a
+                  comment via handleCommentMediaSelect. */}
+              <div className="pf-attach-wrap" ref={commentPickerRef}>
                 <button
                   type="button"
                   className="pf-attach-btn"
-                  title="Emoji"
+                  title="Emoji, GIF or sticker"
                   disabled={!currentUser || currentUser === "anonymous"}
                   onClick={() => setShowCommentEmoji((v) => !v)}
                 >
                   🙂
                 </button>
                 {showCommentEmoji && (
-                  <EmojiPicker
-                    onSelect={(emoji) => setCommentText((t) => t + emoji)}
-                    onClose={() => setShowCommentEmoji(false)}
+                  <EmojiGifStickerPicker
+                    onEmojiSelect={(emoji) => setCommentText((t) => t + emoji)}
+                    onMediaSelect={handleCommentMediaSelect}
                   />
                 )}
               </div>
