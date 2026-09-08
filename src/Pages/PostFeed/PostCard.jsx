@@ -17,7 +17,7 @@ import ReportModal from "../../Component/Moderation/ReportModal";
 // comment boxes on Reels.jsx / Video.jsx. Replaces the plain EmojiPicker
 // on the comment box only — the post composer/edit textarea still use
 // the original text-only EmojiPicker.
-import EmojiGifStickerPicker from "../EmojiGifStickerPicker/EmojiGifStickerPicker";
+import EmojiGifStickerPicker from "../../Component/EmojiGifStickerPicker/EmojiGifStickerPicker";
 // Connect button on each post's header — same "connections" table
 // used by the Connect button on Video.jsx / Reels.jsx (see
 // subscriptions_to_connections_migration.sql and the later
