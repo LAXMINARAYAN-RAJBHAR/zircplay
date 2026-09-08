@@ -8,6 +8,7 @@ import { fetchUserBroadcastLists } from "../../utils/broadcast";
 import NewGroupOrBroadcastModal from "../../Component/Messages/NewGroupOrBroadcastModal";
 import GroupChatWindow from "../../Component/Messages/GroupChatWindow";
 import BroadcastComposeWindow from "../../Component/Messages/BroadcastComposeWindow";
+import EmojiGifStickerPicker from "../../Component/Messages/EmojiGifStickerPicker";
 import { playSendSound, playReceiveSound, playNotificationSound } from "../../utils/soundEffects";
 import { ensureNotificationPermission, showChatNotification } from "../../utils/chatNotifications";
 import { extractFirstUrl } from "../../utils/linkPreview";
@@ -128,59 +129,6 @@ const TYPING_STOP_DELAY_MS = 1500;
 // the receiving side after this long regardless.
 const TYPING_AUTO_CLEAR_MS = 4000;
 
-const EMOJI_LIST = [
-  "😀",
-  "😁",
-  "😂",
-  "🤣",
-  "😊",
-  "😍",
-  "😘",
-  "😜",
-  "🤔",
-  "🙄",
-  "😴",
-  "🤗",
-  "🥳",
-  "😎",
-  "🤩",
-  "🥺",
-  "😭",
-  "😡",
-  "🤯",
-  "🤝",
-  "👍",
-  "👎",
-  "👏",
-  "🙏",
-  "💪",
-  "🔥",
-  "✨",
-  "🎉",
-  "❤️",
-  "💔",
-  "💯",
-  "👀",
-  "🙌",
-  "🤷",
-  "😅",
-  "😇",
-  "🤤",
-  "😬",
-  "🥶",
-  "🤒",
-  "🎂",
-  "🎁",
-  "☕",
-  "🍕",
-  "🍔",
-  "🍿",
-  "⚽",
-  "🏀",
-  "🎮",
-  "📸",
-];
-
 // ── Quick-reaction emoji set for message/attachment reactions ──
 const REACTION_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 
@@ -199,6 +147,8 @@ const attachmentPreviewLabel = (type, name) => {
   if (type === "image") return "📷 Photo";
   if (type === "video") return "🎥 Video";
   if (type === "voice") return "🎤 Voice message";
+  if (type === "gif") return "🎬 GIF";
+  if (type === "sticker") return "🏷️ Sticker";
   if (type === "file") return `📎 ${name || "Attachment"}`;
   return "Message";
 };
@@ -1508,6 +1458,72 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
     setSending(false);
   };
 
+  // Sends a GIF or sticker picked from EmojiGifStickerPicker straight
+  // away — no upload needed since Giphy already hosts the media, and no
+  // pre-send preview stage (tapping a GIF/sticker sends it immediately,
+  // same as WhatsApp/Messenger).
+  const sendMediaMessage = async (url, type) => {
+    if (!url || !activeConvo || sending || isIncomingRequest) return;
+    setSending(true);
+
+    clearTimeout(stopTypingTimeoutRef.current);
+    typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { username: currentUser, typing: false },
+    });
+
+    const reply_to_id = replyTarget?.id || null;
+    const reply_to_sender = replyTarget?.sender_username || null;
+    const reply_to_text = replyTarget
+      ? replyTarget.text
+        ? replyTarget.text.slice(0, 120)
+        : attachmentPreviewLabel(
+            replyTarget.attachment_type,
+            replyTarget.attachment_name,
+          )
+      : null;
+
+    const { data: inserted, error } = await supabase
+      .from("direct_messages")
+      .insert({
+        conversation_id: activeConvo.id,
+        sender_username: currentUser,
+        text: null,
+        attachment_url: url,
+        attachment_type: type, // "gif" | "sticker"
+        attachment_name: null,
+        attachment_size: null,
+        reply_to_id,
+        reply_to_text,
+        reply_to_sender,
+      })
+      .select()
+      .single();
+
+    if (!error && inserted) {
+      setMessages((prev) =>
+        prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted],
+      );
+      playSendSound();
+      setReplyTarget(null);
+
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      });
+
+      await supabase
+        .from("conversations")
+        .update({
+          last_message: attachmentPreviewLabel(type),
+          last_message_at: new Date().toISOString(),
+          last_message_sender: currentUser,
+        })
+        .eq("id", activeConvo.id);
+    }
+    setSending(false);
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -2412,6 +2428,10 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                     ? "mp-bubble-has-voice"
                                     : ""
                                 } ${
+                                  m.attachment_type === "sticker"
+                                    ? "mp-bubble-sticker-wrap"
+                                    : ""
+                                } ${
                                   m.text &&
                                   !m.attachment_url &&
                                   isEmojiOnlyMessage(m.text)
@@ -2496,6 +2516,30 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                                           src={m.attachment_url}
                                           controls
                                           className="mp-bubble-video"
+                                        />
+                                      )}
+
+                                    {m.attachment_url &&
+                                      m.attachment_type === "gif" && (
+                                        <img
+                                          src={m.attachment_url}
+                                          alt="GIF"
+                                          className="mp-bubble-gif"
+                                          onDoubleClick={() =>
+                                            toggleReaction(m, "❤️")
+                                          }
+                                        />
+                                      )}
+
+                                    {m.attachment_url &&
+                                      m.attachment_type === "sticker" && (
+                                        <img
+                                          src={m.attachment_url}
+                                          alt="sticker"
+                                          className="mp-bubble-sticker"
+                                          onDoubleClick={() =>
+                                            toggleReaction(m, "❤️")
+                                          }
                                         />
                                       )}
 
@@ -2772,24 +2816,20 @@ const MessagesPanel = ({ initialUsername, onClose }) => {
                               ref={emojiBtnRef}
                               className="mp-icon-btn"
                               onClick={() => setShowEmojiPicker((v) => !v)}
-                              aria-label="Emoji"
+                              aria-label="Emoji, GIFs and stickers"
                             >
                               😀
                             </button>
 
                             {showEmojiPicker && (
-                              <div className="mp-emoji-picker" ref={emojiPickerRef}>
-                                {EMOJI_LIST.map((emoji) => (
-                                  <button
-                                    key={emoji}
-                                    type="button"
-                                    className="mp-emoji-btn"
-                                    onClick={() => insertEmoji(emoji)}
-                                  >
-                                    {emoji}
-                                  </button>
-                                ))}
-                              </div>
+                              <EmojiGifStickerPicker
+                                ref={emojiPickerRef}
+                                onEmojiSelect={(emoji) => insertEmoji(emoji)}
+                                onMediaSelect={({ url, type }) => {
+                                  setShowEmojiPicker(false);
+                                  sendMediaMessage(url, type);
+                                }}
+                              />
                             )}
 
                             <input

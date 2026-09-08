@@ -9,6 +9,7 @@ import {
 import { URL_SPLIT_REGEX, isUrlToken, extractFirstUrl, truncateUrlDisplay } from "../../utils/linkPreview";
 import LinkPreviewCard from "./LinkPreviewCard";
 import AddMembersModal from "./AddMembersModal";
+import EmojiGifStickerPicker from "./EmojiGifStickerPicker";
 import "./GroupChatWindow.css";
 import { playSendSound, playReceiveSound } from "../../utils/soundEffects";
 import { uploadAttachmentToR2 } from "../../utils/mediaUpload";
@@ -36,6 +37,8 @@ const attachmentPreviewLabel = (type, name) => {
   if (type === "image") return "📷 Photo";
   if (type === "video") return "🎥 Video";
   if (type === "voice") return "🎤 Voice message";
+  if (type === "gif") return "🎬 GIF";
+  if (type === "sticker") return "🏷️ Sticker";
   if (type === "file") return `📎 ${name || "Attachment"}`;
   return "Message";
 };
@@ -100,6 +103,11 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  // ── Emoji / GIF / Sticker picker ──
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef();
+  const emojiBtnRef = useRef();
 
   // ── Group options ("⋮" header menu — currently just Delete Group) ──
   const [showGroupMenu, setShowGroupMenu] = useState(false);
@@ -349,6 +357,23 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openMenuFor]);
 
+  // Close the emoji/GIF/sticker picker when tapping/clicking outside it.
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handleClickOutside = (e) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(e.target) &&
+        emojiBtnRef.current &&
+        !emojiBtnRef.current.contains(e.target)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showEmojiPicker]);
+
   // ── Forward: search profiles by username while the picker is open ──
   useEffect(() => {
     if (!forwardTarget) return;
@@ -386,6 +411,11 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }
     const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file";
     const previewUrl = type !== "file" ? URL.createObjectURL(file) : null;
     setPendingAttachment({ file, previewUrl, type, name: file.name, size: file.size });
+  };
+
+  const insertEmoji = (emoji) => {
+    setText((prev) => prev + emoji);
+    inputRef.current?.focus();
   };
 
   const handleSend = async () => {
@@ -519,6 +549,89 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }
     } finally {
       setSending(false);
       setUploading(false);
+    }
+  };
+
+  // Sends a GIF or sticker picked from EmojiGifStickerPicker straight
+  // away — no upload needed since Giphy already hosts the media, and no
+  // pre-send preview stage (tapping a GIF/sticker sends it immediately).
+  // Mirrors handleSend's optimistic-append pattern above, just without
+  // the upload step.
+  const sendGroupMedia = async (url, type) => {
+    if (!url || sending) return;
+    setSending(true);
+
+    const replyTargetSnapshot = replyTarget;
+    const reply_to_id = replyTargetSnapshot?.id || null;
+    const reply_to_sender = replyTargetSnapshot?.sender_username || null;
+    const reply_to_text = replyTargetSnapshot
+      ? replyTargetSnapshot.text
+        ? replyTargetSnapshot.text.slice(0, 120)
+        : attachmentPreviewLabel(
+            replyTargetSnapshot.attachment_type,
+            replyTargetSnapshot.attachment_name,
+          )
+      : null;
+
+    const tempId = makeTempId();
+    pendingOptimisticIdRef.current = tempId;
+    const optimisticMessage = {
+      id: tempId,
+      group_id: group.id,
+      sender_username: currentUser,
+      text: null,
+      attachment_url: url,
+      attachment_type: type, // "gif" | "sticker"
+      attachment_name: null,
+      attachment_size: null,
+      reply_to_id,
+      reply_to_text,
+      reply_to_sender,
+      forwarded: false,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+    playSendSound();
+    setReplyTarget(null);
+
+    try {
+      clearTimeout(stopTypingTimeoutRef.current);
+      typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "typing",
+        payload: { username: currentUser, typing: false },
+      });
+    } catch {
+      /* no-op — typing indicator is best-effort, never critical */
+    }
+
+    try {
+      const sentMessage = await sendGroupMessage({
+        groupId: group.id,
+        senderUsername: currentUser,
+        text: "",
+        attachmentUrl: url,
+        attachmentType: type,
+        attachmentName: null,
+        attachmentSize: null,
+        replyToId: reply_to_id,
+        replyToText: reply_to_text,
+        replyToSender: reply_to_sender,
+      });
+
+      if (sentMessage && sentMessage.id) {
+        pendingOptimisticIdRef.current = null;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? sentMessage : m)),
+        );
+      }
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      pendingOptimisticIdRef.current = null;
+      alert(`Failed to send: ${err?.message || "please try again."}`);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -980,7 +1093,7 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }
                     </div>
                   )}
 
-                  <div className="gcw-bubble">
+                  <div className={`gcw-bubble ${m.attachment_type === "sticker" ? "gcw-bubble-sticker-wrap" : ""}`}>
                     {!mine && <div className="gcw-sender-name">{m.sender_username}</div>}
                     {m.deleted_at ? (
                       <span className="gcw-deleted-text">🚫 This message was deleted</span>
@@ -1027,6 +1140,12 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }
                         )}
                         {m.attachment_url && m.attachment_type === "video" && (
                           <video src={m.attachment_url} controls className="gcw-bubble-video" />
+                        )}
+                        {m.attachment_url && m.attachment_type === "gif" && (
+                          <img src={m.attachment_url} alt="GIF" className="gcw-bubble-gif" />
+                        )}
+                        {m.attachment_url && m.attachment_type === "sticker" && (
+                          <img src={m.attachment_url} alt="sticker" className="gcw-bubble-sticker" />
                         )}
                         {m.attachment_url && m.attachment_type === "file" && (
                           <a href={m.attachment_url} target="_blank" rel="noopener noreferrer" className="gcw-bubble-file">
@@ -1090,6 +1209,28 @@ const GroupChatWindow = ({ group, currentUser, onBack, onClose, onGroupDeleted }
       <div className="gcw-input-row">
         <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileSelect} />
         <button className="gcw-icon-btn" onClick={() => fileInputRef.current?.click()}>📎</button>
+
+        <button
+          type="button"
+          ref={emojiBtnRef}
+          className="gcw-icon-btn"
+          onClick={() => setShowEmojiPicker((v) => !v)}
+          aria-label="Emoji, GIFs and stickers"
+        >
+          😀
+        </button>
+
+        {showEmojiPicker && (
+          <EmojiGifStickerPicker
+            ref={emojiPickerRef}
+            onEmojiSelect={(emoji) => insertEmoji(emoji)}
+            onMediaSelect={({ url, type }) => {
+              setShowEmojiPicker(false);
+              sendGroupMedia(url, type);
+            }}
+          />
+        )}
+
         <input
           ref={inputRef}
           className="gcw-text-input"

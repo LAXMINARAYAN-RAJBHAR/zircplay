@@ -1,5 +1,6 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { sendBroadcastMessage } from "../../utils/broadcast";
+import EmojiGifStickerPicker from "./EmojiGifStickerPicker";
 import "./BroadcastComposeWindow.css";
 import { uploadAttachmentToR2 } from "../../utils/mediaUpload";
 
@@ -10,6 +11,28 @@ const BroadcastComposeWindow = ({ list, currentUser, onBack, onClose }) => {
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [result, setResult] = useState(null); // { sentCount, failed }
   const fileInputRef = useRef();
+  const inputRef = useRef();
+
+  // ── Emoji / GIF / Sticker picker ──
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef();
+  const emojiBtnRef = useRef();
+
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handleClickOutside = (e) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(e.target) &&
+        emojiBtnRef.current &&
+        !emojiBtnRef.current.contains(e.target)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showEmojiPicker]);
 
   const recipients = (list.broadcast_recipients || []).map((r) => r.username);
 
@@ -24,6 +47,11 @@ const BroadcastComposeWindow = ({ list, currentUser, onBack, onClose }) => {
     const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file";
     const previewUrl = type !== "file" ? URL.createObjectURL(file) : null;
     setPendingAttachment({ file, previewUrl, type, name: file.name, size: file.size });
+  };
+
+  const insertEmoji = (emoji) => {
+    setText((prev) => prev + emoji);
+    inputRef.current?.focus();
   };
 
   const handleSend = async () => {
@@ -67,6 +95,32 @@ const BroadcastComposeWindow = ({ list, currentUser, onBack, onClose }) => {
     } finally {
       setSending(false);
       setUploading(false);
+    }
+  };
+
+  // Sends a GIF or sticker to every recipient immediately — no upload
+  // needed since Giphy already hosts the media, mirrors handleSend but
+  // skips the attachment-upload branch.
+  const sendMedia = async (url, type) => {
+    if (!url || sending) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await sendBroadcastMessage({
+        broadcastId: list.id,
+        senderUsername: currentUser,
+        recipientUsernames: recipients,
+        text: "",
+        attachmentUrl: url,
+        attachmentType: type, // "gif" | "sticker"
+        attachmentName: null,
+        attachmentSize: null,
+      });
+      setResult(res);
+    } catch (err) {
+      alert(`Failed to send broadcast: ${err?.message || "please try again."}`);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -117,7 +171,30 @@ const BroadcastComposeWindow = ({ list, currentUser, onBack, onClose }) => {
       <div className="bcw-input-row">
         <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileSelect} />
         <button className="bcw-icon-btn" onClick={() => fileInputRef.current?.click()}>📎</button>
+
+        <button
+          type="button"
+          ref={emojiBtnRef}
+          className="bcw-icon-btn"
+          onClick={() => setShowEmojiPicker((v) => !v)}
+          aria-label="Emoji, GIFs and stickers"
+        >
+          😀
+        </button>
+
+        {showEmojiPicker && (
+          <EmojiGifStickerPicker
+            ref={emojiPickerRef}
+            onEmojiSelect={(emoji) => insertEmoji(emoji)}
+            onMediaSelect={({ url, type }) => {
+              setShowEmojiPicker(false);
+              sendMedia(url, type);
+            }}
+          />
+        )}
+
         <input
+          ref={inputRef}
           className="bcw-text-input"
           placeholder="Compose broadcast message…"
           value={text}

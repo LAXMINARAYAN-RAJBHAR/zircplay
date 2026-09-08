@@ -1599,3 +1599,34 @@
 @media (max-width: 768px) {
   .mp-convo-menu-trigger { opacity: 1; } /* no hover on touch, always visible */
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   GIF & STICKER MESSAGES (1:1 chat) — added for the Emoji/GIF/Sticker
+   picker. The bubble around a GIF gets the same padding treatment as
+   any other attachment via .mp-bubble-has-attachment (already applied
+   by the className logic in MessagesPanel.jsx); stickers additionally
+   get .mp-bubble-sticker-wrap to strip the bubble chrome entirely.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.mp-bubble-gif {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 10px;
+  display: block;
+}
+
+.mp-bubble-sticker {
+  max-width: 140px;
+  max-height: 140px;
+  display: block;
+}
+
+/* Strips the bubble chrome for stickers, same treatment as the
+   emoji-only bubble — stickers already have their own art/transparent
+   background, a red/white chat bubble around them looks wrong. */
+.mp-bubble.mp-bubble-sticker-wrap {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 2px !important;
+}

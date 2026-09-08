@@ -143,6 +143,7 @@
   padding: 10px 14px;
   border-top: 2px solid #fbd5d5;
   background: #fff;
+  position: relative;
 }
 
 .bcw-icon-btn {
